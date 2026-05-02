@@ -4,11 +4,14 @@ venv/
 # Variables d'environnement sensibles
 .env
 
+# Dossier aide
+.aide
+
 # Fichiers Python compilés
 __pycache__/
 *.pyc
 *.pyo
-
+INFO GIT
 # IDE
 .vscode/
 .idea/
