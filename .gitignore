@@ -5,7 +5,7 @@ venv/
 .env
 
 # Dossier aide
-.aide
+aide/
 
 # Fichiers Python compilés
 __pycache__/
