@@ -41,5 +41,18 @@ services:
     depends_on:
       - api
 
+  streamlit_user:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    command: streamlit run streamlit_user.py --server.port=8502 --server.address=0.0.0.0
+    ports:
+      - "8502:8502"
+    environment:
+      API_URL: http://api:8000
+      API_KEY: ${API_KEY}
+    depends_on:
+      - api
+
 volumes:
   postgres_data:

@@ -1,12 +1,13 @@
-# 1. Import de FastAPI
 from fastapi import FastAPI
-from app.routers import ingredients, recipes, nutriments
+from app.routers import ingredients, recipes, nutriments, users, meal_logs
 
 app = FastAPI(title="Frigood", version="0.1")
 
 app.include_router(ingredients.router)
 app.include_router(recipes.router)
 app.include_router(nutriments.router)
+app.include_router(users.router)
+app.include_router(meal_logs.router)
 
 @app.get("/")
 def root():

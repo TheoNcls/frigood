@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -62,3 +62,36 @@ class RecipeIngredient(Base):
 
     recette = relationship("Recipe", back_populates="ingredients")
     ingredient = relationship("Ingredient", back_populates="recettes")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    nom = Column(String, nullable=False)
+    email = Column(String, nullable=False, unique=True)
+    password_hash = Column(String, nullable=False)
+    calories_cible = Column(Float, nullable=True)
+    proteines_cible = Column(Float, nullable=True)
+    glucides_cible = Column(Float, nullable=True)
+    lipides_cible = Column(Float, nullable=True)
+
+    meal_logs = relationship("MealLog", back_populates="user", cascade="all, delete-orphan")
+
+
+class MealLog(Base):
+    __tablename__ = "meal_logs"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    moment = Column(String, nullable=False)
+    recipe_id = Column(Integer, ForeignKey("recipes.id"), nullable=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=True)
+    quantite = Column(Float, nullable=True)
+    type_mesure = Column(String, nullable=True, default="poids")
+    notes = Column(String, nullable=True)
+
+    user = relationship("User", back_populates="meal_logs")
+    recipe = relationship("Recipe")
+    ingredient = relationship("Ingredient")
