@@ -74,6 +74,17 @@ if page == "Accueil":
                 "Nom": n["nom"], "Unité": n["unite"]
             } for n in nutriments]).to_excel(writer, index=False, sheet_name="Nutriments")
 
+            rows_ing_nut = []
+            for i in ingredients:
+                for n in i.get("nutriments", []):
+                    rows_ing_nut.append({
+                        "Ingrédient": i["nom"],
+                        "Nutriment": n["nutriment"]["nom"],
+                        "Valeur (100g)": n["valeur"],
+                        "Unité": n["nutriment"]["unite"],
+                    })
+            pd.DataFrame(rows_ing_nut).to_excel(writer, index=False, sheet_name="Ingrédients Nutriments")
+
         st.download_button("Télécharger", buf.getvalue(), "frigood_backup.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -129,6 +140,39 @@ if page == "Accueil":
                 st.success(f"{succes} nutriment(s) importé(s)")
                 if erreurs:
                     st.warning(f"Ignorés : {', '.join(erreurs)}")
+                st.rerun()
+
+    with st.expander("Importer des associations ingrédients/nutriments"):
+        st.caption("Colonnes : Ingrédient, Nutriment, Valeur (100g) — les ingrédients et nutriments doivent déjà exister")
+        fichier = st.file_uploader("Fichier Excel", type=["xlsx"], key="import_ing_nut")
+        if fichier:
+            df_import = pd.read_excel(fichier)
+            st.dataframe(df_import, use_container_width=True)
+            if st.button("Importer les associations"):
+                ingredients_list = api_get("/ingredients/")
+                nutriments_list  = api_get("/nutriments/")
+                ing_map = {i["nom"]: i for i in ingredients_list}
+                nut_map = {n["nom"]: n for n in nutriments_list}
+                erreurs, succes = [], 0
+                for _, row in df_import.iterrows():
+                    ing_nom = str(row.get("Ingrédient", ""))
+                    nut_nom = str(row.get("Nutriment", ""))
+                    if ing_nom not in ing_map or nut_nom not in nut_map:
+                        erreurs.append(f"{ing_nom}/{nut_nom}")
+                        continue
+                    res = requests.post(
+                        f"{API_URL}/ingredients/{ing_map[ing_nom]['id']}/nutriments/",
+                        headers=HEADERS,
+                        json={"nutriment_id": nut_map[nut_nom]["id"],
+                              "valeur": float(row.get("Valeur (100g)", 0))}
+                    )
+                    if res.status_code == 200:
+                        succes += 1
+                    else:
+                        erreurs.append(f"{ing_nom}/{nut_nom}")
+                st.success(f"{succes} association(s) importée(s)")
+                if erreurs:
+                    st.warning(f"Ignorées : {', '.join(erreurs)}")
                 st.rerun()
 
     with st.expander("Importer des recettes"):
@@ -298,6 +342,7 @@ elif page == "Recettes":
                     } for ri in r["ingredients"]])
 
                     totaux = {"Calories": 0.0, "Protéines": 0.0, "Glucides": 0.0, "Lipides": 0.0}
+                    extras: dict[str, dict] = {}
                     for ri in r["ingredients"]:
                         ing = ri["ingredient"]
                         if ri["type_mesure"] == "poids":
@@ -308,11 +353,20 @@ elif page == "Recettes":
                         totaux["Protéines"] += (ing["proteines"] or 0) * ratio
                         totaux["Glucides"]  += (ing["glucides"]  or 0) * ratio
                         totaux["Lipides"]   += (ing["lipides"]   or 0) * ratio
+                        for n in ing.get("nutriments", []):
+                            nom_n = n["nutriment"]["nom"]
+                            unite_n = n["nutriment"]["unite"]
+                            extras.setdefault(nom_n, {"valeur": 0.0, "unite": unite_n})
+                            extras[nom_n]["valeur"] += n["valeur"] * ratio
                     col1, col2, col3, col4 = st.columns(4)
                     col1.metric("Calories", f"{totaux['Calories']:.0f} kcal")
                     col2.metric("Protéines", f"{totaux['Protéines']:.1f} g")
                     col3.metric("Glucides", f"{totaux['Glucides']:.1f} g")
                     col4.metric("Lipides", f"{totaux['Lipides']:.1f} g")
+                    if extras:
+                        cols = st.columns(min(len(extras), 4))
+                        for i, (nom_n, data) in enumerate(extras.items()):
+                            cols[i % 4].metric(nom_n, f"{data['valeur']:.2f} {data['unite']}")
                 else:
                     st.caption("Aucun ingrédient ajouté.")
     else:
@@ -429,7 +483,7 @@ elif page == "Nutriments":
     st.divider()
 
     noms_nutriments = {n["nom"]: n for n in nutriments}
-    mode = st.radio("Action", ["Ajouter un nutriment", "Ajouter à un ingrédient", "Supprimer un nutriment"], horizontal=True)
+    mode = st.radio("Action", ["Ajouter un nutriment", "Ajouter à un ingrédient", "Retirer d'un ingrédient", "Supprimer un nutriment"], horizontal=True)
 
     if mode == "Ajouter un nutriment":
         st.subheader("Nouveau nutriment")
@@ -464,6 +518,34 @@ elif page == "Nutriments":
                 st.rerun()
             else:
                 st.error(f"Erreur : {res.json()}")
+
+    elif mode == "Retirer d'un ingrédient":
+        st.subheader("Nutriments d'un ingrédient")
+        ingredients = api_get("/ingredients/")
+        noms_ingredients = {i["nom"]: i for i in ingredients}
+        if noms_ingredients:
+            ing_choisi = st.selectbox("Ingrédient", list(noms_ingredients.keys()))
+            ing = noms_ingredients[ing_choisi]
+            nuts_ing = {n["nutriment"]["nom"]: n for n in ing.get("nutriments", [])}
+            if nuts_ing:
+                st.table([{
+                    "Nutriment": n["nutriment"]["nom"],
+                    "Valeur (100g)": f"{n['valeur']} {n['nutriment']['unite']}"
+                } for n in ing["nutriments"]])
+                nut_choisi = st.selectbox("Nutriment à retirer", list(nuts_ing.keys()))
+                if st.button("Retirer", type="primary"):
+                    n = nuts_ing[nut_choisi]
+                    res = requests.delete(
+                        f"{API_URL}/ingredients/{ing['id']}/nutriments/{n['nutriment']['id']}",
+                        headers=HEADERS
+                    )
+                    if res.status_code == 200:
+                        st.success("Retiré !")
+                        st.rerun()
+                    else:
+                        st.error(f"Erreur : {res.json()}")
+            else:
+                st.info("Aucun nutriment supplémentaire pour cet ingrédient.")
 
     elif mode == "Supprimer un nutriment" and noms_nutriments:
         st.subheader("Supprimer un nutriment")
