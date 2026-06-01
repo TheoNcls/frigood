@@ -11,7 +11,7 @@ router = APIRouter(prefix="/ingredients", tags=["ingredients"], dependencies=[De
 
 @router.get("/", response_model=list[IngredientRead])
 def list_ingredients(db: Session = Depends(get_db)):
-    return db.query(Ingredient).all()
+    return db.query(Ingredient).order_by(Ingredient.nom).all()
 
 
 @router.get("/{id}", response_model=IngredientRead)
