@@ -44,8 +44,7 @@ services:
   streamlit_user:
     build:
       context: .
-      dockerfile: Dockerfile.streamlit
-    command: streamlit run streamlit_user.py --server.port=8502 --server.address=0.0.0.0
+      dockerfile: Dockerfile.streamlit_user
     ports:
       - "8502:8502"
     environment:
