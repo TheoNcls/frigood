@@ -6,7 +6,7 @@ venv/
 
 # Dossier aide
 aide/
-
+.claude/
 # Fichiers Python compilés
 __pycache__/
 *.pyc
