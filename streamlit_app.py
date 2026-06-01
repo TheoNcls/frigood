@@ -36,12 +36,158 @@ if not st.session_state.authenticated:
 
 st.set_page_config(page_title="Frigood", layout="centered")
 
-page = st.sidebar.selectbox("Navigation", ["Ingrédients", "Recettes", "Nutriments"])
+page = st.sidebar.selectbox("Navigation", ["Accueil", "Ingrédients", "Recettes", "Nutriments"])
+
+
+# ─── ACCUEIL ────────────────────────────────────────────────────────────────
+
+if page == "Accueil":
+    st.title("Frigood — Accueil")
+
+    # Export tout
+    st.subheader("Export")
+    if st.button("Exporter toute la base en Excel"):
+        ingredients = api_get("/ingredients/")
+        recipes     = api_get("/recipes/")
+        nutriments  = api_get("/nutriments/")
+
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            pd.DataFrame([{
+                "Nom": i["nom"], "Calories": i["calories"], "Protéines": i["proteines"],
+                "Glucides": i["glucides"], "Lipides": i["lipides"],
+                "Unité": i["unite"], "Quantité défaut": i["quantite_defaut"]
+            } for i in ingredients]).to_excel(writer, index=False, sheet_name="Ingrédients")
+
+            rows_recettes = []
+            for r in recipes:
+                for ri in r["ingredients"]:
+                    rows_recettes.append({
+                        "Recette": r["nom"], "Description": r["description"],
+                        "Ingrédient": ri["ingredient"]["nom"],
+                        "Quantité": ri["quantite"], "Type mesure": ri["type_mesure"],
+                        "Unité": ri["ingredient"]["unite"],
+                    })
+            pd.DataFrame(rows_recettes).to_excel(writer, index=False, sheet_name="Recettes")
+
+            pd.DataFrame([{
+                "Nom": n["nom"], "Unité": n["unite"]
+            } for n in nutriments]).to_excel(writer, index=False, sheet_name="Nutriments")
+
+        st.download_button("Télécharger", buf.getvalue(), "frigood_backup.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    st.divider()
+
+    # Imports
+    st.subheader("Import")
+
+    with st.expander("Importer des ingrédients"):
+        st.caption("Colonnes : Nom, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut")
+        fichier = st.file_uploader("Fichier Excel", type=["xlsx"], key="import_ing")
+        if fichier:
+            df_import = pd.read_excel(fichier)
+            st.dataframe(df_import, use_container_width=True)
+            if st.button("Importer les ingrédients"):
+                erreurs, succes = [], 0
+                for _, row in df_import.iterrows():
+                    res = requests.post(f"{API_URL}/ingredients/", headers=HEADERS, json={
+                        "nom": str(row.get("Nom", "")),
+                        "calories": float(row["Calories"]) if pd.notna(row.get("Calories")) else None,
+                        "proteines": float(row["Protéines"]) if pd.notna(row.get("Protéines")) else None,
+                        "glucides": float(row["Glucides"]) if pd.notna(row.get("Glucides")) else None,
+                        "lipides": float(row["Lipides"]) if pd.notna(row.get("Lipides")) else None,
+                        "unite": str(row["Unité"]) if pd.notna(row.get("Unité")) else "g",
+                        "quantite_defaut": float(row["Quantité défaut"]) if pd.notna(row.get("Quantité défaut")) else None,
+                    })
+                    if res.status_code == 200:
+                        succes += 1
+                    else:
+                        erreurs.append(str(row.get("Nom", "?")))
+                st.success(f"{succes} ingrédient(s) importé(s)")
+                if erreurs:
+                    st.warning(f"Ignorés : {', '.join(erreurs)}")
+                st.rerun()
+
+    with st.expander("Importer des nutriments"):
+        st.caption("Colonnes : Nom, Unité")
+        fichier = st.file_uploader("Fichier Excel", type=["xlsx"], key="import_nut")
+        if fichier:
+            df_import = pd.read_excel(fichier)
+            st.dataframe(df_import, use_container_width=True)
+            if st.button("Importer les nutriments"):
+                erreurs, succes = [], 0
+                for _, row in df_import.iterrows():
+                    res = requests.post(f"{API_URL}/nutriments/", headers=HEADERS, json={
+                        "nom": str(row.get("Nom", "")),
+                        "unite": str(row["Unité"]) if pd.notna(row.get("Unité")) else "g",
+                    })
+                    if res.status_code == 200:
+                        succes += 1
+                    else:
+                        erreurs.append(str(row.get("Nom", "?")))
+                st.success(f"{succes} nutriment(s) importé(s)")
+                if erreurs:
+                    st.warning(f"Ignorés : {', '.join(erreurs)}")
+                st.rerun()
+
+    with st.expander("Importer des recettes"):
+        st.caption("Colonnes : Recette, Description (les ingrédients s'ajoutent depuis la page Recettes)")
+        fichier = st.file_uploader("Fichier Excel", type=["xlsx"], key="import_rec")
+        if fichier:
+            df_import = pd.read_excel(fichier)
+            st.dataframe(df_import, use_container_width=True)
+            if st.button("Importer les recettes"):
+                erreurs, succes = [], 0
+                for _, row in df_import.iterrows():
+                    res = requests.post(f"{API_URL}/recipes/", headers=HEADERS, json={
+                        "nom": str(row.get("Recette", "")),
+                        "description": str(row["Description"]) if pd.notna(row.get("Description")) else None,
+                    })
+                    if res.status_code == 200:
+                        succes += 1
+                    else:
+                        erreurs.append(str(row.get("Recette", "?")))
+                st.success(f"{succes} recette(s) importée(s)")
+                if erreurs:
+                    st.warning(f"Ignorées : {', '.join(erreurs)}")
+                st.rerun()
+
+    st.divider()
+
+    # Reset DB
+    st.subheader("Reset")
+    st.warning("Supprime toutes les données de la base de façon irréversible.")
+    if "confirm_reset" not in st.session_state:
+        st.session_state.confirm_reset = False
+    if not st.session_state.confirm_reset:
+        if st.button("Réinitialiser la base", type="primary"):
+            st.session_state.confirm_reset = True
+            st.rerun()
+    else:
+        st.error("Es-tu sûr ? Cette action est irréversible.")
+        col1, col2 = st.columns(2)
+        if col1.button("Oui, tout supprimer", type="primary"):
+            ingredients = api_get("/ingredients/")
+            recipes     = api_get("/recipes/")
+            nutriments  = api_get("/nutriments/")
+            for r in recipes:
+                requests.delete(f"{API_URL}/recipes/{r['id']}", headers=HEADERS)
+            for i in ingredients:
+                requests.delete(f"{API_URL}/ingredients/{i['id']}", headers=HEADERS)
+            for n in nutriments:
+                requests.delete(f"{API_URL}/nutriments/{n['id']}", headers=HEADERS)
+            st.session_state.confirm_reset = False
+            st.success("Base réinitialisée.")
+            st.rerun()
+        if col2.button("Annuler"):
+            st.session_state.confirm_reset = False
+            st.rerun()
 
 
 # ─── INGRÉDIENTS ────────────────────────────────────────────────────────────
 
-if page == "Ingrédients":
+elif page == "Ingrédients":
     st.title("Ingrédients")
 
     # Liste
@@ -192,7 +338,7 @@ elif page == "Recettes":
     st.divider()
 
     noms_recettes = {r["nom"]: r for r in recipes}
-    mode = st.radio("Action", ["Ajouter une recette", "Ajouter un ingrédient à une recette", "Supprimer une recette"], horizontal=True)
+    mode = st.radio("Action", ["Ajouter une recette", "Ajouter un ingrédient à une recette", "Retirer un ingrédient d'une recette", "Supprimer une recette"], horizontal=True)
 
     if mode == "Ajouter une recette":
         st.subheader("Nouvelle recette")
@@ -233,6 +379,24 @@ elif page == "Recettes":
                 st.rerun()
             else:
                 st.error(f"Erreur : {res.json()}")
+
+    elif mode == "Retirer un ingrédient d'une recette" and noms_recettes:
+        st.subheader("Retirer un ingrédient")
+        recette_choisie = st.selectbox("Recette", list(noms_recettes.keys()))
+        recette = noms_recettes[recette_choisie]
+        ings_recette = {ri["ingredient"]["nom"]: ri for ri in recette["ingredients"]}
+        if ings_recette:
+            ing_choisi = st.selectbox("Ingrédient à retirer", list(ings_recette.keys()))
+            if st.button("Retirer", type="primary"):
+                ri = ings_recette[ing_choisi]
+                res = requests.delete(f"{API_URL}/recipes/{recette['id']}/ingredients/{ri['ingredient']['id']}", headers=HEADERS)
+                if res.status_code == 200:
+                    st.success("Retiré !")
+                    st.rerun()
+                else:
+                    st.error(f"Erreur : {res.json()}")
+        else:
+            st.info("Cette recette n'a pas encore d'ingrédients.")
 
     elif mode == "Supprimer une recette" and noms_recettes:
         st.subheader("Supprimer une recette")
