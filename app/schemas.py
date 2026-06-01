@@ -1,6 +1,31 @@
 from pydantic import BaseModel
 
 
+# --- Nutriment ---
+
+class NutrimentCreate(BaseModel):
+    nom: str
+    unite: str = "g"
+
+class NutrimentRead(NutrimentCreate):
+    id: int
+
+    model_config = {"from_attributes": True}
+
+
+# --- IngredientNutriment ---
+
+class IngredientNutrimentCreate(BaseModel):
+    nutriment_id: int
+    valeur: float
+
+class IngredientNutrimentRead(IngredientNutrimentCreate):
+    id: int
+    nutriment: NutrimentRead
+
+    model_config = {"from_attributes": True}
+
+
 # --- Ingredient ---
 
 class IngredientCreate(BaseModel):
@@ -14,6 +39,7 @@ class IngredientCreate(BaseModel):
 
 class IngredientRead(IngredientCreate):
     id: int
+    nutriments: list[IngredientNutrimentRead] = []
 
     model_config = {"from_attributes": True}
 

@@ -16,6 +16,29 @@ class Ingredient(Base):
     quantite_defaut = Column(Float, nullable=True)
 
     recettes = relationship("RecipeIngredient", back_populates="ingredient")
+    nutriments = relationship("IngredientNutriment", back_populates="ingredient", cascade="all, delete-orphan")
+
+
+class Nutriment(Base):
+    __tablename__ = "nutriments"
+
+    id = Column(Integer, primary_key=True)
+    nom = Column(String, nullable=False, unique=True)
+    unite = Column(String, nullable=False, default="g")
+
+    ingredients = relationship("IngredientNutriment", back_populates="nutriment")
+
+
+class IngredientNutriment(Base):
+    __tablename__ = "ingredient_nutriments"
+
+    id = Column(Integer, primary_key=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=False)
+    nutriment_id = Column(Integer, ForeignKey("nutriments.id"), nullable=False)
+    valeur = Column(Float, nullable=False)
+
+    ingredient = relationship("Ingredient", back_populates="nutriments")
+    nutriment = relationship("Nutriment", back_populates="ingredients")
 
 
 class Recipe(Base):

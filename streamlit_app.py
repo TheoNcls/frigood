@@ -36,7 +36,7 @@ if not st.session_state.authenticated:
 
 st.set_page_config(page_title="Frigood", layout="centered")
 
-page = st.sidebar.selectbox("Navigation", ["Ingrédients", "Recettes"])
+page = st.sidebar.selectbox("Navigation", ["Ingrédients", "Recettes", "Nutriments"])
 
 
 # ─── INGRÉDIENTS ────────────────────────────────────────────────────────────
@@ -241,6 +241,73 @@ elif page == "Recettes":
             res = requests.delete(f"{API_URL}/recipes/{noms_recettes[choix]['id']}", headers=HEADERS)
             if res.status_code == 200:
                 st.success("Supprimée !")
+                st.rerun()
+            else:
+                st.error(f"Erreur : {res.json()}")
+
+
+# ─── NUTRIMENTS ─────────────────────────────────────────────────────────────
+
+elif page == "Nutriments":
+    st.title("Nutriments supplémentaires")
+    st.caption("Gérez les nutriments au-delà des 4 classiques (fibres, vitamines, fer...)")
+
+    nutriments = api_get("/nutriments/")
+
+    if nutriments:
+        st.dataframe(
+            [{"ID": n["id"], "Nom": n["nom"], "Unité": n["unite"]} for n in nutriments],
+            use_container_width=True
+        )
+    else:
+        st.info("Aucun nutriment supplémentaire pour l'instant.")
+
+    st.divider()
+
+    noms_nutriments = {n["nom"]: n for n in nutriments}
+    mode = st.radio("Action", ["Ajouter un nutriment", "Ajouter à un ingrédient", "Supprimer un nutriment"], horizontal=True)
+
+    if mode == "Ajouter un nutriment":
+        st.subheader("Nouveau nutriment")
+        with st.form("add_nutriment"):
+            nom = st.text_input("Nom (ex: Fibres, Vitamine C...)")
+            unite = st.text_input("Unité", value="g")
+            submitted = st.form_submit_button("Ajouter")
+        if submitted:
+            res = requests.post(f"{API_URL}/nutriments/", headers=HEADERS, json={"nom": nom, "unite": unite})
+            if res.status_code == 200:
+                st.success(f"Nutriment « {nom} » ajouté !")
+                st.rerun()
+            else:
+                st.error(f"Erreur : {res.json()}")
+
+    elif mode == "Ajouter à un ingrédient" and noms_nutriments:
+        st.subheader("Associer un nutriment à un ingrédient")
+        ingredients = api_get("/ingredients/")
+        noms_ingredients = {i["nom"]: i for i in ingredients}
+        with st.form("add_nutriment_to_ingredient"):
+            ing_choisi = st.selectbox("Ingrédient", list(noms_ingredients.keys()))
+            nut_choisi = st.selectbox("Nutriment", list(noms_nutriments.keys()))
+            valeur = st.number_input("Valeur pour 100g", min_value=0.0, step=0.01)
+            submitted = st.form_submit_button("Enregistrer")
+        if submitted:
+            ing = noms_ingredients[ing_choisi]
+            nut = noms_nutriments[nut_choisi]
+            res = requests.post(f"{API_URL}/ingredients/{ing['id']}/nutriments/", headers=HEADERS,
+                                json={"nutriment_id": nut["id"], "valeur": valeur})
+            if res.status_code == 200:
+                st.success("Enregistré !")
+                st.rerun()
+            else:
+                st.error(f"Erreur : {res.json()}")
+
+    elif mode == "Supprimer un nutriment" and noms_nutriments:
+        st.subheader("Supprimer un nutriment")
+        choix = st.selectbox("Nutriment", list(noms_nutriments.keys()))
+        if st.button("Supprimer", type="primary"):
+            res = requests.delete(f"{API_URL}/nutriments/{noms_nutriments[choix]['id']}", headers=HEADERS)
+            if res.status_code == 200:
+                st.success("Supprimé !")
                 st.rerun()
             else:
                 st.error(f"Erreur : {res.json()}")
