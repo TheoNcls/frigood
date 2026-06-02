@@ -59,11 +59,20 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
 
+    class _MFARequired(Exception):
+        pass
+
+    def _make_mfa_fn(code):
+        if code:
+            return lambda: code
+        def _raise():
+            raise _MFARequired()
+        return _raise
+
     try:
         from garminconnect import Garmin
 
         if user.garmin_tokens and not credentials.email:
-            # Utilise les tokens stockés
             api = Garmin()
             api.garth.loads(user.garmin_tokens)
             try:
@@ -75,13 +84,15 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
         else:
             if not credentials.email or not credentials.password:
                 raise HTTPException(status_code=400, detail="Email et mot de passe requis")
-            mfa_fn = (lambda: credentials.mfa_code) if credentials.mfa_code else None
             api = Garmin(
                 email=credentials.email,
                 password=credentials.password,
-                prompt_mfa=mfa_fn,
+                prompt_mfa=_make_mfa_fn(credentials.mfa_code),
             )
-            api.login()
+            try:
+                api.login()
+            except _MFARequired:
+                raise HTTPException(status_code=422, detail="CODE_MFA_REQUIS")
             user.garmin_tokens = api.garth.dumps()
             db.commit()
 
@@ -90,9 +101,6 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
     except HTTPException:
         raise
     except Exception as e:
-        err = str(e).lower()
-        if any(k in err for k in ["mfa", "otp", "factor", "two-step", "verify", "code"]):
-            raise HTTPException(status_code=422, detail="CODE_MFA_REQUIS")
         raise HTTPException(status_code=400, detail=f"Erreur Garmin : {str(e)}")
 
     all_types = db.query(ActivityType).all()
