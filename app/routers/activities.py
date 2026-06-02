@@ -63,9 +63,9 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
         from garminconnect import Garmin
 
         if user.garmin_tokens and not credentials.email:
-            api = Garmin()
-            api.garth.loads(user.garmin_tokens)
             try:
+                api = Garmin()
+                api.garth.loads(user.garmin_tokens)
                 api.login()
             except Exception:
                 user.garmin_tokens = None
@@ -95,8 +95,11 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
                     raise HTTPException(status_code=422, detail="CODE_MFA_REQUIS")
                 raise HTTPException(status_code=400, detail=f"Erreur Garmin : {str(e)}")
 
-            user.garmin_tokens = api.garth.dumps()
-            db.commit()
+            try:
+                user.garmin_tokens = api.garth.dumps()
+                db.commit()
+            except AttributeError:
+                pass  # version sans garth, tokens non persistés
 
         raw = api.get_activities(0, 50)
 
