@@ -59,16 +59,6 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
 
-    class _MFARequired(Exception):
-        pass
-
-    def _make_mfa_fn(code):
-        if code:
-            return lambda: code
-        def _raise():
-            raise _MFARequired()
-        return _raise
-
     try:
         from garminconnect import Garmin
 
@@ -84,15 +74,27 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
         else:
             if not credentials.email or not credentials.password:
                 raise HTTPException(status_code=400, detail="Email et mot de passe requis")
+
+            # Flag pour détecter si Garmin a demandé un code MFA
+            mfa_prompted = False
+
+            def _mfa_fn():
+                nonlocal mfa_prompted
+                mfa_prompted = True
+                return credentials.mfa_code or ""
+
             api = Garmin(
                 email=credentials.email,
                 password=credentials.password,
-                prompt_mfa=_make_mfa_fn(credentials.mfa_code),
+                prompt_mfa=_mfa_fn,
             )
             try:
                 api.login()
-            except _MFARequired:
-                raise HTTPException(status_code=422, detail="CODE_MFA_REQUIS")
+            except Exception as e:
+                if mfa_prompted and not credentials.mfa_code:
+                    raise HTTPException(status_code=422, detail="CODE_MFA_REQUIS")
+                raise HTTPException(status_code=400, detail=f"Erreur Garmin : {str(e)}")
+
             user.garmin_tokens = api.garth.dumps()
             db.commit()
 
