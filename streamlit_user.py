@@ -86,9 +86,11 @@ def calc_log_macros(log, ingredients_map, recipes_map):
     q = log.get("quantite") or 0
 
     if rid and rid in recipes_map:
-        base = calc_recipe_macros(recipes_map[rid])
-        portion = q if q else 1.0
-        return [x * portion for x in base]
+        recipe = recipes_map[rid]
+        base = calc_recipe_macros(recipe)
+        portions_total = recipe.get("portions") or 1
+        nb_portions = q if q else 1.0
+        return [x * nb_portions / portions_total for x in base]
 
     if iid and iid in ingredients_map:
         ing = ingredients_map[iid]
@@ -241,80 +243,78 @@ if page == "Journal":
 
     # Add meal form
     st.subheader("Ajouter un repas")
-    with st.form("add_meal", clear_on_submit=True):
-        col_left, col_right = st.columns(2)
-        with col_left:
-            moment = st.selectbox("Moment", MOMENTS)
-            type_aliment = st.radio("Type d'aliment", ["Recette", "Ingrédient"], horizontal=True)
-        with col_right:
-            notes = st.text_input("Notes (optionnel)")
 
-        recipe_id = ingredient_id = None
-        quantite = None
-        type_mesure = "poids"
+    # Hors du form : changer ces widgets re-rend la page immédiatement
+    col1, col2 = st.columns(2)
+    with col1:
+        moment = st.selectbox("Moment", MOMENTS)
+    with col2:
+        type_aliment = st.radio("Type d'aliment", ["Recette", "Ingrédient"], horizontal=True)
 
-        if type_aliment == "Recette":
-            recipe_options = sorted(recipes_map.values(), key=lambda r: r["nom"])
-            if recipe_options:
-                noms = [r["nom"] for r in recipe_options]
-                choix = st.selectbox("Recette", noms)
-                recipe_id = next(r["id"] for r in recipe_options if r["nom"] == choix)
-                quantite = st.number_input(
-                    "Portion (1 = recette entière)", min_value=0.1, value=1.0, step=0.5
-                )
-            else:
-                st.info("Aucune recette disponible")
+    recipe_id = ingredient_id = None
+    type_mesure = "poids"
+    ing_selected = recipe_selected = None
 
+    if type_aliment == "Recette":
+        recipe_options = sorted(recipes_map.values(), key=lambda r: r["nom"])
+        if recipe_options:
+            noms_r = [r["nom"] for r in recipe_options]
+            choix_r = st.selectbox("Recette", noms_r)
+            recipe_selected = next(r for r in recipe_options if r["nom"] == choix_r)
+            recipe_id = recipe_selected["id"]
         else:
-            ing_list = sorted(ingredients_map.values(), key=lambda i: i["nom"])
-            if ing_list:
-                noms = [i["nom"] for i in ing_list]
-                choix = st.selectbox("Ingrédient", noms)
-                ing = next(i for i in ing_list if i["nom"] == choix)
-                ingredient_id = ing["id"]
+            st.info("Aucune recette disponible")
+    else:
+        ing_list = sorted(ingredients_map.values(), key=lambda i: i["nom"])
+        if ing_list:
+            noms_i = [i["nom"] for i in ing_list]
+            choix_i = st.selectbox("Ingrédient", noms_i)
+            ing_selected = next(i for i in ing_list if i["nom"] == choix_i)
+            ingredient_id = ing_selected["id"]
+            if ing_selected.get("quantite_defaut") is not None:
+                mesure_label = st.radio("Mesure", ["poids", "unité"], horizontal=True)
+                type_mesure = "unite" if mesure_label == "unité" else "poids"
+        else:
+            st.info("Aucun ingrédient disponible")
 
-                has_unite = ing.get("quantite_defaut") is not None
-                if has_unite:
-                    mesure_label = st.radio(
-                        "Mesure", ["poids", "unité"], horizontal=True,
-                        key="mesure_radio"
-                    )
-                    type_mesure = "unite" if mesure_label == "unité" else "poids"
-
-                if type_mesure == "unite":
-                    quantite = st.number_input(
-                        "Nombre d'unités", min_value=0.1, value=1.0, step=0.5
-                    )
-                    qdeft = ing.get("quantite_defaut", "?")
-                    unite = ing.get("unite", "g")
-                    st.caption(f"1 unité ≈ {qdeft} {unite}")
-                else:
-                    qdeft = float(ing.get("quantite_defaut") or 100)
-                    quantite = st.number_input(
-                        f"Quantité ({ing.get('unite', 'g')})",
-                        min_value=0.1,
-                        value=qdeft,
-                        step=10.0,
-                    )
+    # Dans le form : seulement la quantité, les notes et le bouton
+    with st.form("add_meal", clear_on_submit=True):
+        if type_aliment == "Recette" and recipe_selected:
+            portions_total = recipe_selected.get("portions") or 1
+            quantite = st.number_input("Nombre de portions consommées", min_value=0.1, value=1.0, step=0.5)
+            if portions_total > 1:
+                st.caption(f"Recette prévue pour {portions_total} portions")
+        elif type_aliment == "Ingrédient" and ing_selected:
+            if type_mesure == "unite":
+                quantite = st.number_input("Nombre d'unités", min_value=0.1, value=1.0, step=0.5)
+                st.caption(f"1 unité ≈ {ing_selected.get('quantite_defaut', '?')} {ing_selected.get('unite', 'g')}")
             else:
-                st.info("Aucun ingrédient disponible")
+                default_q = float(ing_selected.get("quantite_defaut") or 100)
+                quantite = st.number_input(
+                    f"Quantité ({ing_selected.get('unite', 'g')})",
+                    min_value=0.1, value=default_q, step=10.0,
+                )
+        else:
+            quantite = 0.0
 
+        notes = st.text_input("Notes (optionnel)")
         submitted = st.form_submit_button("Ajouter", use_container_width=True)
-        if submitted and (recipe_id or ingredient_id):
-            payload = {
-                "date": str(today),
-                "moment": moment,
-                "recipe_id": recipe_id,
-                "ingredient_id": ingredient_id,
-                "quantite": quantite,
-                "type_mesure": type_mesure,
-                "notes": notes or None,
-            }
-            result = api_post(f"/users/{user['id']}/meal_logs/", payload)
-            if result:
-                st.success("Repas ajouté !")
-                st.cache_data.clear()
-                st.rerun()
+
+    if submitted and (recipe_id or ingredient_id):
+        payload = {
+            "date": str(today),
+            "moment": moment,
+            "recipe_id": recipe_id,
+            "ingredient_id": ingredient_id,
+            "quantite": quantite,
+            "type_mesure": type_mesure,
+            "notes": notes or None,
+        }
+        result = api_post(f"/users/{user['id']}/meal_logs/", payload)
+        if result:
+            st.success("Repas ajouté !")
+            st.cache_data.clear()
+            st.rerun()
 
     st.divider()
 
