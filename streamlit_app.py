@@ -36,7 +36,7 @@ if not st.session_state.authenticated:
 
 st.set_page_config(page_title="Frigood", layout="centered")
 
-page = st.sidebar.selectbox("Navigation", ["Accueil", "Ingrédients", "Recettes", "Nutriments"])
+page = st.sidebar.selectbox("Navigation", ["Accueil", "Ingrédients", "Recettes", "Nutriments", "Activités"])
 
 
 # ─── ACCUEIL ────────────────────────────────────────────────────────────────
@@ -654,6 +654,80 @@ elif page == "Nutriments":
         choix = st.selectbox("Nutriment", list(noms_nutriments.keys()))
         if st.button("Supprimer", type="primary"):
             res = requests.delete(f"{API_URL}/nutriments/{noms_nutriments[choix]['id']}", headers=HEADERS)
+            if res.status_code == 200:
+                st.success("Supprimé !")
+                st.rerun()
+            else:
+                st.error(f"Erreur : {res.json()}")
+
+
+# ─── ACTIVITÉS ──────────────────────────────────────────────────────────────
+
+elif page == "Activités":
+    st.title("Types d'activités sportives")
+    st.caption("Gérez les types d'activités proposés aux utilisateurs.")
+
+    activity_types = api_get("/activity_types/") or []
+
+    if activity_types:
+        st.dataframe([{
+            "ID": at["id"], "Nom": at["nom"],
+            "Description": at.get("description") or "",
+            "MET": at.get("met_value") or "",
+        } for at in activity_types], use_container_width=True)
+    else:
+        st.info("Aucun type d'activité pour l'instant.")
+
+    st.divider()
+
+    noms_at = {at["nom"]: at for at in activity_types}
+    mode = st.radio("Action", ["Ajouter", "Modifier", "Supprimer"], horizontal=True)
+
+    if mode == "Ajouter":
+        st.subheader("Nouveau type d'activité")
+        with st.form("add_at"):
+            nom = st.text_input("Nom (ex: Course à pied, Yoga, Vélo...)")
+            description = st.text_area("Description", height=80)
+            met_value = st.number_input("Valeur MET (optionnel)", min_value=0.0, step=0.1,
+                                        help="Metabolic Equivalent — ex: course ≈ 8, yoga ≈ 3")
+            if st.form_submit_button("Ajouter"):
+                res = requests.post(f"{API_URL}/activity_types/", headers=HEADERS, json={
+                    "nom": nom,
+                    "description": description or None,
+                    "met_value": met_value or None,
+                })
+                if res.status_code == 200:
+                    st.success(f"Type « {nom} » ajouté !")
+                    st.rerun()
+                else:
+                    st.error(f"Erreur : {res.json()}")
+
+    elif mode == "Modifier" and noms_at:
+        st.subheader("Modifier un type")
+        choix = st.selectbox("Type", list(noms_at.keys()))
+        at = noms_at[choix]
+        with st.form("edit_at"):
+            nom = st.text_input("Nom", value=at["nom"])
+            description = st.text_area("Description", value=at.get("description") or "", height=80)
+            met_value = st.number_input("Valeur MET", min_value=0.0, step=0.1,
+                                        value=float(at.get("met_value") or 0))
+            if st.form_submit_button("Enregistrer"):
+                res = requests.put(f"{API_URL}/activity_types/{at['id']}", headers=HEADERS, json={
+                    "nom": nom,
+                    "description": description or None,
+                    "met_value": met_value or None,
+                })
+                if res.status_code == 200:
+                    st.success("Modifié !")
+                    st.rerun()
+                else:
+                    st.error(f"Erreur : {res.json()}")
+
+    elif mode == "Supprimer" and noms_at:
+        st.subheader("Supprimer un type")
+        choix = st.selectbox("Type", list(noms_at.keys()))
+        if st.button("Supprimer", type="primary"):
+            res = requests.delete(f"{API_URL}/activity_types/{noms_at[choix]['id']}", headers=HEADERS)
             if res.status_code == 200:
                 st.success("Supprimé !")
                 st.rerun()

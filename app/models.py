@@ -9,6 +9,7 @@ class Ingredient(Base):
     id = Column(Integer, primary_key=True)
     nom = Column(String, nullable=False, unique=True)
     description = Column(String, nullable=True)
+    categorie = Column(String, nullable=True)
     calories = Column(Float, nullable=True)
     proteines = Column(Float, nullable=True)
     glucides = Column(Float, nullable=True)
@@ -49,6 +50,9 @@ class Recipe(Base):
     id = Column(Integer, primary_key=True)
     nom = Column(String, nullable=False, unique=True)
     description = Column(String, nullable=True)
+    categorie = Column(String, nullable=True)
+    portions = Column(Integer, nullable=True, default=1)
+    temps_preparation = Column(Integer, nullable=True)
 
     ingredients = relationship("RecipeIngredient", back_populates="recette")
 
@@ -66,6 +70,17 @@ class RecipeIngredient(Base):
     ingredient = relationship("Ingredient", back_populates="recettes")
 
 
+class ActivityType(Base):
+    __tablename__ = "activity_types"
+
+    id = Column(Integer, primary_key=True)
+    nom = Column(String, nullable=False, unique=True)
+    description = Column(String, nullable=True)
+    met_value = Column(Float, nullable=True)
+
+    activities = relationship("Activity", back_populates="activity_type")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -79,6 +94,7 @@ class User(Base):
     lipides_cible = Column(Float, nullable=True)
 
     meal_logs = relationship("MealLog", back_populates="user", cascade="all, delete-orphan")
+    activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")
 
 
 class MealLog(Base):
@@ -97,3 +113,22 @@ class MealLog(Base):
     user = relationship("User", back_populates="meal_logs")
     recipe = relationship("Recipe")
     ingredient = relationship("Ingredient")
+
+
+class Activity(Base):
+    __tablename__ = "activities"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    activity_type_id = Column(Integer, ForeignKey("activity_types.id"), nullable=True)
+    source = Column(String, nullable=False, default="manual")
+    garmin_activity_id = Column(String, nullable=True, unique=True)
+    duree_min = Column(Integer, nullable=True)
+    calories = Column(Float, nullable=True)
+    distance_km = Column(Float, nullable=True)
+    freq_cardiaque_moy = Column(Integer, nullable=True)
+    notes = Column(String, nullable=True)
+
+    user = relationship("User", back_populates="activities")
+    activity_type = relationship("ActivityType", back_populates="activities")

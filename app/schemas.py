@@ -33,6 +33,7 @@ class IngredientNutrimentRead(IngredientNutrimentCreate):
 class IngredientCreate(BaseModel):
     nom: str
     description: str | None = None
+    categorie: str | None = None
     calories: float | None = None
     proteines: float | None = None
     glucides: float | None = None
@@ -66,12 +67,54 @@ class RecipeIngredientRead(RecipeIngredientCreate):
 class RecipeCreate(BaseModel):
     nom: str
     description: str | None = None
+    categorie: str | None = None
+    portions: int | None = 1
+    temps_preparation: int | None = None
 
 class RecipeRead(RecipeCreate):
     id: int
     ingredients: list[RecipeIngredientRead] = []
 
     model_config = {"from_attributes": True}
+
+
+# --- ActivityType ---
+
+class ActivityTypeCreate(BaseModel):
+    nom: str
+    description: str | None = None
+    met_value: float | None = None
+
+class ActivityTypeRead(ActivityTypeCreate):
+    id: int
+    model_config = {"from_attributes": True}
+
+
+# --- Activity ---
+
+class ActivityCreate(BaseModel):
+    date: date_type
+    activity_type_id: int | None = None
+    source: str = "manual"
+    garmin_activity_id: str | None = None
+    duree_min: int | None = None
+    calories: float | None = None
+    distance_km: float | None = None
+    freq_cardiaque_moy: int | None = None
+    notes: str | None = None
+
+class ActivityRead(ActivityCreate):
+    id: int
+    user_id: int
+    activity_type: ActivityTypeRead | None = None
+    model_config = {"from_attributes": True}
+
+
+# --- GarminCredentials ---
+
+class GarminCredentials(BaseModel):
+    email: str
+    password: str
 
 
 # --- User ---

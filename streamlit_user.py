@@ -183,7 +183,7 @@ with st.sidebar:
     st.markdown(f"**{user['nom']}**")
     st.caption(user["email"])
     st.divider()
-    page = st.radio("Navigation", ["Journal", "Historique", "Profil"], label_visibility="collapsed")
+    page = st.radio("Navigation", ["Journal", "Sport", "Historique", "Profil"], label_visibility="collapsed")
     st.divider()
     if st.button("Déconnexion", use_container_width=True):
         st.session_state.user = None
@@ -354,6 +354,161 @@ if page == "Journal":
             with c3:
                 if st.button("🗑️", key=f"del_{log['id']}"):
                     if api_delete(f"/meal_logs/{log['id']}"):
+                        st.cache_data.clear()
+                        st.rerun()
+
+
+# =========================================================
+# PAGE : SPORT
+# =========================================================
+
+elif page == "Sport":
+    from streamlit_calendar import calendar as st_calendar
+    from collections import defaultdict
+
+    st.title("Sport & Activités")
+
+    activity_types_list = api_get("/activity_types/") or []
+    at_map = {at["id"]: at for at in activity_types_list}
+
+    # ── Garmin sync ──────────────────────────────────────
+    with st.expander("🔄 Synchroniser avec Garmin Connect"):
+        st.caption("Tes identifiants ne sont jamais stockés.")
+        with st.form("garmin_sync"):
+            g_email = st.text_input("Email Garmin Connect")
+            g_password = st.text_input("Mot de passe", type="password")
+            if st.form_submit_button("Synchroniser", use_container_width=True):
+                result = api_post(
+                    f"/users/{user['id']}/garmin_sync",
+                    {"email": g_email, "password": g_password},
+                )
+                if result:
+                    st.success(f"{result['imported']} activité(s) importée(s), {result['skipped']} déjà existante(s).")
+                    st.cache_data.clear()
+                    st.rerun()
+
+    # ── Ajout manuel ─────────────────────────────────────
+    with st.expander("➕ Ajouter une activité manuellement"):
+        at_options = {at["nom"]: at["id"] for at in activity_types_list}
+        col1, col2 = st.columns(2)
+        with col1:
+            act_date = st.date_input("Date", value=date.today(), key="act_date")
+        with col2:
+            at_choix = st.selectbox("Type d'activité", ["(non défini)"] + list(at_options.keys()))
+        with st.form("add_activity", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            duree = col1.number_input("Durée (min)", min_value=0, value=30, step=5)
+            calories_act = col2.number_input("Calories brûlées", min_value=0.0, step=10.0)
+            distance = col1.number_input("Distance (km)", min_value=0.0, step=0.1)
+            fc = col2.number_input("FC moyenne (bpm)", min_value=0, step=1)
+            notes_act = st.text_input("Notes")
+            if st.form_submit_button("Ajouter", use_container_width=True):
+                payload = {
+                    "date": str(act_date),
+                    "activity_type_id": at_options.get(at_choix) if at_choix != "(non défini)" else None,
+                    "source": "manual",
+                    "duree_min": duree or None,
+                    "calories": calories_act or None,
+                    "distance_km": distance or None,
+                    "freq_cardiaque_moy": fc or None,
+                    "notes": notes_act or None,
+                }
+                result = api_post(f"/users/{user['id']}/activities/", payload)
+                if result:
+                    st.success("Activité ajoutée !")
+                    st.cache_data.clear()
+                    st.rerun()
+
+    st.divider()
+
+    # ── Calendrier global ─────────────────────────────────
+    st.subheader("Calendrier")
+
+    @st.cache_data(ttl=60)
+    def load_all_activities(uid):
+        return api_get(f"/users/{uid}/activities/") or []
+
+    @st.cache_data(ttl=60)
+    def load_all_meals(uid):
+        return api_get(f"/users/{uid}/meal_logs/") or []
+
+    all_acts = load_all_activities(user["id"])
+    all_meals_cal = load_all_meals(user["id"])
+
+    events = []
+
+    # Activités
+    for a in all_acts:
+        at = at_map.get(a.get("activity_type_id") or -1, {})
+        nom_type = at.get("nom") or a.get("notes") or "Activité"
+        parts = [nom_type]
+        if a.get("duree_min"):
+            parts.append(f"{a['duree_min']} min")
+        if a.get("calories"):
+            parts.append(f"{a['calories']:.0f} kcal")
+        color = "#e67e22" if a.get("source") == "garmin" else "#3498db"
+        events.append({
+            "title": " · ".join(parts),
+            "start": str(a["date"]),
+            "color": color,
+        })
+
+    # Repas groupés par date
+    meals_by_date = defaultdict(lambda: {"count": 0, "cal": 0.0})
+    for log in all_meals_cal:
+        d = str(log["date"])
+        meals_by_date[d]["count"] += 1
+        m = calc_log_macros(log, ingredients_map, recipes_map)
+        meals_by_date[d]["cal"] += m[0]
+
+    for d, data in meals_by_date.items():
+        events.append({
+            "title": f"🍽 {data['count']} repas · {data['cal']:.0f} kcal",
+            "start": d,
+            "color": "#27ae60",
+        })
+
+    calendar_options = {
+        "initialView": "dayGridMonth",
+        "locale": "fr",
+        "headerToolbar": {
+            "left": "prev,next today",
+            "center": "title",
+            "right": "dayGridMonth,timeGridWeek,listWeek",
+        },
+        "height": 650,
+        "eventDisplay": "block",
+    }
+
+    st_calendar(events=events, options=calendar_options, key="sport_calendar")
+
+    # ── Liste des activités récentes ──────────────────────
+    if all_acts:
+        st.divider()
+        st.subheader("Activités récentes")
+        for a in all_acts[:10]:
+            at = at_map.get(a.get("activity_type_id") or -1, {})
+            nom_type = at.get("nom") or "Activité"
+            parts = []
+            if a.get("duree_min"):
+                parts.append(f"{a['duree_min']} min")
+            if a.get("distance_km"):
+                parts.append(f"{a['distance_km']} km")
+            if a.get("calories"):
+                parts.append(f"{a['calories']:.0f} kcal")
+            if a.get("freq_cardiaque_moy"):
+                parts.append(f"FC {a['freq_cardiaque_moy']} bpm")
+            source_icon = "⌚" if a.get("source") == "garmin" else "✏️"
+            col1, col2, col3 = st.columns([2, 4, 1])
+            with col1:
+                st.markdown(f"**{a['date']}** {source_icon} {nom_type}")
+                if a.get("notes") and a["notes"] != nom_type:
+                    st.caption(a["notes"])
+            with col2:
+                st.caption(" · ".join(parts) if parts else "—")
+            with col3:
+                if st.button("🗑️", key=f"del_act_{a['id']}"):
+                    if api_delete(f"/activities/{a['id']}"):
                         st.cache_data.clear()
                         st.rerun()
 
