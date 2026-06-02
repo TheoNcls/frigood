@@ -210,8 +210,23 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
                 stat.sommeil_leger_h = _sec_to_h(dto.get("lightSleepSeconds"))
                 stat.sommeil_rem_h = _sec_to_h(dto.get("remSleepSeconds"))
                 stat.sommeil_eveil_h = _sec_to_h(dto.get("awakeSleepSeconds"))
+                # Score sommeil — plusieurs formats possibles selon le modèle Garmin
+                score_val = None
                 scores = dto.get("sleepScores") or {}
-                stat.sommeil_score = _safe_int((scores.get("overallScore") or {}).get("value"))
+                overall = scores.get("overallScore")
+                if isinstance(overall, dict):
+                    score_val = _safe_int(overall.get("value"))
+                elif overall is not None:
+                    score_val = _safe_int(overall)
+                if score_val is None:
+                    total_sleep = scores.get("totalSleep")
+                    if isinstance(total_sleep, dict):
+                        score_val = _safe_int(total_sleep.get("value"))
+                    elif total_sleep is not None:
+                        score_val = _safe_int(total_sleep)
+                if score_val is None:
+                    score_val = _safe_int(dto.get("sleepScore") or sleep.get("sleepScore"))
+                stat.sommeil_score = score_val
                 for ts_key, attr in [
                     ("sleepStartTimestampLocal", "heure_coucher"),
                     ("sleepEndTimestampLocal", "heure_reveil"),
