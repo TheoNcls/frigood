@@ -19,6 +19,7 @@ class NutrimentRead(NutrimentCreate):
 class IngredientNutrimentCreate(BaseModel):
     nutriment_id: int
     valeur: float
+    notes: str | None = None
 
 class IngredientNutrimentRead(IngredientNutrimentCreate):
     id: int
@@ -31,6 +32,7 @@ class IngredientNutrimentRead(IngredientNutrimentCreate):
 
 class IngredientCreate(BaseModel):
     nom: str
+    description: str | None = None
     calories: float | None = None
     proteines: float | None = None
     glucides: float | None = None

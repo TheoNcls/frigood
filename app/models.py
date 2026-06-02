@@ -8,6 +8,7 @@ class Ingredient(Base):
 
     id = Column(Integer, primary_key=True)
     nom = Column(String, nullable=False, unique=True)
+    description = Column(String, nullable=True)
     calories = Column(Float, nullable=True)
     proteines = Column(Float, nullable=True)
     glucides = Column(Float, nullable=True)
@@ -36,6 +37,7 @@ class IngredientNutriment(Base):
     ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=False)
     nutriment_id = Column(Integer, ForeignKey("nutriments.id"), nullable=False)
     valeur = Column(Float, nullable=False)
+    notes = Column(String, nullable=True)
 
     ingredient = relationship("Ingredient", back_populates="nutriments")
     nutriment = relationship("Nutriment", back_populates="ingredients")
