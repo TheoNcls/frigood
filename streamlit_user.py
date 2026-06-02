@@ -409,7 +409,7 @@ elif page == "Sport":
                 if st.button("Synchroniser", use_container_width=True, key="garmin_sync_btn"):
                     status, data = api_garmin_sync(user["id"])
                     if status == "success":
-                        st.success(f"{data['imported']} activité(s) importée(s), {data['skipped']} déjà existante(s).")
+                        st.success(f"{data['imported']} activité(s) importée(s), {data.get('stats_days', 0)} jour(s) de données santé synchronisé(s).")
                         st.cache_data.clear()
                         st.rerun()
                     elif status == "session_expired":
@@ -442,7 +442,7 @@ elif page == "Sport":
                     st.rerun()
                 elif status == "success":
                     st.session_state.garmin_needs_mfa = False
-                    st.success(f"{data['imported']} activité(s) importée(s) !")
+                    st.success(f"{data['imported']} activité(s) importée(s), {data.get('stats_days', 0)} jour(s) de données santé synchronisé(s).")
                     updated = api_get(f"/users/{user['id']}")
                     if updated:
                         st.session_state.user = updated
@@ -584,12 +584,40 @@ elif page == "Sport":
 elif page == "Historique":
     st.title("Historique")
 
-    selected = st.date_input("Choisir une date", value=date.today() - timedelta(days=1))
-    logs = api_get(f"/users/{user['id']}/meal_logs/?date={selected}") or []
+    # Navigation par date
+    if "hist_date" not in st.session_state:
+        st.session_state.hist_date = date.today() - timedelta(days=1)
 
-    if not logs:
-        st.info(f"Aucun repas enregistré le {selected.strftime('%d/%m/%Y')}.")
-    else:
+    col_p, col_d, col_n = st.columns([1, 4, 1])
+    with col_p:
+        if st.button("◀", use_container_width=True):
+            st.session_state.hist_date -= timedelta(days=1)
+            st.rerun()
+    with col_d:
+        picked = st.date_input("", value=st.session_state.hist_date,
+                               label_visibility="collapsed", key="hist_date_picker")
+        if picked != st.session_state.hist_date:
+            st.session_state.hist_date = picked
+    with col_n:
+        if st.button("▶", use_container_width=True,
+                     disabled=st.session_state.hist_date >= date.today()):
+            st.session_state.hist_date += timedelta(days=1)
+            st.rerun()
+
+    selected = st.session_state.hist_date
+    st.subheader(selected.strftime("%A %d %B %Y").capitalize())
+
+    # Fetch toutes les données du jour
+    logs = api_get(f"/users/{user['id']}/meal_logs/?date={selected}") or []
+    acts = api_get(f"/users/{user['id']}/activities/?date={selected}") or []
+    ds   = api_get(f"/users/{user['id']}/daily_stats/?date={selected}")
+
+    activity_types_list = api_get("/activity_types/") or []
+    at_map_hist = {at["id"]: at for at in activity_types_list}
+
+    # ── Nutrition ───────────────────────────────────────────
+    st.markdown("### Nutrition")
+    if logs:
         total = [0.0, 0.0, 0.0, 0.0]
         for log in logs:
             m = calc_log_macros(log, ingredients_map, recipes_map)
@@ -598,8 +626,8 @@ elif page == "Historique":
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.metric("Calories", f"{total[0]:.0f} kcal",
-                      delta=f"{total[0] - (user.get('calories_cible') or 0):.0f} kcal" if user.get("calories_cible") else None)
+            delta = f"{total[0] - (user.get('calories_cible') or 0):.0f}" if user.get("calories_cible") else None
+            st.metric("Calories", f"{total[0]:.0f} kcal", delta=delta)
         with c2:
             st.metric("Protéines", f"{total[1]:.1f} g")
         with c3:
@@ -607,36 +635,104 @@ elif page == "Historique":
         with c4:
             st.metric("Lipides", f"{total[3]:.1f} g")
 
-        st.divider()
-
         logs_sorted = sorted(logs, key=lambda x: MOMENTS.index(x["moment"]) if x["moment"] in MOMENTS else 99)
         for log in logs_sorted:
             macros = calc_log_macros(log, ingredients_map, recipes_map)
-            rid = log.get("recipe_id")
-            iid = log.get("ingredient_id")
+            rid, iid = log.get("recipe_id"), log.get("ingredient_id")
             if rid:
                 r = recipes_map.get(rid, {})
-                label = f"🍽️ {r.get('nom', '?')} × {log.get('quantite', 1):.1f} portion"
+                label = f"🍽️ {r.get('nom','?')} × {log.get('quantite',1):.1f} portion"
             else:
                 ing = ingredients_map.get(iid, {})
                 if log.get("type_mesure") == "unite":
-                    label = f"🥗 {ing.get('nom', '?')} × {log.get('quantite', 0):.1f} unité(s)"
+                    label = f"🥗 {ing.get('nom','?')} × {log.get('quantite',0):.1f} unité(s)"
                 else:
-                    label = f"🥗 {ing.get('nom', '?')} {log.get('quantite', 0):.0f} {ing.get('unite', 'g')}"
+                    label = f"🥗 {ing.get('nom','?')} {log.get('quantite',0):.0f} {ing.get('unite','g')}"
+            col1, col2 = st.columns([2, 3])
+            with col1:
+                st.markdown(f"**{log['moment'].capitalize()}** — {label}")
+            with col2:
+                st.caption(f"~{macros[0]:.0f} kcal | P {macros[1]:.1f}g | G {macros[2]:.1f}g | L {macros[3]:.1f}g")
+    else:
+        st.caption("Aucun repas enregistré.")
 
-            with st.container(border=True):
-                col1, col2 = st.columns([2, 3])
-                with col1:
-                    st.markdown(f"**{log['moment'].capitalize()}** — {label}")
-                    if log.get("notes"):
-                        st.caption(log["notes"])
-                with col2:
-                    st.caption(
-                        f"~{macros[0]:.0f} kcal | "
-                        f"P: {macros[1]:.1f} g | "
-                        f"G: {macros[2]:.1f} g | "
-                        f"L: {macros[3]:.1f} g"
-                    )
+    # ── Activités ───────────────────────────────────────────
+    st.divider()
+    st.markdown("### Activités sportives")
+    if acts:
+        total_cal_act = sum(a.get("calories") or 0 for a in acts)
+        if total_cal_act:
+            st.caption(f"Total brûlées : {total_cal_act:.0f} kcal")
+        for a in acts:
+            at = at_map_hist.get(a.get("activity_type_id") or -1, {})
+            nom = at.get("nom") or a.get("notes") or "Activité"
+            parts = []
+            if a.get("duree_min"):  parts.append(f"{a['duree_min']} min")
+            if a.get("distance_km"): parts.append(f"{a['distance_km']} km")
+            if a.get("calories"):   parts.append(f"{a['calories']:.0f} kcal")
+            if a.get("freq_cardiaque_moy"): parts.append(f"FC {a['freq_cardiaque_moy']} bpm")
+            icon = "⌚" if a.get("source") == "garmin" else "✏️"
+            st.markdown(f"{icon} **{nom}** — {' · '.join(parts) if parts else '—'}")
+    else:
+        st.caption("Aucune activité enregistrée.")
+
+    # ── Santé Garmin ────────────────────────────────────────
+    st.divider()
+    st.markdown("### Santé Garmin")
+    if not ds:
+        st.caption("Pas de données Garmin pour cette date. Synchronise depuis la page Sport.")
+    else:
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("**Sommeil**")
+            if ds.get("sommeil_score"):
+                st.metric("Score", f"{ds['sommeil_score']}/100")
+            if ds.get("sommeil_total_h"):
+                st.metric("Durée totale", f"{ds['sommeil_total_h']} h")
+            for label, key in [("Profond", "sommeil_profond_h"), ("Léger", "sommeil_leger_h"),
+                                ("REM", "sommeil_rem_h"), ("Éveillé", "sommeil_eveil_h")]:
+                if ds.get(key):
+                    st.caption(f"{label} : {ds[key]} h")
+            if ds.get("heure_coucher"):
+                st.caption(f"Coucher : {ds['heure_coucher']}")
+            if ds.get("heure_reveil"):
+                st.caption(f"Réveil : {ds['heure_reveil']}")
+
+        with col2:
+            st.markdown("**Cœur & Énergie**")
+            if ds.get("bpm_repos"):
+                st.metric("BPM repos", ds["bpm_repos"])
+            if ds.get("bpm_moy"):
+                st.metric("BPM moyen", ds["bpm_moy"])
+            for label, key in [("BPM min", "bpm_min"), ("BPM max", "bpm_max")]:
+                if ds.get(key):
+                    st.caption(f"{label} : {ds[key]}")
+            if ds.get("stress_moy") is not None:
+                st.metric("Stress moyen", f"{ds['stress_moy']}/100")
+            if ds.get("stress_max") is not None:
+                st.caption(f"Stress max : {ds['stress_max']}/100")
+            if ds.get("body_battery_max") is not None:
+                st.metric("Body battery max", f"{ds['body_battery_max']}/100")
+            if ds.get("body_battery_min") is not None:
+                st.caption(f"Body battery min : {ds['body_battery_min']}/100")
+
+        with col3:
+            st.markdown("**Activité & Santé**")
+            if ds.get("steps"):
+                goal = ds.get("steps_goal")
+                label_steps = f"{ds['steps']:,}"
+                if goal:
+                    label_steps += f" / {goal:,}"
+                st.metric("Pas", label_steps)
+            if ds.get("etages"):
+                st.caption(f"Étages : {ds['etages']}")
+            if ds.get("respiration_moy"):
+                st.metric("Respiration", f"{ds['respiration_moy']:.1f} /min")
+            if ds.get("spo2_moy"):
+                st.metric("SpO2", f"{ds['spo2_moy']} %")
+            if ds.get("hrv_moy"):
+                st.metric("HRV", f"{ds['hrv_moy']} ms")
 
 
 # =========================================================

@@ -110,6 +110,37 @@ class ActivityRead(ActivityCreate):
     model_config = {"from_attributes": True}
 
 
+# --- DailyStat ---
+
+class DailyStatRead(BaseModel):
+    id: int
+    user_id: int
+    date: date_type
+    sommeil_total_h: float | None = None
+    sommeil_profond_h: float | None = None
+    sommeil_leger_h: float | None = None
+    sommeil_rem_h: float | None = None
+    sommeil_eveil_h: float | None = None
+    sommeil_score: int | None = None
+    heure_coucher: str | None = None
+    heure_reveil: str | None = None
+    bpm_repos: int | None = None
+    bpm_moy: int | None = None
+    bpm_min: int | None = None
+    bpm_max: int | None = None
+    stress_moy: int | None = None
+    stress_max: int | None = None
+    body_battery_max: int | None = None
+    body_battery_min: int | None = None
+    steps: int | None = None
+    steps_goal: int | None = None
+    etages: int | None = None
+    respiration_moy: float | None = None
+    spo2_moy: int | None = None
+    hrv_moy: int | None = None
+    model_config = {"from_attributes": True}
+
+
 # --- GarminCredentials ---
 
 class GarminCredentials(BaseModel):

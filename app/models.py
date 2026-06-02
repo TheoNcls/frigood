@@ -97,6 +97,7 @@ class User(Base):
 
     meal_logs = relationship("MealLog", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")
+    daily_stats = relationship("DailyStat", back_populates="user", cascade="all, delete-orphan")
 
     @property
     def garmin_connected(self) -> bool:
@@ -138,3 +139,51 @@ class Activity(Base):
 
     user = relationship("User", back_populates="activities")
     activity_type = relationship("ActivityType", back_populates="activities")
+
+
+class DailyStat(Base):
+    __tablename__ = "daily_stats"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    date = Column(Date, nullable=False)
+
+    # Sommeil
+    sommeil_total_h = Column(Float, nullable=True)
+    sommeil_profond_h = Column(Float, nullable=True)
+    sommeil_leger_h = Column(Float, nullable=True)
+    sommeil_rem_h = Column(Float, nullable=True)
+    sommeil_eveil_h = Column(Float, nullable=True)
+    sommeil_score = Column(Integer, nullable=True)
+    heure_coucher = Column(String, nullable=True)
+    heure_reveil = Column(String, nullable=True)
+
+    # Cœur
+    bpm_repos = Column(Integer, nullable=True)
+    bpm_moy = Column(Integer, nullable=True)
+    bpm_min = Column(Integer, nullable=True)
+    bpm_max = Column(Integer, nullable=True)
+
+    # Stress
+    stress_moy = Column(Integer, nullable=True)
+    stress_max = Column(Integer, nullable=True)
+
+    # Énergie
+    body_battery_max = Column(Integer, nullable=True)
+    body_battery_min = Column(Integer, nullable=True)
+
+    # Activité physique
+    steps = Column(Integer, nullable=True)
+    steps_goal = Column(Integer, nullable=True)
+    etages = Column(Integer, nullable=True)
+
+    # Respiration
+    respiration_moy = Column(Float, nullable=True)
+
+    # SpO2
+    spo2_moy = Column(Integer, nullable=True)
+
+    # HRV
+    hrv_moy = Column(Integer, nullable=True)
+
+    user = relationship("User", back_populates="daily_stats")
