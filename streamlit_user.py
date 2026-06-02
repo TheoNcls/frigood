@@ -208,7 +208,7 @@ with st.sidebar:
     st.markdown(f"**{user['nom']}**")
     st.caption(user["email"])
     st.divider()
-    page = st.radio("Navigation", ["Journal", "Sport", "Historique", "Profil"], label_visibility="collapsed")
+    page = st.radio("Navigation", ["Accueil", "Repas", "Sport", "Historique", "Profil"], label_visibility="collapsed")
     st.divider()
     if st.button("Déconnexion", use_container_width=True):
         st.session_state.user = None
@@ -236,12 +236,155 @@ MOMENTS = ["matin", "midi", "soir", "snack"]
 
 
 # =========================================================
-# PAGE : JOURNAL
+# PAGE : ACCUEIL
 # =========================================================
 
-if page == "Journal":
+if page == "Accueil":
     today = date.today()
-    st.title(f"Journal — {today.strftime('%A %d %B %Y')}")
+    st.title(f"Bonjour, {user['nom']} 👋")
+    st.caption(today.strftime("%A %d %B %Y").capitalize())
+
+    # --- Données du jour ---
+    logs_today   = api_get(f"/users/{user['id']}/meal_logs/?date={today}") or []
+    acts_today   = api_get(f"/users/{user['id']}/activities/?date={today}") or []
+    stats_today  = api_get(f"/users/{user['id']}/daily_stats/?date={today}")
+
+    # Macros consommées aujourd'hui
+    consumed = [0.0, 0.0, 0.0, 0.0]
+    for log in logs_today:
+        m = calc_log_macros(log, ingredients_map, recipes_map)
+        for i in range(4):
+            consumed[i] += m[i]
+
+    # --- Bilan nutrition ---
+    with st.container(border=True):
+        st.markdown("##### Nutrition du jour")
+        targets = [
+            user.get("calories_cible"), user.get("proteines_cible"),
+            user.get("glucides_cible"), user.get("lipides_cible"),
+        ]
+        labels  = ["Calories", "Protéines", "Glucides", "Lipides"]
+        units   = ["kcal", "g", "g", "g"]
+        cols = st.columns(4)
+        for idx, (col, label, val, target, unit) in enumerate(
+            zip(cols, labels, consumed, targets, units)
+        ):
+            with col:
+                if target and target > 0:
+                    remaining = target - val
+                    pct = min(val / target, 1.0)
+                    color = "#e74c3c" if remaining < 0 else "#2ecc71"
+                    st.markdown(
+                        f"**{label}**  \n"
+                        f"<span style='font-size:1.4em'>{val:.0f}</span> / {target:.0f} {unit}",
+                        unsafe_allow_html=True,
+                    )
+                    st.progress(pct)
+                    reste = abs(remaining)
+                    mention = "de trop" if remaining < 0 else "restantes"
+                    st.caption(
+                        f"<span style='color:{color}'>{reste:.0f} {unit} {mention}</span>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(f"**{label}**  \n{val:.0f} {unit}")
+
+    st.divider()
+
+    # --- Sport ---
+    with st.container(border=True):
+        st.markdown("##### Sport")
+        at_names = {at["id"]: at["nom"] for at in (api_get("/activity_types/") or [])}
+
+        # Aujourd'hui
+        if acts_today:
+            for a in acts_today:
+                nom = at_names.get(a.get("activity_type_id") or -1) or a.get("notes") or "Activité"
+                parts = []
+                if a.get("duree_min"):   parts.append(f"{a['duree_min']} min")
+                if a.get("distance_km"): parts.append(f"{a['distance_km']} km")
+                if a.get("calories"):    parts.append(f"{a['calories']:.0f} kcal")
+                st.markdown(f"✅ **{nom}** — {' · '.join(parts) if parts else ''}")
+        else:
+            st.markdown("😴 Pas de sport aujourd'hui")
+
+        # Ratio & streak sur 7 jours
+        all_acts = api_get(f"/users/{user['id']}/activities/") or []
+        act_date_set = set(str(a["date"]) for a in all_acts)
+        last7 = {str(today - timedelta(days=i)) for i in range(7)}
+        active_days = len(last7 & act_date_set)
+        ratio_pct = active_days / 7
+
+        # Streak (jours consécutifs en remontant depuis aujourd'hui)
+        streak = 0
+        check = today if str(today) in act_date_set else today - timedelta(days=1)
+        while str(check) in act_date_set:
+            streak += 1
+            check -= timedelta(days=1)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Ratio 7 jours** : {active_days}/7")
+            st.progress(ratio_pct)
+        with col2:
+            fire = "🔥" * min(streak, 5) if streak else "—"
+            st.markdown(f"**Streak** : {streak} jour(s) {fire}")
+
+    st.divider()
+
+    # --- Sommeil (3 derniers jours) ---
+    with st.container(border=True):
+        st.markdown("##### Sommeil — 3 derniers jours")
+        sleep_rows = []
+        for i in range(1, 4):
+            d = today - timedelta(days=i)
+            ds = api_get(f"/users/{user['id']}/daily_stats/?date={d}")
+            if ds:
+                sleep_rows.append({
+                    "date": d.strftime("%d/%m"),
+                    "score": ds.get("sommeil_score"),
+                    "total": ds.get("sommeil_total_h"),
+                })
+
+        if sleep_rows:
+            scores = [r["score"] for r in sleep_rows if r["score"] is not None]
+            avg_score = sum(scores) / len(scores) if scores else None
+            if avg_score:
+                st.metric("Score moyen", f"{avg_score:.0f}/100")
+            cols = st.columns(3)
+            for idx, row in enumerate(sleep_rows):
+                with cols[idx]:
+                    score_str = f"{row['score']}/100" if row["score"] else "—"
+                    time_str  = f"{row['total']} h" if row["total"] else "—"
+                    st.markdown(f"**{row['date']}**")
+                    st.caption(f"Score : {score_str}")
+                    st.caption(f"Durée : {time_str}")
+        else:
+            st.caption("Pas encore de données sommeil. Synchronise Garmin depuis la page Sport.")
+
+    # --- Pas aujourd'hui ---
+    if stats_today and stats_today.get("steps"):
+        st.divider()
+        with st.container(border=True):
+            st.markdown("##### Pas aujourd'hui")
+            steps = stats_today["steps"]
+            goal  = stats_today.get("steps_goal") or 10000
+            pct   = min(steps / goal, 1.0)
+            st.markdown(f"**{steps:,}** / {goal:,} pas")
+            st.progress(pct)
+            if steps >= goal:
+                st.caption("✅ Objectif atteint !")
+            else:
+                st.caption(f"{goal - steps:,} pas restants")
+
+
+# =========================================================
+# PAGE : REPAS (ex-Journal)
+# =========================================================
+
+elif page == "Repas":
+    today = date.today()
+    st.title(f"Repas — {today.strftime('%A %d %B %Y')}")
 
     logs = api_get(f"/users/{user['id']}/meal_logs/?date={today}") or []
 
@@ -686,8 +829,13 @@ elif page == "Historique":
 
         with col1:
             st.markdown("**Sommeil**")
-            if ds.get("sommeil_score"):
-                st.metric("Score", f"{ds['sommeil_score']}/100")
+            if ds.get("sommeil_score") is not None:
+                score = ds["sommeil_score"]
+                color = "#2ecc71" if score >= 80 else "#f39c12" if score >= 60 else "#e74c3c"
+                st.markdown(
+                    f"Score : <span style='font-size:1.3em;color:{color}'><b>{score}/100</b></span>",
+                    unsafe_allow_html=True,
+                )
             if ds.get("sommeil_total_h"):
                 st.metric("Durée totale", f"{ds['sommeil_total_h']} h")
             for label, key in [("Profond", "sommeil_profond_h"), ("Léger", "sommeil_leger_h"),
