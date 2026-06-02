@@ -44,7 +44,6 @@ page = st.sidebar.selectbox("Navigation", ["Accueil", "Ingrédients", "Recettes"
 if page == "Accueil":
     st.title("Frigood — Accueil")
 
-    # Export tout
     st.subheader("Export")
     if st.button("Exporter toute la base en Excel"):
         ingredients = api_get("/ingredients/")
@@ -54,18 +53,29 @@ if page == "Accueil":
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
             pd.DataFrame([{
-                "Nom": i["nom"], "Calories": i["calories"], "Protéines": i["proteines"],
-                "Glucides": i["glucides"], "Lipides": i["lipides"],
-                "Unité": i["unite"], "Quantité défaut": i["quantite_defaut"]
+                "Nom": i["nom"],
+                "Description": i.get("description"),
+                "Catégorie": i.get("categorie"),
+                "Calories": i["calories"],
+                "Protéines": i["proteines"],
+                "Glucides": i["glucides"],
+                "Lipides": i["lipides"],
+                "Unité": i["unite"],
+                "Quantité défaut": i["quantite_defaut"],
             } for i in ingredients]).to_excel(writer, index=False, sheet_name="Ingrédients")
 
             rows_recettes = []
             for r in recipes:
                 for ri in r["ingredients"]:
                     rows_recettes.append({
-                        "Recette": r["nom"], "Description": r["description"],
+                        "Recette": r["nom"],
+                        "Description": r["description"],
+                        "Catégorie": r.get("categorie"),
+                        "Portions": r.get("portions"),
+                        "Temps préparation (min)": r.get("temps_preparation"),
                         "Ingrédient": ri["ingredient"]["nom"],
-                        "Quantité": ri["quantite"], "Type mesure": ri["type_mesure"],
+                        "Quantité": ri["quantite"],
+                        "Type mesure": ri["type_mesure"],
                         "Unité": ri["ingredient"]["unite"],
                     })
             pd.DataFrame(rows_recettes).to_excel(writer, index=False, sheet_name="Recettes")
@@ -82,6 +92,7 @@ if page == "Accueil":
                         "Nutriment": n["nutriment"]["nom"],
                         "Valeur (100g)": n["valeur"],
                         "Unité": n["nutriment"]["unite"],
+                        "Notes": n.get("notes"),
                     })
             pd.DataFrame(rows_ing_nut).to_excel(writer, index=False, sheet_name="Ingrédients Nutriments")
 
@@ -90,11 +101,10 @@ if page == "Accueil":
 
     st.divider()
 
-    # Imports
     st.subheader("Import")
 
     with st.expander("Importer des ingrédients"):
-        st.caption("Colonnes : Nom, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut")
+        st.caption("Colonnes : Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut")
         fichier = st.file_uploader("Fichier Excel", type=["xlsx"], key="import_ing")
         if fichier:
             df_import = pd.read_excel(fichier)
@@ -104,6 +114,8 @@ if page == "Accueil":
                 for _, row in df_import.iterrows():
                     res = requests.post(f"{API_URL}/ingredients/", headers=HEADERS, json={
                         "nom": str(row.get("Nom", "")),
+                        "description": str(row["Description"]) if pd.notna(row.get("Description")) else None,
+                        "categorie": str(row["Catégorie"]) if pd.notna(row.get("Catégorie")) else None,
                         "calories": float(row["Calories"]) if pd.notna(row.get("Calories")) else None,
                         "proteines": float(row["Protéines"]) if pd.notna(row.get("Protéines")) else None,
                         "glucides": float(row["Glucides"]) if pd.notna(row.get("Glucides")) else None,
@@ -143,7 +155,7 @@ if page == "Accueil":
                 st.rerun()
 
     with st.expander("Importer des associations ingrédients/nutriments"):
-        st.caption("Colonnes : Ingrédient, Nutriment, Valeur (100g) — les ingrédients et nutriments doivent déjà exister")
+        st.caption("Colonnes : Ingrédient, Nutriment, Valeur (100g), Notes — les ingrédients et nutriments doivent déjà exister")
         fichier = st.file_uploader("Fichier Excel", type=["xlsx"], key="import_ing_nut")
         if fichier:
             df_import = pd.read_excel(fichier)
@@ -163,8 +175,11 @@ if page == "Accueil":
                     res = requests.post(
                         f"{API_URL}/ingredients/{ing_map[ing_nom]['id']}/nutriments/",
                         headers=HEADERS,
-                        json={"nutriment_id": nut_map[nut_nom]["id"],
-                              "valeur": float(row.get("Valeur (100g)", 0))}
+                        json={
+                            "nutriment_id": nut_map[nut_nom]["id"],
+                            "valeur": float(row.get("Valeur (100g)", 0)),
+                            "notes": str(row["Notes"]) if pd.notna(row.get("Notes")) else None,
+                        }
                     )
                     if res.status_code == 200:
                         succes += 1
@@ -176,7 +191,7 @@ if page == "Accueil":
                 st.rerun()
 
     with st.expander("Importer des recettes"):
-        st.caption("Colonnes : Recette, Description (les ingrédients s'ajoutent depuis la page Recettes)")
+        st.caption("Colonnes : Recette, Description, Catégorie, Portions, Temps préparation (min)")
         fichier = st.file_uploader("Fichier Excel", type=["xlsx"], key="import_rec")
         if fichier:
             df_import = pd.read_excel(fichier)
@@ -187,6 +202,9 @@ if page == "Accueil":
                     res = requests.post(f"{API_URL}/recipes/", headers=HEADERS, json={
                         "nom": str(row.get("Recette", "")),
                         "description": str(row["Description"]) if pd.notna(row.get("Description")) else None,
+                        "categorie": str(row["Catégorie"]) if pd.notna(row.get("Catégorie")) else None,
+                        "portions": int(row["Portions"]) if pd.notna(row.get("Portions")) else 1,
+                        "temps_preparation": int(row["Temps préparation (min)"]) if pd.notna(row.get("Temps préparation (min)")) else None,
                     })
                     if res.status_code == 200:
                         succes += 1
@@ -199,7 +217,6 @@ if page == "Accueil":
 
     st.divider()
 
-    # Reset DB
     st.subheader("Reset")
     st.warning("Supprime toutes les données de la base de façon irréversible.")
     if "confirm_reset" not in st.session_state:
@@ -234,16 +251,21 @@ if page == "Accueil":
 elif page == "Ingrédients":
     st.title("Ingrédients")
 
-    # Liste
     ingredients = api_get("/ingredients/")
     if ingredients:
         df_ing = pd.DataFrame([{
-            "ID": i["id"], "Nom": i["nom"],
-            "Calories": i["calories"], "Protéines": i["proteines"],
-            "Glucides": i["glucides"], "Lipides": i["lipides"],
-            "Unité": i["unite"], "Quantité défaut": i["quantite_defaut"]
+            "ID": i["id"],
+            "Nom": i["nom"],
+            "Catégorie": i.get("categorie"),
+            "Description": i.get("description"),
+            "Calories": i["calories"],
+            "Protéines": i["proteines"],
+            "Glucides": i["glucides"],
+            "Lipides": i["lipides"],
+            "Unité": i["unite"],
+            "Quantité défaut": i["quantite_defaut"],
         } for i in ingredients])
-        st.dataframe(df_ing, width='stretch')
+        st.dataframe(df_ing, use_container_width=True)
 
         buf = io.BytesIO()
         df_ing.to_excel(buf, index=False, sheet_name="Ingrédients")
@@ -254,7 +276,6 @@ elif page == "Ingrédients":
 
     st.divider()
 
-    # Ajouter / Modifier
     noms = {i["nom"]: i for i in ingredients}
     mode = st.radio("Action", ["Ajouter", "Modifier", "Supprimer"], horizontal=True)
 
@@ -263,18 +284,25 @@ elif page == "Ingrédients":
         with st.form("add_ingredient"):
             nom = st.text_input("Nom")
             col1, col2 = st.columns(2)
+            categorie = col1.text_input("Catégorie (ex: légume, fruit, céréale...)")
+            description = st.text_area("Description", height=80)
             calories  = col1.number_input("Calories (kcal)", min_value=0.0, step=0.1)
             proteines = col2.number_input("Protéines (g)", min_value=0.0, step=0.1)
             glucides  = col1.number_input("Glucides (g)", min_value=0.0, step=0.1)
             lipides   = col2.number_input("Lipides (g)", min_value=0.0, step=0.1)
             unite = st.text_input("Unité", value="g")
-            quantite_defaut = st.number_input("Poids classique (g)", min_value=0.0, step=1.0, help="Ex: 130 pour une pomme")
+            quantite_defaut = st.number_input("Poids classique", min_value=0.0, step=1.0,
+                                              help="Ex: 130 pour une pomme de 130g")
             submitted = st.form_submit_button("Ajouter")
         if submitted:
             res = requests.post(f"{API_URL}/ingredients/", headers=HEADERS, json={
-                "nom": nom, "calories": calories, "proteines": proteines,
-                "glucides": glucides, "lipides": lipides, "unite": unite,
-                "quantite_defaut": quantite_defaut or None
+                "nom": nom,
+                "description": description or None,
+                "categorie": categorie or None,
+                "calories": calories, "proteines": proteines,
+                "glucides": glucides, "lipides": lipides,
+                "unite": unite,
+                "quantite_defaut": quantite_defaut or None,
             })
             if res.status_code == 200:
                 st.success(f"Ingrédient « {nom} » ajouté !")
@@ -289,18 +317,25 @@ elif page == "Ingrédients":
         with st.form("edit_ingredient"):
             nom = st.text_input("Nom", value=ing["nom"])
             col1, col2 = st.columns(2)
+            categorie = col1.text_input("Catégorie", value=ing.get("categorie") or "")
+            description = st.text_area("Description", value=ing.get("description") or "", height=80)
             calories  = col1.number_input("Calories", value=ing["calories"] or 0.0, step=0.1)
             proteines = col2.number_input("Protéines", value=ing["proteines"] or 0.0, step=0.1)
             glucides  = col1.number_input("Glucides", value=ing["glucides"] or 0.0, step=0.1)
             lipides   = col2.number_input("Lipides", value=ing["lipides"] or 0.0, step=0.1)
             unite = st.text_input("Unité", value=ing["unite"])
-            quantite_defaut = st.number_input("Poids classique (g)", min_value=0.0, step=1.0, value=ing["quantite_defaut"] or 0.0)
+            quantite_defaut = st.number_input("Poids classique", min_value=0.0, step=1.0,
+                                              value=ing["quantite_defaut"] or 0.0)
             submitted = st.form_submit_button("Enregistrer")
         if submitted:
             res = requests.put(f"{API_URL}/ingredients/{ing['id']}", headers=HEADERS, json={
-                "nom": nom, "calories": calories, "proteines": proteines,
-                "glucides": glucides, "lipides": lipides, "unite": unite,
-                "quantite_defaut": quantite_defaut or None
+                "nom": nom,
+                "description": description or None,
+                "categorie": categorie or None,
+                "calories": calories, "proteines": proteines,
+                "glucides": glucides, "lipides": lipides,
+                "unite": unite,
+                "quantite_defaut": quantite_defaut or None,
             })
             if res.status_code == 200:
                 st.success("Modifié !")
@@ -332,8 +367,18 @@ elif page == "Recettes":
     if recipes:
         for r in recipes:
             with st.expander(r["nom"]):
+                meta_parts = []
+                if r.get("categorie"):
+                    meta_parts.append(r["categorie"])
+                if r.get("portions"):
+                    meta_parts.append(f"{r['portions']} portion(s)")
+                if r.get("temps_preparation"):
+                    meta_parts.append(f"{r['temps_preparation']} min")
+                if meta_parts:
+                    st.caption(" · ".join(meta_parts))
                 if r["description"]:
                     st.write(r["description"])
+
                 if r["ingredients"]:
                     st.table([{
                         "Ingrédient": ri["ingredient"]["nom"],
@@ -358,11 +403,19 @@ elif page == "Recettes":
                             unite_n = n["nutriment"]["unite"]
                             extras.setdefault(nom_n, {"valeur": 0.0, "unite": unite_n})
                             extras[nom_n]["valeur"] += n["valeur"] * ratio
+
+                    portions = r.get("portions") or 1
+                    st.caption(f"Valeurs pour la recette entière ({portions} portion(s))")
                     col1, col2, col3, col4 = st.columns(4)
                     col1.metric("Calories", f"{totaux['Calories']:.0f} kcal")
                     col2.metric("Protéines", f"{totaux['Protéines']:.1f} g")
                     col3.metric("Glucides", f"{totaux['Glucides']:.1f} g")
                     col4.metric("Lipides", f"{totaux['Lipides']:.1f} g")
+                    if portions > 1:
+                        st.caption(f"Par portion : {totaux['Calories']/portions:.0f} kcal · "
+                                   f"P {totaux['Protéines']/portions:.1f}g · "
+                                   f"G {totaux['Glucides']/portions:.1f}g · "
+                                   f"L {totaux['Lipides']/portions:.1f}g")
                     if extras:
                         cols = st.columns(min(len(extras), 4))
                         for i, (nom_n, data) in enumerate(extras.items()):
@@ -379,8 +432,12 @@ elif page == "Recettes":
                 rows.append({
                     "Recette": r["nom"],
                     "Description": r["description"],
+                    "Catégorie": r.get("categorie"),
+                    "Portions": r.get("portions"),
+                    "Temps préparation (min)": r.get("temps_preparation"),
                     "Ingrédient": ri["ingredient"]["nom"],
                     "Quantité": ri["quantite"],
+                    "Type mesure": ri["type_mesure"],
                     "Unité": ri["ingredient"]["unite"],
                 })
         if rows:
@@ -392,24 +449,67 @@ elif page == "Recettes":
     st.divider()
 
     noms_recettes = {r["nom"]: r for r in recipes}
-    mode = st.radio("Action", ["Ajouter une recette", "Ajouter un ingrédient à une recette", "Retirer un ingrédient d'une recette", "Supprimer une recette"], horizontal=True)
+    mode = st.radio(
+        "Action",
+        ["Ajouter une recette", "Modifier une recette", "Ajouter un ingrédient",
+         "Retirer un ingrédient", "Supprimer une recette"],
+        horizontal=True,
+    )
 
     if mode == "Ajouter une recette":
         st.subheader("Nouvelle recette")
         with st.form("add_recipe"):
             nom = st.text_input("Nom")
-            description = st.text_area("Description")
+            col1, col2 = st.columns(2)
+            categorie = col1.text_input("Catégorie (ex: plat, dessert, snack...)")
+            portions = col2.number_input("Nombre de portions", min_value=1, value=1, step=1)
+            temps_preparation = col1.number_input("Temps de préparation (min)", min_value=0, value=0, step=5)
+            description = st.text_area("Description / recette")
             submitted = st.form_submit_button("Ajouter")
         if submitted:
-            res = requests.post(f"{API_URL}/recipes/", headers=HEADERS, json={"nom": nom, "description": description})
+            res = requests.post(f"{API_URL}/recipes/", headers=HEADERS, json={
+                "nom": nom,
+                "description": description or None,
+                "categorie": categorie or None,
+                "portions": portions,
+                "temps_preparation": temps_preparation or None,
+            })
             if res.status_code == 200:
                 st.success(f"Recette « {nom} » ajoutée !")
                 st.rerun()
             else:
                 st.error(f"Erreur : {res.json()}")
 
-    elif mode == "Ajouter un ingrédient à une recette" and noms_recettes and ingredients_map:
-        st.subheader("Ajouter un ingrédient")
+    elif mode == "Modifier une recette" and noms_recettes:
+        st.subheader("Modifier une recette")
+        choix = st.selectbox("Recette", list(noms_recettes.keys()))
+        r = noms_recettes[choix]
+        with st.form("edit_recipe"):
+            nom = st.text_input("Nom", value=r["nom"])
+            col1, col2 = st.columns(2)
+            categorie = col1.text_input("Catégorie", value=r.get("categorie") or "")
+            portions = col2.number_input("Nombre de portions", min_value=1,
+                                         value=r.get("portions") or 1, step=1)
+            temps_preparation = col1.number_input("Temps de préparation (min)", min_value=0,
+                                                   value=r.get("temps_preparation") or 0, step=5)
+            description = st.text_area("Description / recette", value=r.get("description") or "")
+            submitted = st.form_submit_button("Enregistrer")
+        if submitted:
+            res = requests.put(f"{API_URL}/recipes/{r['id']}", headers=HEADERS, json={
+                "nom": nom,
+                "description": description or None,
+                "categorie": categorie or None,
+                "portions": portions,
+                "temps_preparation": temps_preparation or None,
+            })
+            if res.status_code == 200:
+                st.success("Recette mise à jour !")
+                st.rerun()
+            else:
+                st.error(f"Erreur : {res.json()}")
+
+    elif mode == "Ajouter un ingrédient" and noms_recettes and ingredients_map:
+        st.subheader("Ajouter un ingrédient à une recette")
         recette_choisie = st.selectbox("Recette", list(noms_recettes.keys()))
         ing_choisi = st.selectbox("Ingrédient", list(ingredients_map.keys()))
         ing_sel = ingredients_map[ing_choisi]
@@ -434,8 +534,8 @@ elif page == "Recettes":
             else:
                 st.error(f"Erreur : {res.json()}")
 
-    elif mode == "Retirer un ingrédient d'une recette" and noms_recettes:
-        st.subheader("Retirer un ingrédient")
+    elif mode == "Retirer un ingrédient" and noms_recettes:
+        st.subheader("Retirer un ingrédient d'une recette")
         recette_choisie = st.selectbox("Recette", list(noms_recettes.keys()))
         recette = noms_recettes[recette_choisie]
         ings_recette = {ri["ingredient"]["nom"]: ri for ri in recette["ingredients"]}
@@ -507,12 +607,13 @@ elif page == "Nutriments":
             ing_choisi = st.selectbox("Ingrédient", list(noms_ingredients.keys()))
             nut_choisi = st.selectbox("Nutriment", list(noms_nutriments.keys()))
             valeur = st.number_input("Valeur pour 100g", min_value=0.0, step=0.01)
+            notes = st.text_input("Notes / avertissement (optionnel)")
             submitted = st.form_submit_button("Enregistrer")
         if submitted:
             ing = noms_ingredients[ing_choisi]
             nut = noms_nutriments[nut_choisi]
             res = requests.post(f"{API_URL}/ingredients/{ing['id']}/nutriments/", headers=HEADERS,
-                                json={"nutriment_id": nut["id"], "valeur": valeur})
+                                json={"nutriment_id": nut["id"], "valeur": valeur, "notes": notes or None})
             if res.status_code == 200:
                 st.success("Enregistré !")
                 st.rerun()
@@ -530,7 +631,8 @@ elif page == "Nutriments":
             if nuts_ing:
                 st.table([{
                     "Nutriment": n["nutriment"]["nom"],
-                    "Valeur (100g)": f"{n['valeur']} {n['nutriment']['unite']}"
+                    "Valeur (100g)": f"{n['valeur']} {n['nutriment']['unite']}",
+                    "Notes": n.get("notes") or "",
                 } for n in ing["nutriments"]])
                 nut_choisi = st.selectbox("Nutriment à retirer", list(nuts_ing.keys()))
                 if st.button("Retirer", type="primary"):
