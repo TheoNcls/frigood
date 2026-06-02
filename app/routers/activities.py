@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from datetime import date as date_type, datetime
 from app.database import get_db
 from app.models import Activity, ActivityType, User
@@ -43,17 +42,58 @@ def delete_activity(id: int, db: Session = Depends(get_db)):
     return {"message": "Activité supprimée"}
 
 
+@router.delete("/users/{user_id}/garmin_disconnect")
+def garmin_disconnect(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    user.garmin_tokens = None
+    db.commit()
+    db.refresh(user)
+    return {"message": "Garmin déconnecté"}
+
+
 @router.post("/users/{user_id}/garmin_sync")
 def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depends(get_db)):
-    if not db.get(User, user_id):
+    user = db.get(User, user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
     try:
         from garminconnect import Garmin
-        client = Garmin(email=credentials.email, password=credentials.password)
-        client.login()
-        raw_activities = client.get_activities(0, 50)
+
+        if user.garmin_tokens and not credentials.email:
+            # Utilise les tokens stockés
+            api = Garmin()
+            api.garth.loads(user.garmin_tokens)
+            try:
+                api.login()
+            except Exception:
+                user.garmin_tokens = None
+                db.commit()
+                raise HTTPException(status_code=401, detail="SESSION_GARMIN_EXPIREE")
+        else:
+            if not credentials.email or not credentials.password:
+                raise HTTPException(status_code=400, detail="Email et mot de passe requis")
+            mfa_fn = (lambda: credentials.mfa_code) if credentials.mfa_code else None
+            api = Garmin(
+                email=credentials.email,
+                password=credentials.password,
+                prompt_mfa=mfa_fn,
+            )
+            api.login()
+            user.garmin_tokens = api.garth.dumps()
+            db.commit()
+
+        raw = api.get_activities(0, 50)
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erreur Garmin Connect : {str(e)}")
+        err = str(e).lower()
+        if any(k in err for k in ["mfa", "otp", "factor", "two-step", "verify", "code"]):
+            raise HTTPException(status_code=422, detail="CODE_MFA_REQUIS")
+        raise HTTPException(status_code=400, detail=f"Erreur Garmin : {str(e)}")
 
     all_types = db.query(ActivityType).all()
 
@@ -65,7 +105,7 @@ def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depe
         return None
 
     imported = skipped = 0
-    for a in raw_activities:
+    for a in raw:
         garmin_id = str(a.get("activityId", ""))
         if not garmin_id:
             continue

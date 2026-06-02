@@ -113,8 +113,9 @@ class ActivityRead(ActivityCreate):
 # --- GarminCredentials ---
 
 class GarminCredentials(BaseModel):
-    email: str
-    password: str
+    email: str | None = None
+    password: str | None = None
+    mfa_code: str | None = None
 
 
 # --- User ---
@@ -143,6 +144,7 @@ class UserRead(BaseModel):
     proteines_cible: float | None = None
     glucides_cible: float | None = None
     lipides_cible: float | None = None
+    garmin_connected: bool = False
 
     model_config = {"from_attributes": True}
 

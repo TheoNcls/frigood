@@ -93,8 +93,14 @@ class User(Base):
     glucides_cible = Column(Float, nullable=True)
     lipides_cible = Column(Float, nullable=True)
 
+    garmin_tokens = Column(String, nullable=True)
+
     meal_logs = relationship("MealLog", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def garmin_connected(self) -> bool:
+        return self.garmin_tokens is not None
 
 
 class MealLog(Base):

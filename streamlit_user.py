@@ -62,6 +62,31 @@ def api_delete(path):
         return False
 
 
+def api_garmin_sync(user_id, email=None, password=None, mfa_code=None):
+    """Retourne (status, data) — status: 'success'|'mfa_required'|'session_expired'|'error'"""
+    payload = {}
+    if email:
+        payload = {"email": email, "password": password, "mfa_code": mfa_code}
+    try:
+        r = requests.post(
+            f"{API_URL}/users/{user_id}/garmin_sync",
+            json=payload, headers=HEADERS, timeout=30,
+        )
+        try:
+            detail = r.json().get("detail", "")
+        except Exception:
+            detail = r.text
+        if r.status_code == 422 and detail == "CODE_MFA_REQUIS":
+            return "mfa_required", None
+        if r.status_code == 401 and detail == "SESSION_GARMIN_EXPIREE":
+            return "session_expired", None
+        if not r.ok:
+            return "error", detail
+        return "success", r.json()
+    except Exception as e:
+        return "error", str(e)
+
+
 # --- Nutritional calculations ---
 
 def calc_recipe_macros(recipe):
@@ -372,20 +397,59 @@ elif page == "Sport":
     at_map = {at["id"]: at for at in activity_types_list}
 
     # ── Garmin sync ──────────────────────────────────────
-    with st.expander("🔄 Synchroniser avec Garmin Connect"):
-        st.caption("Tes identifiants ne sont jamais stockés.")
-        with st.form("garmin_sync"):
-            g_email = st.text_input("Email Garmin Connect")
-            g_password = st.text_input("Mot de passe", type="password")
-            if st.form_submit_button("Synchroniser", use_container_width=True):
-                result = api_post(
-                    f"/users/{user['id']}/garmin_sync",
-                    {"email": g_email, "password": g_password},
-                )
-                if result:
-                    st.success(f"{result['imported']} activité(s) importée(s), {result['skipped']} déjà existante(s).")
+    garmin_ok = user.get("garmin_connected", False)
+    if "garmin_needs_mfa" not in st.session_state:
+        st.session_state.garmin_needs_mfa = False
+
+    with st.expander("🔄 Garmin Connect", expanded=not garmin_ok):
+        if garmin_ok:
+            st.success("Connecté à Garmin Connect")
+            col_sync, col_disc = st.columns(2)
+            with col_sync:
+                if st.button("Synchroniser", use_container_width=True, key="garmin_sync_btn"):
+                    status, data = api_garmin_sync(user["id"])
+                    if status == "success":
+                        st.success(f"{data['imported']} activité(s) importée(s), {data['skipped']} déjà existante(s).")
+                        st.cache_data.clear()
+                        st.rerun()
+                    elif status == "session_expired":
+                        st.warning("Session expirée, reconnecte-toi.")
+                        updated = api_get(f"/users/{user['id']}")
+                        if updated:
+                            st.session_state.user = updated
+                        st.rerun()
+                    else:
+                        st.error(data or "Erreur inconnue")
+            with col_disc:
+                if st.button("Déconnecter Garmin", use_container_width=True, key="garmin_disc_btn"):
+                    api_delete(f"/users/{user['id']}/garmin_disconnect")
+                    updated = api_get(f"/users/{user['id']}")
+                    if updated:
+                        st.session_state.user = updated
+                    st.rerun()
+        else:
+            if st.session_state.garmin_needs_mfa:
+                st.warning("Garmin a demandé un code MFA — vérifie ton email ou ton application d'authentification.")
+
+            g_email = st.text_input("Email Garmin Connect", key="g_email")
+            g_password = st.text_input("Mot de passe", type="password", key="g_password")
+            g_mfa = st.text_input("Code MFA", key="g_mfa") if st.session_state.garmin_needs_mfa else None
+
+            if st.button("Se connecter et synchroniser", use_container_width=True, key="garmin_auth_btn"):
+                status, data = api_garmin_sync(user["id"], g_email, g_password, g_mfa)
+                if status == "mfa_required":
+                    st.session_state.garmin_needs_mfa = True
+                    st.rerun()
+                elif status == "success":
+                    st.session_state.garmin_needs_mfa = False
+                    st.success(f"{data['imported']} activité(s) importée(s) !")
+                    updated = api_get(f"/users/{user['id']}")
+                    if updated:
+                        st.session_state.user = updated
                     st.cache_data.clear()
                     st.rerun()
+                else:
+                    st.error(data or "Erreur de connexion Garmin")
 
     # ── Ajout manuel ─────────────────────────────────────
     with st.expander("➕ Ajouter une activité manuellement"):
