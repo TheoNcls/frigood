@@ -277,9 +277,100 @@ elif page == "Ingrédients":
     st.divider()
 
     noms = {i["nom"]: i for i in ingredients}
-    mode = st.radio("Action", ["Ajouter", "Modifier", "Supprimer"], horizontal=True)
+    mode = st.radio("Action", ["Ajouter via Claude", "Ajouter manuellement", "Modifier", "Supprimer"], horizontal=True)
 
-    if mode == "Ajouter":
+    if mode == "Ajouter via Claude":
+        st.subheader("Ajout rapide via Claude AI")
+        st.caption("Tape un aliment, Claude récupère les valeurs nutritionnelles. Tu vérifies et confirmes.")
+
+        col_input, col_btn = st.columns([3, 1])
+        with col_input:
+            search_nom = st.text_input("Nom de l'aliment", placeholder="ex: citron, quinoa, yaourt grec...")
+        with col_btn:
+            st.markdown("<br>", unsafe_allow_html=True)
+            search_clicked = st.button("🔍 Rechercher", use_container_width=True)
+
+        if search_clicked and search_nom:
+            with st.spinner(f"Claude recherche les données pour « {search_nom} »..."):
+                res = requests.get(f"{API_URL}/ingredients/from_claude",
+                                   params={"nom": search_nom}, headers=HEADERS, timeout=30)
+                if res.ok:
+                    st.session_state["claude_sug"] = res.json()
+                else:
+                    st.error(f"Erreur : {res.text}")
+                    st.session_state["claude_sug"] = None
+
+        sug = st.session_state.get("claude_sug")
+        if sug:
+            st.success(f"✅ Données trouvées — vérifie et modifie si besoin avant de créer :")
+            with st.form("confirm_claude"):
+                col1, col2 = st.columns(2)
+                nom_f  = col1.text_input("Nom", value=sug.get("nom", ""))
+                cat_f  = col2.text_input("Catégorie", value=sug.get("categorie") or "")
+                desc_f = st.text_area("Description", value=sug.get("description") or "", height=70)
+
+                st.markdown("**Valeurs pour 100g**")
+                col1, col2 = st.columns(2)
+                cal_f  = col1.number_input("Calories (kcal)", value=float(sug.get("calories") or 0), step=0.1)
+                prot_f = col2.number_input("Protéines (g)",   value=float(sug.get("proteines") or 0), step=0.1)
+                gluc_f = col1.number_input("Glucides (g)",    value=float(sug.get("glucides") or 0), step=0.1)
+                lip_f  = col2.number_input("Lipides (g)",     value=float(sug.get("lipides") or 0), step=0.1)
+
+                col1, col2 = st.columns(2)
+                unite_f = col1.text_input("Unité", value=sug.get("unite") or "g")
+                qdef_f  = col2.number_input("Poids d'une unité (g)",
+                                            value=float(sug.get("quantite_defaut") or 0), step=1.0)
+
+                nuts_sug = sug.get("nutriments") or []
+                nuts_selected = []
+                if nuts_sug:
+                    st.markdown("**Nutriments supplémentaires** — décoche ceux à exclure")
+                    for nut in nuts_sug:
+                        if st.checkbox(
+                            f"{nut['nom']} — {nut['valeur']} {nut['unite']} / 100g",
+                            value=True, key=f"nut_{nut['nom']}"
+                        ):
+                            nuts_selected.append(nut)
+
+                col_ok, col_cancel = st.columns(2)
+                confirmed = col_ok.form_submit_button("✅ Créer l'ingrédient", use_container_width=True)
+                cancelled = col_cancel.form_submit_button("✖ Annuler", use_container_width=True)
+
+            if confirmed:
+                ing_res = requests.post(f"{API_URL}/ingredients/", headers=HEADERS, json={
+                    "nom": nom_f, "description": desc_f or None, "categorie": cat_f or None,
+                    "calories": cal_f, "proteines": prot_f, "glucides": gluc_f, "lipides": lip_f,
+                    "unite": unite_f, "quantite_defaut": qdef_f or None,
+                })
+                if ing_res.status_code != 200:
+                    st.error(f"Erreur : {ing_res.json()}")
+                else:
+                    ing_id = ing_res.json()["id"]
+                    existing_nuts = {n["nom"].lower(): n for n in (api_get("/nutriments/") or [])}
+                    added_nuts = 0
+                    for nut in nuts_selected:
+                        key = nut["nom"].lower()
+                        if key in existing_nuts:
+                            nut_id = existing_nuts[key]["id"]
+                        else:
+                            nr = requests.post(f"{API_URL}/nutriments/", headers=HEADERS,
+                                               json={"nom": nut["nom"], "unite": nut["unite"]})
+                            if not nr.ok:
+                                continue
+                            nut_id = nr.json()["id"]
+                        requests.post(f"{API_URL}/ingredients/{ing_id}/nutriments/",
+                                      headers=HEADERS,
+                                      json={"nutriment_id": nut_id, "valeur": nut["valeur"]})
+                        added_nuts += 1
+                    st.success(f"✅ « {nom_f} » créé avec {added_nuts} nutriment(s) !")
+                    st.session_state["claude_sug"] = None
+                    st.rerun()
+
+            if cancelled:
+                st.session_state["claude_sug"] = None
+                st.rerun()
+
+    elif mode == "Ajouter manuellement":
         st.subheader("Nouvel ingrédient")
         with st.form("add_ingredient"):
             nom = st.text_input("Nom")
