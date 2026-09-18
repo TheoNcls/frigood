@@ -386,14 +386,25 @@ elif page == "Ingrédients":
                 try:
                     from PIL import Image
                     from pyzbar.pyzbar import decode as pyzbar_decode
+
+                    zoom = st.slider("Zoom numérique", min_value=1, max_value=4, value=1, step=1,
+                                     help="Si le code-barre n'est pas détecté, augmente le zoom pour recadrer le centre")
+
                     img = Image.open(img_file)
+                    if zoom > 1:
+                        w, h = img.size
+                        cw, ch = w // zoom, h // zoom
+                        left, top = (w - cw) // 2, (h - ch) // 2
+                        img = img.crop((left, top, left + cw, top + ch))
+                        st.image(img, caption=f"Zone analysée (zoom {zoom}×)", use_container_width=True)
+
                     barcodes = pyzbar_decode(img)
                     if barcodes:
                         barcode_code = barcodes[0].data.decode("utf-8")
                         st.success(f"Code-barre détecté : **{barcode_code}**")
                         st.session_state["barcode_detected"] = barcode_code
                     else:
-                        st.warning("Aucun code-barre détecté — rapproche-toi ou améliore l'éclairage.")
+                        st.warning("Aucun code-barre détecté — augmente le zoom ou reprends la photo.")
                 except Exception as e:
                     st.error(f"Erreur lors de la lecture : {e}")
             # Utiliser le dernier code détecté si dispo
