@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date
+from datetime import datetime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -19,6 +20,7 @@ class Ingredient(Base):
 
     recettes = relationship("RecipeIngredient", back_populates="ingredient")
     nutriments = relationship("IngredientNutriment", back_populates="ingredient", cascade="all, delete-orphan")
+    sources = relationship("IngredientSource", back_populates="ingredient", cascade="all, delete-orphan")
 
 
 class Nutriment(Base):
@@ -187,3 +189,16 @@ class DailyStat(Base):
     hrv_moy = Column(Integer, nullable=True)
 
     user = relationship("User", back_populates="daily_stats")
+
+
+class IngredientSource(Base):
+    __tablename__ = "ingredient_sources"
+
+    id = Column(Integer, primary_key=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
+    source_type = Column(String(50), nullable=False)  # 'openfoodfacts', 'claude', 'manual'
+    code_barre = Column(String(50), nullable=True)
+    raw_data = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    ingredient = relationship("Ingredient", back_populates="sources")

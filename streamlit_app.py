@@ -277,7 +277,7 @@ elif page == "Ingrédients":
     st.divider()
 
     noms = {i["nom"]: i for i in ingredients}
-    mode = st.radio("Action", ["Ajouter via Claude", "Ajouter manuellement", "Modifier", "Supprimer"], horizontal=True)
+    mode = st.radio("Action", ["Ajouter via Claude", "Ajouter via Code-Barre", "Ajouter manuellement", "Modifier", "Supprimer"], horizontal=True)
 
     if mode == "Ajouter via Claude":
         st.subheader("Ajout rapide via Claude AI")
@@ -341,6 +341,8 @@ elif page == "Ingrédients":
                     "nom": nom_f, "description": desc_f or None, "categorie": cat_f or None,
                     "calories": cal_f, "proteines": prot_f, "glucides": gluc_f, "lipides": lip_f,
                     "unite": unite_f, "quantite_defaut": qdef_f or None,
+                    "source_type": "claude",
+                    "source_raw_data": sug.get("raw_data"),
                 })
                 if ing_res.status_code != 200:
                     st.error(f"Erreur : {ing_res.json()}")
@@ -368,6 +370,127 @@ elif page == "Ingrédients":
 
             if cancelled:
                 st.session_state["claude_sug"] = None
+                st.rerun()
+
+    elif mode == "Ajouter via Code-Barre":
+        st.subheader("Ajout via Code-Barre")
+        st.caption("Scanne ou tape un code-barre EAN — les données viennent d'OpenFoodFacts. Tu vérifies et confirmes.")
+
+        input_mode = st.radio("Méthode", ["Saisir le code", "Scanner avec la caméra"], horizontal=True, key="barcode_input_mode")
+
+        barcode_code = None
+
+        if input_mode == "Scanner avec la caméra":
+            img_file = st.camera_input("Pointe la caméra vers le code-barre puis prends la photo")
+            if img_file:
+                try:
+                    from PIL import Image
+                    from pyzbar.pyzbar import decode as pyzbar_decode
+                    img = Image.open(img_file)
+                    barcodes = pyzbar_decode(img)
+                    if barcodes:
+                        barcode_code = barcodes[0].data.decode("utf-8")
+                        st.success(f"Code-barre détecté : **{barcode_code}**")
+                        st.session_state["barcode_detected"] = barcode_code
+                    else:
+                        st.warning("Aucun code-barre détecté — rapproche-toi ou améliore l'éclairage.")
+                except Exception as e:
+                    st.error(f"Erreur lors de la lecture : {e}")
+            # Utiliser le dernier code détecté si dispo
+            if not barcode_code:
+                barcode_code = st.session_state.get("barcode_detected")
+            search_clicked = barcode_code is not None and img_file is not None
+        else:
+            st.session_state.pop("barcode_detected", None)
+            col_input, col_btn = st.columns([3, 1])
+            with col_input:
+                barcode_code = st.text_input("Code-barre", placeholder="ex: 3017624010701")
+            with col_btn:
+                st.markdown("<br>", unsafe_allow_html=True)
+                search_clicked = st.button("🔍 Rechercher", use_container_width=True, key="btn_barcode")
+
+        if search_clicked and barcode_code:
+            with st.spinner(f"Recherche du produit {barcode_code} sur OpenFoodFacts..."):
+                res = requests.get(f"{API_URL}/ingredients/from_barcode",
+                                   params={"code": str(barcode_code).strip()}, headers=HEADERS, timeout=20)
+                if res.ok:
+                    st.session_state["barcode_sug"] = res.json()
+                    st.session_state.pop("barcode_detected", None)
+                else:
+                    st.error(f"Produit introuvable : {res.json().get('detail', res.text)}")
+                    st.session_state["barcode_sug"] = None
+
+        bsug = st.session_state.get("barcode_sug")
+        if bsug:
+            st.success("✅ Produit trouvé — vérifie et modifie si besoin avant de créer :")
+            with st.form("confirm_barcode"):
+                col1, col2 = st.columns(2)
+                bnom_f  = col1.text_input("Nom", value=bsug.get("nom", ""))
+                bcat_f  = col2.text_input("Catégorie", value=bsug.get("categorie") or "")
+                bdesc_f = st.text_area("Description", value=bsug.get("description") or "", height=70)
+
+                st.markdown("**Valeurs pour 100g**")
+                col1, col2 = st.columns(2)
+                bcal_f  = col1.number_input("Calories (kcal)", value=float(bsug.get("calories") or 0), step=0.1)
+                bprot_f = col2.number_input("Protéines (g)",   value=float(bsug.get("proteines") or 0), step=0.1)
+                bgluc_f = col1.number_input("Glucides (g)",    value=float(bsug.get("glucides") or 0), step=0.1)
+                blip_f  = col2.number_input("Lipides (g)",     value=float(bsug.get("lipides") or 0), step=0.1)
+
+                col1, col2 = st.columns(2)
+                bunite_f = col1.text_input("Unité", value=bsug.get("unite") or "g")
+                bqdef_f  = col2.number_input("Poids d'une unité (g)",
+                                             value=float(bsug.get("quantite_defaut") or 0), step=1.0)
+
+                bnuts_sug = bsug.get("nutriments") or []
+                bnuts_selected = []
+                if bnuts_sug:
+                    st.markdown("**Nutriments supplémentaires** — décoche ceux à exclure")
+                    for nut in bnuts_sug:
+                        if st.checkbox(
+                            f"{nut['nom']} — {nut['valeur']} {nut['unite']} / 100g",
+                            value=True, key=f"bnut_{nut['nom']}"
+                        ):
+                            bnuts_selected.append(nut)
+
+                col_ok, col_cancel = st.columns(2)
+                bconfirmed = col_ok.form_submit_button("✅ Créer l'ingrédient", use_container_width=True)
+                bcancelled = col_cancel.form_submit_button("✖ Annuler", use_container_width=True)
+
+            if bconfirmed:
+                ing_res = requests.post(f"{API_URL}/ingredients/", headers=HEADERS, json={
+                    "nom": bnom_f, "description": bdesc_f or None, "categorie": bcat_f or None,
+                    "calories": bcal_f, "proteines": bprot_f, "glucides": bgluc_f, "lipides": blip_f,
+                    "unite": bunite_f, "quantite_defaut": bqdef_f or None,
+                    "source_type": "openfoodfacts",
+                    "source_code_barre": bsug.get("code_barre"),
+                    "source_raw_data": bsug.get("raw_data"),
+                })
+                if ing_res.status_code != 200:
+                    st.error(f"Erreur : {ing_res.json()}")
+                else:
+                    ing_id = ing_res.json()["id"]
+                    existing_nuts = {n["nom"].lower(): n for n in (api_get("/nutriments/") or [])}
+                    added_nuts = 0
+                    for nut in bnuts_selected:
+                        key = nut["nom"].lower()
+                        if key in existing_nuts:
+                            nut_id = existing_nuts[key]["id"]
+                        else:
+                            nr = requests.post(f"{API_URL}/nutriments/", headers=HEADERS,
+                                               json={"nom": nut["nom"], "unite": nut["unite"]})
+                            if not nr.ok:
+                                continue
+                            nut_id = nr.json()["id"]
+                        requests.post(f"{API_URL}/ingredients/{ing_id}/nutriments/",
+                                      headers=HEADERS,
+                                      json={"nutriment_id": nut_id, "valeur": nut["valeur"]})
+                        added_nuts += 1
+                    st.success(f"✅ « {bnom_f} » créé avec {added_nuts} nutriment(s) !")
+                    st.session_state["barcode_sug"] = None
+                    st.rerun()
+
+            if bcancelled:
+                st.session_state["barcode_sug"] = None
                 st.rerun()
 
     elif mode == "Ajouter manuellement":

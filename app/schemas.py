@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from datetime import date as date_type
+from datetime import date as date_type, datetime as datetime_type
 
 
 # --- Nutriment ---
@@ -28,9 +28,21 @@ class IngredientNutrimentRead(IngredientNutrimentCreate):
     model_config = {"from_attributes": True}
 
 
+# --- IngredientSource ---
+
+class IngredientSourceRead(BaseModel):
+    id: int
+    ingredient_id: int
+    source_type: str
+    code_barre: str | None = None
+    created_at: datetime_type | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # --- Ingredient ---
 
-class IngredientCreate(BaseModel):
+class IngredientBase(BaseModel):
     nom: str
     description: str | None = None
     categorie: str | None = None
@@ -41,9 +53,16 @@ class IngredientCreate(BaseModel):
     unite: str = "g"
     quantite_defaut: float | None = None
 
-class IngredientRead(IngredientCreate):
+class IngredientCreate(IngredientBase):
+    # Champs optionnels pour traçabilité source (non stockés sur Ingredient)
+    source_type: str | None = None
+    source_code_barre: str | None = None
+    source_raw_data: str | None = None
+
+class IngredientRead(IngredientBase):
     id: int
     nutriments: list[IngredientNutrimentRead] = []
+    sources: list[IngredientSourceRead] = []
 
     model_config = {"from_attributes": True}
 
