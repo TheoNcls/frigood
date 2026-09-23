@@ -24,6 +24,8 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/frigood
       API_KEY: ${API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: http://localhost:5173
     volumes:
       - .:/app
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
@@ -41,20 +43,6 @@ services:
       API_URL: http://api:8000
       API_KEY: ${API_KEY}
       STREAMLIT_PASSWORD: ${STREAMLIT_PASSWORD}
-    volumes:
-      - .:/app
-    depends_on:
-      - api
-
-  streamlit_user:
-    build:
-      context: .
-      dockerfile: Dockerfile.streamlit_user
-    ports:
-      - "8502:8502"
-    environment:
-      API_URL: http://api:8000
-      API_KEY: ${API_KEY}
     volumes:
       - .:/app
     depends_on:

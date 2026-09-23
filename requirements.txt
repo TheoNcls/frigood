@@ -15,6 +15,5 @@ PyJWT==2.10.1
 anthropic
 garminconnect>=0.2.0
 garth>=0.4.0
-streamlit-calendar
 pyzbar
 Pillow

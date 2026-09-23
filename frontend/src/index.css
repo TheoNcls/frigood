@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* En plein écran iOS, la page passe sous la barre d'état (texte blanc) : bande verte derrière,
+   et contenu décalé d'autant. Sur ordinateur, la hauteur vaut 0. */
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: env(safe-area-inset-top, 0px);
+  background: #059669;
+  z-index: 60;
+}
+
 @layer components {
   .card {
     @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5;
