@@ -105,7 +105,7 @@ if page == "Accueil":
     st.subheader("Import")
 
     with st.expander("Importer des ingrédients"):
-        st.caption("Colonnes : Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut")
+        st.caption("Colonnes : Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut, Conservation (jours)")
         fichier = st.file_uploader("Fichier Excel", type=["xlsx"], key="import_ing")
         if fichier:
             df_import = pd.read_excel(fichier)
@@ -123,6 +123,7 @@ if page == "Accueil":
                         "lipides": float(row["Lipides"]) if pd.notna(row.get("Lipides")) else None,
                         "unite": str(row["Unité"]) if pd.notna(row.get("Unité")) else "g",
                         "quantite_defaut": float(row["Quantité défaut"]) if pd.notna(row.get("Quantité défaut")) else None,
+                        "duree_conservation": int(row["Conservation (jours)"]) if pd.notna(row.get("Conservation (jours)")) else 7,
                     })
                     if res.status_code == 200:
                         succes += 1
@@ -265,6 +266,8 @@ elif page == "Ingrédients":
             "Lipides": i["lipides"],
             "Unité": i["unite"],
             "Quantité défaut": i["quantite_defaut"],
+            "Conservation (jours)": i.get("duree_conservation"),
+            "Source": ", ".join(s["source_type"] for s in i.get("sources", [])) or None,
         } for i in ingredients])
         st.dataframe(df_ing, use_container_width=True)
 
