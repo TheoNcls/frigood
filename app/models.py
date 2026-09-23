@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, Text
 from sqlalchemy.orm import relationship
@@ -107,6 +108,11 @@ class User(Base):
     @property
     def garmin_connected(self) -> bool:
         return self.garmin_tokens is not None
+
+    @property
+    def is_admin(self) -> bool:
+        admins = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+        return (self.email or "").lower() in admins
 
 
 class MealLog(Base):

@@ -48,6 +48,9 @@ def delete_activity_type(id: int, db: Session = Depends(get_db)):
     at = db.get(ActivityType, id)
     if not at:
         raise HTTPException(status_code=404, detail="Type d'activité introuvable")
+    # Les activités déjà enregistrées gardent leur historique, sans type
+    for activity in list(at.activities):
+        activity.activity_type_id = None
     db.delete(at)
     db.commit()
     return {"message": "Type supprimé"}

@@ -1,8 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, CalendarDays, Home, LogOut, Refrigerator, User, UtensilsCrossed } from "lucide-react";
+import { Activity, CalendarDays, Home, LogOut, Refrigerator, ShieldCheck, User, UtensilsCrossed } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
-const NAV = [
+const BASE_NAV = [
   { to: "/", label: "Accueil", icon: Home, end: true },
   { to: "/repas", label: "Repas", icon: UtensilsCrossed },
   { to: "/frigo", label: "Frigo", icon: Refrigerator },
@@ -10,9 +10,11 @@ const NAV = [
   { to: "/historique", label: "Historique", icon: CalendarDays },
   { to: "/profil", label: "Profil", icon: User },
 ];
+const ADMIN_NAV = { to: "/admin", label: "Admin", icon: ShieldCheck, end: false };
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const NAV = user?.is_admin ? [...BASE_NAV, ADMIN_NAV] : BASE_NAV;
 
   return (
     <div className="min-h-screen lg:flex">
@@ -50,8 +52,8 @@ export default function Layout() {
       </main>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+        className="fixed inset-x-0 bottom-0 z-40 grid border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)", gridTemplateColumns: `repeat(${NAV.length}, minmax(0, 1fr))` }}
       >
         {NAV.map(({ to, label, icon: Icon, end }) => (
           <NavLink

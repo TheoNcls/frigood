@@ -242,5 +242,9 @@ def delete_ingredient(id: int, db: Session = Depends(get_db)):
     if not ingredient:
         raise HTTPException(status_code=404, detail="Ingrédient introuvable")
     db.delete(ingredient)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"« {ingredient.nom} » est utilisé dans des recettes ou des repas : retire-le d'abord de ceux-ci")
     return {"message": "Ingrédient supprimé"}

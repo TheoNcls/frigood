@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 import { useAuth } from "../auth/AuthContext";
 import type {
-  Activity, ActivityType, DailyStat, FridgeHistory, FridgeItem, Ingredient, MealLog, Recipe,
+  Activity, ActivityType, DailyStat, FridgeHistory, FridgeItem, Ingredient, MealLog, Nutriment, Recipe,
 } from "./types";
 
 const CATALOG_STALE = 2 * 60 * 1000;
@@ -41,6 +41,15 @@ export function useActivityTypes() {
   });
   const byId = useById(query.data);
   return { ...query, list: query.data ?? EMPTY, byId };
+}
+
+export function useNutriments() {
+  const query = useQuery({
+    queryKey: ["nutriments"],
+    queryFn: () => api<Nutriment[]>("/nutriments/"),
+    staleTime: CATALOG_STALE,
+  });
+  return { ...query, list: query.data ?? EMPTY };
 }
 
 export interface DateFilter {

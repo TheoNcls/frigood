@@ -196,6 +196,7 @@ class UserRead(BaseModel):
     glucides_cible: float | None = None
     lipides_cible: float | None = None
     garmin_connected: bool = False
+    is_admin: bool = False
 
     model_config = {"from_attributes": True}
 

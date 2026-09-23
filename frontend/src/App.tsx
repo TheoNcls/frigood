@@ -12,6 +12,7 @@ import Profile from "./pages/Profile";
 // Pages lourdes (calendrier, graphiques) chargées à la demande
 const Sport = lazy(() => import("./pages/Sport"));
 const History = lazy(() => import("./pages/History"));
+const Admin = lazy(() => import("./admin"));
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="sport" element={<Suspense fallback={<Spinner />}><Sport /></Suspense>} />
         <Route path="historique" element={<Suspense fallback={<Spinner />}><History /></Suspense>} />
         <Route path="profil" element={<Profile />} />
+        {user.is_admin && <Route path="admin/*" element={<Suspense fallback={<Spinner />}><Admin /></Suspense>} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

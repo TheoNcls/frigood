@@ -7,6 +7,7 @@ export interface User {
   glucides_cible: number | null;
   lipides_cible: number | null;
   garmin_connected: boolean;
+  is_admin: boolean;
 }
 
 export interface AuthResponse extends User {
@@ -41,6 +42,50 @@ export interface Ingredient {
   quantite_defaut: number | null;
   duree_conservation: number | null;
   nutriments: IngredientNutriment[];
+  sources: IngredientSource[];
+}
+
+export interface IngredientSource {
+  id: number;
+  ingredient_id: number;
+  source_type: string;
+  code_barre: string | null;
+  created_at: string | null;
+}
+
+/** Champs modifiables d'un ingrédient (création / modification). */
+export interface IngredientInput {
+  nom: string;
+  description: string | null;
+  categorie: string | null;
+  calories: number | null;
+  proteines: number | null;
+  glucides: number | null;
+  lipides: number | null;
+  unite: string;
+  quantite_defaut: number | null;
+  duree_conservation: number | null;
+}
+
+export interface NutrimentSuggestion {
+  nom: string;
+  unite: string;
+  valeur: number;
+}
+
+/** Réponse de /ingredients/from_claude et /ingredients/from_barcode. */
+export interface IngredientSuggestion extends Partial<IngredientInput> {
+  nutriments?: NutrimentSuggestion[];
+  raw_data?: string;
+  code_barre?: string;
+}
+
+export interface RecipeInput {
+  nom: string;
+  description: string | null;
+  categorie: string | null;
+  portions: number | null;
+  temps_preparation: number | null;
 }
 
 export type TypeMesure = "poids" | "unite";

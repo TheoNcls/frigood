@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Loader2, Trash2 } from "lucide-react";
 import { fmt } from "../lib/nutrition";
 
 export function Card({ title, children, className = "", action }: {
@@ -121,6 +121,36 @@ export function Segmented<T extends string>({ value, options, onChange, full = f
         </button>
       ))}
     </div>
+  );
+}
+
+/** Premier clic : demande confirmation ; second clic : exécute. */
+export function ConfirmButton({ onConfirm, label = "Supprimer", confirmLabel = "Confirmer la suppression", disabled = false, compact = false }: {
+  onConfirm: () => void;
+  label?: string;
+  confirmLabel?: string;
+  disabled?: boolean;
+  compact?: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+  if (armed) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <button type="button" className="btn-danger px-3 py-1.5" disabled={disabled} onClick={() => { setArmed(false); onConfirm(); }}>
+          {confirmLabel}
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setArmed(false)}>Annuler</button>
+      </span>
+    );
+  }
+  return compact ? (
+    <button type="button" className="btn-ghost" aria-label={label} title={label} disabled={disabled} onClick={() => setArmed(true)}>
+      <Trash2 className="h-4 w-4" />
+    </button>
+  ) : (
+    <button type="button" className="btn-secondary text-red-600" disabled={disabled} onClick={() => setArmed(true)}>
+      <Trash2 className="h-4 w-4" /> {label}
+    </button>
   );
 }
 

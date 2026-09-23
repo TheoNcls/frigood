@@ -33,14 +33,24 @@ def delete_nutriment(id: int, db: Session = Depends(get_db)):
     if not nutriment:
         raise HTTPException(status_code=404, detail="Nutriment introuvable")
     db.delete(nutriment)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"« {nutriment.nom} » est associé à des ingrédients : retire-le d'abord de ceux-ci")
     return {"message": "Nutriment supprimé"}
 
 
 @router.post("/ingredients/{ingredient_id}/nutriments/", response_model=IngredientNutrimentRead, dependencies=[Depends(require_admin)])
 def add_nutriment_to_ingredient(ingredient_id: int, data: IngredientNutrimentCreate, db: Session = Depends(get_db)):
-    lien = IngredientNutriment(ingredient_id=ingredient_id, **data.model_dump())
-    db.add(lien)
+    # Déjà associé : on met à jour la valeur plutôt que de créer un doublon
+    lien = db.query(IngredientNutriment).filter_by(ingredient_id=ingredient_id, nutriment_id=data.nutriment_id).first()
+    if lien:
+        lien.valeur = data.valeur
+        lien.notes = data.notes
+    else:
+        lien = IngredientNutriment(ingredient_id=ingredient_id, **data.model_dump())
+        db.add(lien)
     db.commit()
     db.refresh(lien)
     return lien

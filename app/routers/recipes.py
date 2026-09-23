@@ -56,8 +56,14 @@ def delete_recipe(id: int, db: Session = Depends(get_db)):
     recipe = db.get(Recipe, id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recette introuvable")
+    for lien in list(recipe.ingredients):
+        db.delete(lien)
     db.delete(recipe)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"« {recipe.nom} » est utilisée dans des repas enregistrés : elle ne peut pas être supprimée")
     return {"message": "Recette supprimée"}
 
 

@@ -19,7 +19,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const show = useCallback((message: string, kind: Kind = "success") => {
     const id = nextId++;
-    setToasts((t) => [...t, { id, kind, message }]);
+    setToasts((t) => [...t, { id, kind, message }].slice(-3));
     setTimeout(() => dismiss(id), kind === "error" ? 7000 : 4500);
   }, [dismiss]);
 

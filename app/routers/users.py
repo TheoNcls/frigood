@@ -6,7 +6,7 @@ import bcrypt
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserUpdate, UserRead, UserWithToken, UserLogin, ChangePassword
-from app.auth import Principal, get_principal, require_admin, check_user_access, create_token
+from app.auth import Principal, get_principal, require_service, check_user_access, create_token
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -63,7 +63,7 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
     return _with_token(user)
 
 
-@router.get("/", response_model=list[UserRead], dependencies=[Depends(require_admin)])
+@router.get("/", response_model=list[UserRead], dependencies=[Depends(require_service)])
 def list_users(db: Session = Depends(get_db)):
     return db.query(User).order_by(User.nom).all()
 
