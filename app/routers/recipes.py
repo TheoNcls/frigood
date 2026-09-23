@@ -4,9 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models import Recipe, RecipeIngredient
 from app.schemas import RecipeCreate, RecipeRead, RecipeIngredientCreate
-from app.auth import verify_api_key
+from app.auth import get_principal, require_admin
 
-router = APIRouter(prefix="/recipes", tags=["recipes"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(prefix="/recipes", tags=["recipes"], dependencies=[Depends(get_principal)])
 
 
 @router.get("/", response_model=list[RecipeRead])
@@ -22,7 +22,7 @@ def get_recipe(id: int, db: Session = Depends(get_db)):
     return recipe
 
 
-@router.post("/", response_model=RecipeRead)
+@router.post("/", response_model=RecipeRead, dependencies=[Depends(require_admin)])
 def create_recipe(data: RecipeCreate, db: Session = Depends(get_db)):
     recipe = Recipe(**data.model_dump())
     db.add(recipe)
@@ -35,7 +35,7 @@ def create_recipe(data: RecipeCreate, db: Session = Depends(get_db)):
     return recipe
 
 
-@router.put("/{id}", response_model=RecipeRead)
+@router.put("/{id}", response_model=RecipeRead, dependencies=[Depends(require_admin)])
 def update_recipe(id: int, data: RecipeCreate, db: Session = Depends(get_db)):
     recipe = db.get(Recipe, id)
     if not recipe:
@@ -51,7 +51,7 @@ def update_recipe(id: int, data: RecipeCreate, db: Session = Depends(get_db)):
     return recipe
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_admin)])
 def delete_recipe(id: int, db: Session = Depends(get_db)):
     recipe = db.get(Recipe, id)
     if not recipe:
@@ -61,7 +61,7 @@ def delete_recipe(id: int, db: Session = Depends(get_db)):
     return {"message": "Recette supprimée"}
 
 
-@router.post("/{id}/ingredients", response_model=RecipeRead)
+@router.post("/{id}/ingredients", response_model=RecipeRead, dependencies=[Depends(require_admin)])
 def add_ingredient_to_recipe(id: int, data: RecipeIngredientCreate, db: Session = Depends(get_db)):
     recipe = db.get(Recipe, id)
     if not recipe:
@@ -73,7 +73,7 @@ def add_ingredient_to_recipe(id: int, data: RecipeIngredientCreate, db: Session 
     return recipe
 
 
-@router.delete("/{id}/ingredients/{ingredient_id}")
+@router.delete("/{id}/ingredients/{ingredient_id}", dependencies=[Depends(require_admin)])
 def remove_ingredient_from_recipe(id: int, ingredient_id: int, db: Session = Depends(get_db)):
     lien = db.query(RecipeIngredient).filter_by(recipe_id=id, ingredient_id=ingredient_id).first()
     if not lien:

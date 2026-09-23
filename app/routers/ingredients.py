@@ -7,9 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models import Ingredient, IngredientSource
 from app.schemas import IngredientCreate, IngredientRead
-from app.auth import verify_api_key
+from app.auth import get_principal, require_admin
 
-router = APIRouter(prefix="/ingredients", tags=["ingredients"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(prefix="/ingredients", tags=["ingredients"], dependencies=[Depends(get_principal)])
 
 
 @router.get("/", response_model=list[IngredientRead])
@@ -18,7 +18,7 @@ def list_ingredients(db: Session = Depends(get_db)):
 
 
 # Doit être AVANT /{id} pour ne pas être capturé par le param dynamique
-@router.get("/from_claude")
+@router.get("/from_claude", dependencies=[Depends(require_admin)])
 def ingredient_from_claude(nom: str = Query(...)):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -92,7 +92,7 @@ def ingredient_from_claude(nom: str = Query(...)):
         raise HTTPException(status_code=500, detail=f"Erreur Claude API : {str(e)}")
 
 
-@router.get("/from_barcode")
+@router.get("/from_barcode", dependencies=[Depends(require_admin)])
 def ingredient_from_barcode(code: str = Query(...)):
     try:
         resp = http_requests.get(
@@ -194,7 +194,7 @@ def get_ingredient(id: int, db: Session = Depends(get_db)):
     return ingredient
 
 
-@router.post("/", response_model=IngredientRead)
+@router.post("/", response_model=IngredientRead, dependencies=[Depends(require_admin)])
 def create_ingredient(data: IngredientCreate, db: Session = Depends(get_db)):
     source_fields = {"source_type", "source_code_barre", "source_raw_data"}
     ingredient_data = {k: v for k, v in data.model_dump().items() if k not in source_fields}
@@ -220,7 +220,7 @@ def create_ingredient(data: IngredientCreate, db: Session = Depends(get_db)):
     return ingredient
 
 
-@router.put("/{id}", response_model=IngredientRead)
+@router.put("/{id}", response_model=IngredientRead, dependencies=[Depends(require_admin)])
 def update_ingredient(id: int, data: IngredientCreate, db: Session = Depends(get_db)):
     ingredient = db.get(Ingredient, id)
     if not ingredient:
@@ -236,7 +236,7 @@ def update_ingredient(id: int, data: IngredientCreate, db: Session = Depends(get
     return ingredient
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_admin)])
 def delete_ingredient(id: int, db: Session = Depends(get_db)):
     ingredient = db.get(Ingredient, id)
     if not ingredient:

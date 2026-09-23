@@ -4,9 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models import Nutriment, IngredientNutriment
 from app.schemas import NutrimentCreate, NutrimentRead, IngredientNutrimentCreate, IngredientNutrimentRead
-from app.auth import verify_api_key
+from app.auth import get_principal, require_admin
 
-router = APIRouter(tags=["nutriments"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(tags=["nutriments"], dependencies=[Depends(get_principal)])
 
 
 @router.get("/nutriments/", response_model=list[NutrimentRead])
@@ -14,7 +14,7 @@ def list_nutriments(db: Session = Depends(get_db)):
     return db.query(Nutriment).all()
 
 
-@router.post("/nutriments/", response_model=NutrimentRead)
+@router.post("/nutriments/", response_model=NutrimentRead, dependencies=[Depends(require_admin)])
 def create_nutriment(data: NutrimentCreate, db: Session = Depends(get_db)):
     nutriment = Nutriment(**data.model_dump())
     db.add(nutriment)
@@ -27,7 +27,7 @@ def create_nutriment(data: NutrimentCreate, db: Session = Depends(get_db)):
     return nutriment
 
 
-@router.delete("/nutriments/{id}")
+@router.delete("/nutriments/{id}", dependencies=[Depends(require_admin)])
 def delete_nutriment(id: int, db: Session = Depends(get_db)):
     nutriment = db.get(Nutriment, id)
     if not nutriment:
@@ -37,7 +37,7 @@ def delete_nutriment(id: int, db: Session = Depends(get_db)):
     return {"message": "Nutriment supprimé"}
 
 
-@router.post("/ingredients/{ingredient_id}/nutriments/", response_model=IngredientNutrimentRead)
+@router.post("/ingredients/{ingredient_id}/nutriments/", response_model=IngredientNutrimentRead, dependencies=[Depends(require_admin)])
 def add_nutriment_to_ingredient(ingredient_id: int, data: IngredientNutrimentCreate, db: Session = Depends(get_db)):
     lien = IngredientNutriment(ingredient_id=ingredient_id, **data.model_dump())
     db.add(lien)
@@ -46,7 +46,7 @@ def add_nutriment_to_ingredient(ingredient_id: int, data: IngredientNutrimentCre
     return lien
 
 
-@router.delete("/ingredients/{ingredient_id}/nutriments/{nutriment_id}")
+@router.delete("/ingredients/{ingredient_id}/nutriments/{nutriment_id}", dependencies=[Depends(require_admin)])
 def remove_nutriment_from_ingredient(ingredient_id: int, nutriment_id: int, db: Session = Depends(get_db)):
     lien = db.query(IngredientNutriment).filter_by(
         ingredient_id=ingredient_id, nutriment_id=nutriment_id

@@ -1,0 +1,8 @@
+.git
+.env
+venv/
+frontend/
+aide/
+.claude/
+__pycache__/
+*.pyc

@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5;
+  }
+  .card-title {
+    @apply mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+  .btn-secondary {
+    @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-ghost {
+    @apply btn px-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800;
+  }
+  .input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition
+      focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-slate-600;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  .segmented {
+    @apply inline-flex rounded-xl bg-slate-100 p-1;
+  }
+  .segmented > button {
+    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition;
+  }
+  .segmented > button[aria-pressed="true"] {
+    @apply bg-white text-slate-900 shadow-sm;
+  }
+}
+
+.fc {
+  --fc-border-color: #e2e8f0;
+  --fc-today-bg-color: #ecfdf5;
+  --fc-button-bg-color: #059669;
+  --fc-button-border-color: #059669;
+  --fc-button-hover-bg-color: #047857;
+  --fc-button-hover-border-color: #047857;
+  --fc-button-active-bg-color: #047857;
+  --fc-button-active-border-color: #047857;
+  font-size: 0.85rem;
+}
+.fc .fc-toolbar-title {
+  font-size: 1.1rem;
+  text-transform: capitalize;
+}
+@media (max-width: 640px) {
+  .fc .fc-toolbar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .fc .fc-toolbar-chunk:nth-child(2) {
+    order: -1;
+    width: 100%;
+    text-align: center;
+  }
+  .fc .fc-toolbar-title {
+    font-size: 1rem;
+  }
+  .fc .fc-button {
+    padding: 0.3em 0.55em;
+    font-size: 0.8rem;
+  }
+}

@@ -4,9 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models import ActivityType
 from app.schemas import ActivityTypeCreate, ActivityTypeRead
-from app.auth import verify_api_key
+from app.auth import get_principal, require_admin
 
-router = APIRouter(prefix="/activity_types", tags=["activity_types"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(prefix="/activity_types", tags=["activity_types"], dependencies=[Depends(get_principal)])
 
 
 @router.get("/", response_model=list[ActivityTypeRead])
@@ -14,7 +14,7 @@ def list_activity_types(db: Session = Depends(get_db)):
     return db.query(ActivityType).order_by(ActivityType.nom).all()
 
 
-@router.post("/", response_model=ActivityTypeRead)
+@router.post("/", response_model=ActivityTypeRead, dependencies=[Depends(require_admin)])
 def create_activity_type(data: ActivityTypeCreate, db: Session = Depends(get_db)):
     at = ActivityType(**data.model_dump())
     db.add(at)
@@ -27,7 +27,7 @@ def create_activity_type(data: ActivityTypeCreate, db: Session = Depends(get_db)
     return at
 
 
-@router.put("/{id}", response_model=ActivityTypeRead)
+@router.put("/{id}", response_model=ActivityTypeRead, dependencies=[Depends(require_admin)])
 def update_activity_type(id: int, data: ActivityTypeCreate, db: Session = Depends(get_db)):
     at = db.get(ActivityType, id)
     if not at:
@@ -43,7 +43,7 @@ def update_activity_type(id: int, data: ActivityTypeCreate, db: Session = Depend
     return at
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_admin)])
 def delete_activity_type(id: int, db: Session = Depends(get_db)):
     at = db.get(ActivityType, id)
     if not at:

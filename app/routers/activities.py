@@ -4,9 +4,9 @@ from datetime import date as date_type, datetime, timedelta
 from app.database import get_db
 from app.models import Activity, ActivityType, User, DailyStat
 from app.schemas import ActivityCreate, ActivityRead, GarminCredentials, DailyStatRead
-from app.auth import verify_api_key
+from app.auth import Principal, get_principal, check_user_access
 
-router = APIRouter(tags=["activities"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(tags=["activities"], dependencies=[Depends(get_principal)])
 
 
 def _safe_int(v):
@@ -31,7 +31,9 @@ def _sec_to_h(seconds):
 
 
 @router.post("/users/{user_id}/activities/", response_model=ActivityRead)
-def add_activity(user_id: int, data: ActivityCreate, db: Session = Depends(get_db)):
+def add_activity(user_id: int, data: ActivityCreate, principal: Principal = Depends(get_principal),
+                 db: Session = Depends(get_db)):
+    check_user_access(principal, user_id)
     if not db.get(User, user_id):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     activity = Activity(user_id=user_id, **data.model_dump())
@@ -45,19 +47,28 @@ def add_activity(user_id: int, data: ActivityCreate, db: Session = Depends(get_d
 def list_activities(
     user_id: int,
     date: date_type | None = Query(default=None),
+    date_from: date_type | None = Query(default=None),
+    date_to: date_type | None = Query(default=None),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ):
+    check_user_access(principal, user_id)
     query = db.query(Activity).filter(Activity.user_id == user_id)
     if date:
         query = query.filter(Activity.date == date)
+    if date_from:
+        query = query.filter(Activity.date >= date_from)
+    if date_to:
+        query = query.filter(Activity.date <= date_to)
     return query.order_by(Activity.date.desc(), Activity.id.desc()).all()
 
 
 @router.delete("/activities/{id}")
-def delete_activity(id: int, db: Session = Depends(get_db)):
+def delete_activity(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     activity = db.get(Activity, id)
     if not activity:
         raise HTTPException(status_code=404, detail="Activité introuvable")
+    check_user_access(principal, activity.user_id)
     db.delete(activity)
     db.commit()
     return {"message": "Activité supprimée"}
@@ -67,13 +78,31 @@ def delete_activity(id: int, db: Session = Depends(get_db)):
 def get_daily_stat(
     user_id: int,
     date: date_type = Query(...),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ):
+    check_user_access(principal, user_id)
     return db.query(DailyStat).filter_by(user_id=user_id, date=date).first()
 
 
+@router.get("/users/{user_id}/daily_stats/range", response_model=list[DailyStatRead])
+def list_daily_stats(
+    user_id: int,
+    date_from: date_type = Query(...),
+    date_to: date_type = Query(...),
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+):
+    check_user_access(principal, user_id)
+    return (db.query(DailyStat)
+            .filter(DailyStat.user_id == user_id, DailyStat.date >= date_from, DailyStat.date <= date_to)
+            .order_by(DailyStat.date)
+            .all())
+
+
 @router.delete("/users/{user_id}/garmin_disconnect")
-def garmin_disconnect(user_id: int, db: Session = Depends(get_db)):
+def garmin_disconnect(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    check_user_access(principal, user_id)
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -84,7 +113,9 @@ def garmin_disconnect(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/users/{user_id}/garmin_sync")
-def garmin_sync(user_id: int, credentials: GarminCredentials, db: Session = Depends(get_db)):
+def garmin_sync(user_id: int, credentials: GarminCredentials, principal: Principal = Depends(get_principal),
+                db: Session = Depends(get_db)):
+    check_user_access(principal, user_id)
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")

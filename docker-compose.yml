@@ -24,6 +24,8 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/frigood
       API_KEY: ${API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: http://localhost:8080,http://localhost:5173
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,6 +52,16 @@ services:
     environment:
       API_URL: http://api:8000
       API_KEY: ${API_KEY}
+    depends_on:
+      - api
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "8080:8080"
     depends_on:
       - api
 

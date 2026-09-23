@@ -4,16 +4,25 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import FridgeItem, FridgeHistory, Ingredient, Recipe, User
 from app.schemas import FridgeItemCreate, FridgeItemUpdate, FridgeItemRead, FridgeHistoryRead
-from app.auth import verify_api_key
+from app.auth import Principal, get_principal, check_user_access
 from app.fridge_service import log_history, consume_recipe_ingredients
 
-router = APIRouter(tags=["fridge"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(tags=["fridge"], dependencies=[Depends(get_principal)])
 
 DUREE_RECETTE_DEFAUT = 3  # jours pour un plat cuisiné
 
 
+def _get_own_item(db: Session, id: int, principal: Principal) -> FridgeItem:
+    item = db.get(FridgeItem, id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Élément introuvable")
+    check_user_access(principal, item.user_id)
+    return item
+
+
 @router.get("/users/{user_id}/fridge/", response_model=list[FridgeItemRead])
-def list_fridge(user_id: int, db: Session = Depends(get_db)):
+def list_fridge(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    check_user_access(principal, user_id)
     return (db.query(FridgeItem)
             .filter(FridgeItem.user_id == user_id)
             .order_by(FridgeItem.date_peremption.asc().nulls_last(), FridgeItem.id)
@@ -21,7 +30,9 @@ def list_fridge(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/users/{user_id}/fridge/history", response_model=list[FridgeHistoryRead])
-def fridge_history(user_id: int, limit: int = Query(default=200, le=1000), db: Session = Depends(get_db)):
+def fridge_history(user_id: int, limit: int = Query(default=200, le=1000),
+                   principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    check_user_access(principal, user_id)
     return (db.query(FridgeHistory)
             .filter(FridgeHistory.user_id == user_id)
             .order_by(FridgeHistory.created_at.desc(), FridgeHistory.id.desc())
@@ -30,7 +41,9 @@ def fridge_history(user_id: int, limit: int = Query(default=200, le=1000), db: S
 
 
 @router.post("/users/{user_id}/fridge/", response_model=FridgeItemRead)
-def add_to_fridge(user_id: int, data: FridgeItemCreate, db: Session = Depends(get_db)):
+def add_to_fridge(user_id: int, data: FridgeItemCreate, principal: Principal = Depends(get_principal),
+                  db: Session = Depends(get_db)):
+    check_user_access(principal, user_id)
     if not db.get(User, user_id):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if bool(data.ingredient_id) == bool(data.recipe_id):
@@ -78,10 +91,9 @@ def add_to_fridge(user_id: int, data: FridgeItemCreate, db: Session = Depends(ge
 
 
 @router.put("/fridge/{id}", response_model=FridgeItemRead)
-def update_fridge_item(id: int, data: FridgeItemUpdate, db: Session = Depends(get_db)):
-    item = db.get(FridgeItem, id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Élément introuvable")
+def update_fridge_item(id: int, data: FridgeItemUpdate, principal: Principal = Depends(get_principal),
+                       db: Session = Depends(get_db)):
+    item = _get_own_item(db, id, principal)
     changes = data.model_dump(exclude_unset=True)
     old_q = item.quantite
     for key, value in changes.items():
@@ -95,10 +107,9 @@ def update_fridge_item(id: int, data: FridgeItemUpdate, db: Session = Depends(ge
 
 
 @router.delete("/fridge/{id}")
-def delete_fridge_item(id: int, raison: str = Query(default="suppression"), db: Session = Depends(get_db)):
-    item = db.get(FridgeItem, id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Élément introuvable")
+def delete_fridge_item(id: int, raison: str = Query(default="suppression"),
+                       principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    item = _get_own_item(db, id, principal)
     action = raison if raison in ("suppression", "perime", "consomme") else "suppression"
     log_history(db, item.user_id, item, -item.quantite, action)
     db.delete(item)
