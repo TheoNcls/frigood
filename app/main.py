@@ -5,8 +5,15 @@ from app.routers import ingredients, recipes, nutriments, users, meal_logs, acti
 
 app = FastAPI(title="Frigood", version="0.1")
 
+def _normalize_origin(raw: str) -> str:
+    origin = raw.strip().strip("\"'").rstrip("/")
+    if origin and not origin.startswith(("http://", "https://")):
+        origin = f"https://{origin}"
+    return origin
+
+
 # Origines autorisées pour l'app React (séparées par des virgules)
-cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+cors_origins = [o for o in (_normalize_origin(x) for x in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")) if o]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,

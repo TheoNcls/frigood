@@ -67,7 +67,7 @@ export async function api<T>(path: string, { method = "GET", body, query }: Opti
   try {
     res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch {
-    throw new ApiError(0, "Impossible de joindre le serveur");
+    throw new ApiError(0, `Impossible de joindre le serveur (${API_URL})`);
   }
 
   if (!res.ok) {
