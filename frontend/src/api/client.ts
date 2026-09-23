@@ -1,4 +1,12 @@
-const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+// Accepte aussi un domaine sans "https://" (ex. référence Railway RAILWAY_PUBLIC_DOMAIN) ou entre guillemets
+function normalizeApiUrl(raw: string | undefined): string {
+  let url = (raw ?? "").trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
+  if (!url) return "http://localhost:8000";
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  return url;
+}
+
+const API_URL = normalizeApiUrl(import.meta.env.VITE_API_URL);
 const TOKEN_KEY = "frigood_token";
 
 export class ApiError extends Error {
@@ -40,7 +48,12 @@ interface Options {
 }
 
 export async function api<T>(path: string, { method = "GET", body, query }: Options = {}): Promise<T> {
-  const url = new URL(API_URL + path);
+  let url: URL;
+  try {
+    url = new URL(API_URL + path);
+  } catch {
+    throw new ApiError(0, `Adresse de l'API invalide (VITE_API_URL = « ${API_URL} »)`);
+  }
   for (const [k, v] of Object.entries(query ?? {})) {
     if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
   }
