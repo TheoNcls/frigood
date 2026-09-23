@@ -62,6 +62,7 @@ if page == "Accueil":
                 "Lipides": i["lipides"],
                 "Unité": i["unite"],
                 "Quantité défaut": i["quantite_defaut"],
+                "Conservation (jours)": i.get("duree_conservation"),
             } for i in ingredients]).to_excel(writer, index=False, sheet_name="Ingrédients")
 
             rows_recettes = []
@@ -320,6 +321,8 @@ elif page == "Ingrédients":
                 unite_f = col1.text_input("Unité", value=sug.get("unite") or "g")
                 qdef_f  = col2.number_input("Poids d'une unité (g)",
                                             value=float(sug.get("quantite_defaut") or 0), step=1.0)
+                cons_f  = st.number_input("Durée de conservation (jours)", min_value=1,
+                                          value=int(sug.get("duree_conservation") or 7), step=1)
 
                 nuts_sug = sug.get("nutriments") or []
                 nuts_selected = []
@@ -341,6 +344,7 @@ elif page == "Ingrédients":
                     "nom": nom_f, "description": desc_f or None, "categorie": cat_f or None,
                     "calories": cal_f, "proteines": prot_f, "glucides": gluc_f, "lipides": lip_f,
                     "unite": unite_f, "quantite_defaut": qdef_f or None,
+                    "duree_conservation": int(cons_f),
                     "source_type": "claude",
                     "source_raw_data": sug.get("raw_data"),
                 })
@@ -451,6 +455,8 @@ elif page == "Ingrédients":
                 bunite_f = col1.text_input("Unité", value=bsug.get("unite") or "g")
                 bqdef_f  = col2.number_input("Poids d'une unité (g)",
                                              value=float(bsug.get("quantite_defaut") or 0), step=1.0)
+                bcons_f  = st.number_input("Durée de conservation (jours)", min_value=1,
+                                           value=int(bsug.get("duree_conservation") or 7), step=1)
 
                 bnuts_sug = bsug.get("nutriments") or []
                 bnuts_selected = []
@@ -472,6 +478,7 @@ elif page == "Ingrédients":
                     "nom": bnom_f, "description": bdesc_f or None, "categorie": bcat_f or None,
                     "calories": bcal_f, "proteines": bprot_f, "glucides": bgluc_f, "lipides": blip_f,
                     "unite": bunite_f, "quantite_defaut": bqdef_f or None,
+                    "duree_conservation": int(bcons_f),
                     "source_type": "openfoodfacts",
                     "source_code_barre": bsug.get("code_barre"),
                     "source_raw_data": bsug.get("raw_data"),
@@ -518,6 +525,7 @@ elif page == "Ingrédients":
             unite = st.text_input("Unité", value="g")
             quantite_defaut = st.number_input("Poids classique", min_value=0.0, step=1.0,
                                               help="Ex: 130 pour une pomme de 130g")
+            duree_conservation = st.number_input("Durée de conservation (jours)", min_value=1, value=7, step=1)
             submitted = st.form_submit_button("Ajouter")
         if submitted:
             res = requests.post(f"{API_URL}/ingredients/", headers=HEADERS, json={
@@ -528,6 +536,8 @@ elif page == "Ingrédients":
                 "glucides": glucides, "lipides": lipides,
                 "unite": unite,
                 "quantite_defaut": quantite_defaut or None,
+                "duree_conservation": int(duree_conservation),
+                "source_type": "manual",
             })
             if res.status_code == 200:
                 st.success(f"Ingrédient « {nom} » ajouté !")
@@ -551,6 +561,8 @@ elif page == "Ingrédients":
             unite = st.text_input("Unité", value=ing["unite"])
             quantite_defaut = st.number_input("Poids classique", min_value=0.0, step=1.0,
                                               value=ing["quantite_defaut"] or 0.0)
+            duree_conservation = st.number_input("Durée de conservation (jours)", min_value=1, step=1,
+                                                 value=int(ing.get("duree_conservation") or 7))
             submitted = st.form_submit_button("Enregistrer")
         if submitted:
             res = requests.put(f"{API_URL}/ingredients/{ing['id']}", headers=HEADERS, json={
@@ -561,6 +573,7 @@ elif page == "Ingrédients":
                 "glucides": glucides, "lipides": lipides,
                 "unite": unite,
                 "quantite_defaut": quantite_defaut or None,
+                "duree_conservation": int(duree_conservation),
             })
             if res.status_code == 200:
                 st.success("Modifié !")

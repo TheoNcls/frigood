@@ -52,6 +52,7 @@ class IngredientBase(BaseModel):
     lipides: float | None = None
     unite: str = "g"
     quantite_defaut: float | None = None
+    duree_conservation: int | None = 7
 
 class IngredientCreate(IngredientBase):
     # Champs optionnels pour traçabilité source (non stockés sur Ingredient)
@@ -221,5 +222,48 @@ class MealLogCreate(BaseModel):
 class MealLogRead(MealLogCreate):
     id: int
     user_id: int
+    fridge_updates: list[str] = []
+
+    model_config = {"from_attributes": True}
+
+
+# --- Frigo ---
+
+class FridgeItemCreate(BaseModel):
+    ingredient_id: int | None = None
+    recipe_id: int | None = None
+    quantite: float
+    date_achat: date_type | None = None
+    date_peremption: date_type | None = None
+    deduire_ingredients: bool = False
+
+class FridgeItemUpdate(BaseModel):
+    quantite: float | None = None
+    date_achat: date_type | None = None
+    date_peremption: date_type | None = None
+
+class FridgeItemRead(BaseModel):
+    id: int
+    user_id: int
+    ingredient_id: int | None = None
+    recipe_id: int | None = None
+    quantite: float
+    date_achat: date_type | None = None
+    date_peremption: date_type | None = None
+    created_at: datetime_type | None = None
+
+    model_config = {"from_attributes": True}
+
+class FridgeHistoryRead(BaseModel):
+    id: int
+    ingredient_id: int | None = None
+    recipe_id: int | None = None
+    quantite: float
+    action: str
+    meal_log_id: int | None = None
+    date_achat: date_type | None = None
+    date_peremption: date_type | None = None
+    notes: str | None = None
+    created_at: datetime_type | None = None
 
     model_config = {"from_attributes": True}

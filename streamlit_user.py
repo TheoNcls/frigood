@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 API_KEY = os.getenv("API_KEY", "")
@@ -208,7 +208,7 @@ with st.sidebar:
     st.markdown(f"**{user['nom']}**")
     st.caption(user["email"])
     st.divider()
-    page = st.radio("Navigation", ["Accueil", "Repas", "Sport", "Historique", "Profil"], label_visibility="collapsed")
+    page = st.radio("Navigation", ["Accueil", "Repas", "Frigo", "Sport", "Historique", "Profil"], label_visibility="collapsed")
     st.divider()
     if st.button("Déconnexion", use_container_width=True):
         st.session_state.user = None
@@ -234,6 +234,74 @@ recipes_map = load_recipes()
 
 MOMENTS = ["matin", "midi", "soir", "snack"]
 
+@st.cache_data(ttl=300)
+def get_usage_counts(user_id: int, api_url: str, api_key: str) -> tuple[dict, dict]:
+    """Retourne (ing_count, rec_count) — nombre de fois utilisé dans les meal logs."""
+    try:
+        res = requests.get(f"{api_url}/users/{user_id}/meal_logs/",
+                           headers={"X-API-Key": api_key}, timeout=10)
+        if not res.ok:
+            return {}, {}
+        ing_count: dict[int, int] = {}
+        rec_count: dict[int, int] = {}
+        for log in res.json():
+            if log.get("ingredient_id"):
+                iid = log["ingredient_id"]
+                ing_count[iid] = ing_count.get(iid, 0) + 1
+            if log.get("recipe_id"):
+                rid = log["recipe_id"]
+                rec_count[rid] = rec_count.get(rid, 0) + 1
+        return ing_count, rec_count
+    except Exception:
+        return {}, {}
+
+
+def default_moment_index() -> int:
+    h = datetime.now().hour
+    if 5 <= h < 10:
+        return MOMENTS.index("matin")
+    if 10 <= h < 14:
+        return MOMENTS.index("midi")
+    if 14 <= h < 19:
+        return MOMENTS.index("snack")
+    return MOMENTS.index("soir")
+
+
+def fridge_item_name(item) -> str:
+    if item.get("ingredient_id"):
+        return ingredients_map.get(item["ingredient_id"], {}).get("nom", "(ingrédient supprimé)")
+    if item.get("recipe_id"):
+        return "🍽️ " + recipes_map.get(item["recipe_id"], {}).get("nom", "(recette supprimée)")
+    return "(supprimé)"
+
+
+def fridge_item_qty(item, signed=False) -> str:
+    q = item["quantite"]
+    fmt = "+.0f" if signed else ".0f"
+    if item.get("recipe_id"):
+        return f"{q:+g} portion(s)" if signed else f"{q:g} portion(s)"
+    ing = ingredients_map.get(item.get("ingredient_id"), {})
+    txt = f"{q:{fmt}} {ing.get('unite', 'g')}"
+    qd = ing.get("quantite_defaut")
+    if qd and not signed:
+        txt += f" (≈ {q / qd:.1f} unité(s))"
+    return txt
+
+
+def peremption_badge(d_str) -> str:
+    if not d_str:
+        return "⚪ Pas de date"
+    days = (date.fromisoformat(d_str) - date.today()).days
+    if days < 0:
+        return f"🔴 Périmé depuis {-days} j"
+    if days == 0:
+        return "🔴 Périme aujourd'hui"
+    if days <= 2:
+        return f"🟠 J-{days}"
+    if days <= 5:
+        return f"🟡 J-{days}"
+    return f"🟢 J-{days}"
+
 
 # =========================================================
 # PAGE : ACCUEIL
@@ -243,6 +311,14 @@ if page == "Accueil":
     today = date.today()
     st.title(f"Bonjour, {user['nom']} 👋")
     st.caption(today.strftime("%A %d %B %Y").capitalize())
+
+    fridge_items = api_get(f"/users/{user['id']}/fridge/") or []
+    expiring = [f for f in fridge_items
+                if f.get("date_peremption") and (date.fromisoformat(f["date_peremption"]) - today).days <= 2]
+    if expiring:
+        st.warning("🧊 À consommer vite : " + " · ".join(
+            f"{fridge_item_name(f)} ({peremption_badge(f['date_peremption'])})" for f in expiring
+        ))
 
     # --- Données du jour ---
     logs_today   = api_get(f"/users/{user['id']}/meal_logs/?date={today}") or []
@@ -388,6 +464,13 @@ elif page == "Repas":
 
     logs = api_get(f"/users/{user['id']}/meal_logs/?date={today}") or []
 
+    flash = st.session_state.pop("flash_repas", None)
+    if flash is not None:
+        if flash:
+            st.success("Repas ajouté ! 🧊 Retiré du frigo : " + ", ".join(flash))
+        else:
+            st.success("Repas ajouté !")
+
     # Daily summary
     total = [0.0, 0.0, 0.0, 0.0]
     for log in logs:
@@ -415,7 +498,7 @@ elif page == "Repas":
     # Hors du form : changer ces widgets re-rend la page immédiatement
     col1, col2 = st.columns(2)
     with col1:
-        moment = st.selectbox("Moment", MOMENTS)
+        moment = st.selectbox("Moment", MOMENTS, index=default_moment_index())
     with col2:
         type_aliment = st.radio("Type d'aliment", ["Recette", "Ingrédient"], horizontal=True)
 
@@ -423,21 +506,38 @@ elif page == "Repas":
     type_mesure = "poids"
     ing_selected = recipe_selected = None
 
+    ing_count, rec_count = get_usage_counts(user["id"], API_URL, API_KEY)
+    fridge_now = api_get(f"/users/{user['id']}/fridge/") or []
+    fridge_ing_ids = {f["ingredient_id"] for f in fridge_now if f.get("ingredient_id")}
+    fridge_rec_ids = {f["recipe_id"] for f in fridge_now if f.get("recipe_id")}
+
+    def option_label(nom, count, in_fridge):
+        label = f"🧊 {nom}" if in_fridge else nom
+        return f"{label} ({count}×)" if count else label
+
     if type_aliment == "Recette":
-        recipe_options = sorted(recipes_map.values(), key=lambda r: r["nom"])
+        recipe_options = sorted(recipes_map.values(),
+                                key=lambda r: (-rec_count.get(r["id"], 0), r["nom"]))
         if recipe_options:
-            noms_r = [r["nom"] for r in recipe_options]
+            noms_r = [
+                option_label(r["nom"], rec_count.get(r["id"]), r["id"] in fridge_rec_ids)
+                for r in recipe_options
+            ]
             choix_r = st.selectbox("Recette", noms_r)
-            recipe_selected = next(r for r in recipe_options if r["nom"] == choix_r)
+            recipe_selected = recipe_options[noms_r.index(choix_r)]
             recipe_id = recipe_selected["id"]
         else:
             st.info("Aucune recette disponible")
     else:
-        ing_list = sorted(ingredients_map.values(), key=lambda i: i["nom"])
+        ing_list = sorted(ingredients_map.values(),
+                          key=lambda i: (-ing_count.get(i["id"], 0), i["nom"]))
         if ing_list:
-            noms_i = [i["nom"] for i in ing_list]
+            noms_i = [
+                option_label(i["nom"], ing_count.get(i["id"]), i["id"] in fridge_ing_ids)
+                for i in ing_list
+            ]
             choix_i = st.selectbox("Ingrédient", noms_i)
-            ing_selected = next(i for i in ing_list if i["nom"] == choix_i)
+            ing_selected = ing_list[noms_i.index(choix_i)]
             ingredient_id = ing_selected["id"]
             if ing_selected.get("quantite_defaut") is not None:
                 mesure_label = st.radio("Mesure", ["poids", "unité"], horizontal=True)
@@ -480,7 +580,7 @@ elif page == "Repas":
         }
         result = api_post(f"/users/{user['id']}/meal_logs/", payload)
         if result:
-            st.success("Repas ajouté !")
+            st.session_state["flash_repas"] = result.get("fridge_updates") or []
             st.cache_data.clear()
             st.rerun()
 
@@ -529,6 +629,151 @@ elif page == "Repas":
 # =========================================================
 # PAGE : SPORT
 # =========================================================
+
+elif page == "Frigo":
+    today = date.today()
+    st.title("🧊 Mon frigo")
+
+    flash = st.session_state.pop("flash_frigo", None)
+    if flash:
+        st.success(flash)
+
+    items = api_get(f"/users/{user['id']}/fridge/") or []
+    tab_contenu, tab_ajout, tab_histo = st.tabs([f"Contenu ({len(items)})", "Ajouter", "Historique"])
+
+    # --- Contenu ---
+    with tab_contenu:
+        if not items:
+            st.info("Ton frigo est vide. Ajoute des aliments depuis l'onglet « Ajouter ».")
+        else:
+            def _days(it):
+                d = it.get("date_peremption")
+                return (date.fromisoformat(d) - today).days if d else None
+
+            nb_perimes = sum(1 for it in items if _days(it) is not None and _days(it) < 0)
+            nb_bientot = sum(1 for it in items if _days(it) is not None and 0 <= _days(it) <= 2)
+            if nb_perimes:
+                st.error(f"{nb_perimes} élément(s) périmé(s)")
+            if nb_bientot:
+                st.warning(f"{nb_bientot} élément(s) à consommer dans les 2 jours")
+
+            raisons = {"Consommé": "consomme", "Périmé / jeté": "perime", "Erreur de saisie": "suppression"}
+            for it in items:
+                iid = it["id"]
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns([4, 3, 2])
+                    with c1:
+                        st.markdown(f"**{fridge_item_name(it)}**")
+                        st.caption(fridge_item_qty(it))
+                    with c2:
+                        st.markdown(peremption_badge(it.get("date_peremption")))
+                        if it.get("date_achat"):
+                            st.caption(f"Ajouté le {date.fromisoformat(it['date_achat']).strftime('%d/%m/%Y')}")
+                    with c3:
+                        with st.popover("✏️ Modifier", use_container_width=True):
+                            new_q = st.number_input("Quantité", min_value=0.0, value=float(it["quantite"]),
+                                                    key=f"fq_{iid}")
+                            cur_p = date.fromisoformat(it["date_peremption"]) if it.get("date_peremption") else None
+                            new_p = st.date_input("Péremption", value=cur_p, key=f"fp_{iid}")
+                            if st.button("Enregistrer", key=f"fs_{iid}", use_container_width=True):
+                                if new_q <= 0:
+                                    api_delete(f"/fridge/{iid}?raison=consomme")
+                                else:
+                                    api_put(f"/fridge/{iid}", {
+                                        "quantite": new_q,
+                                        "date_peremption": str(new_p) if new_p else None,
+                                    })
+                                st.rerun()
+                        with st.popover("🗑️ Retirer", use_container_width=True):
+                            raison = st.radio("Pourquoi ?", list(raisons.keys()), key=f"fr_{iid}")
+                            if st.button("Confirmer", key=f"fd_{iid}", use_container_width=True):
+                                api_delete(f"/fridge/{iid}?raison={raisons[raison]}")
+                                st.rerun()
+
+    # --- Ajouter (hors form pour que la péremption se recalcule en direct) ---
+    with tab_ajout:
+        type_f = st.radio("Type", ["Ingrédient", "Plat cuisiné (recette)"], horizontal=True, key="fr_type")
+        ing_count, rec_count = get_usage_counts(user["id"], API_URL, API_KEY)
+        payload = None
+        nom_ajout = ""
+        duree = 7
+        date_label = "Date d'achat"
+
+        if type_f == "Ingrédient":
+            ing_list = sorted(ingredients_map.values(), key=lambda i: (-ing_count.get(i["id"], 0), i["nom"]))
+            if not ing_list:
+                st.info("Aucun ingrédient disponible")
+            else:
+                k = st.selectbox("Ingrédient", range(len(ing_list)),
+                                 format_func=lambda x: ing_list[x]["nom"], key="fr_ing")
+                ing = ing_list[k]
+                unite = ing.get("unite") or "g"
+                qd = ing.get("quantite_defaut")
+                mesure = "poids"
+                if qd:
+                    mesure = st.radio("Mesure", ["unité", "poids"], horizontal=True, key="fr_mesure",
+                                      format_func=lambda m: f"poids ({unite})" if m == "poids" else "unité")
+                if mesure == "unité":
+                    n = st.number_input("Nombre d'unités", min_value=0.5, value=1.0, step=0.5,
+                                        key=f"fr_n_{ing['id']}")
+                    quantite = n * qd
+                    st.caption(f"≈ {quantite:.0f} {unite}")
+                else:
+                    quantite = st.number_input(f"Quantité ({unite})", min_value=1.0,
+                                               value=float(qd or 100), step=10.0, key=f"fr_q_{ing['id']}")
+                duree = ing.get("duree_conservation") or 7
+                nom_ajout = ing["nom"]
+                payload = {"ingredient_id": ing["id"], "quantite": quantite}
+        else:
+            rec_list = sorted(recipes_map.values(), key=lambda r: (-rec_count.get(r["id"], 0), r["nom"]))
+            if not rec_list:
+                st.info("Aucune recette disponible")
+            else:
+                k = st.selectbox("Recette", range(len(rec_list)),
+                                 format_func=lambda x: rec_list[x]["nom"], key="fr_rec")
+                rec = rec_list[k]
+                quantite = st.number_input("Nombre de portions", min_value=0.5,
+                                           value=float(rec.get("portions") or 1), step=0.5,
+                                           key=f"fr_p_{rec['id']}")
+                deduire = st.checkbox("Je viens de la cuisiner : retirer ses ingrédients du frigo",
+                                      value=True, key="fr_deduire")
+                duree = 3
+                date_label = "Date de préparation"
+                nom_ajout = rec["nom"]
+                payload = {"recipe_id": rec["id"], "quantite": quantite, "deduire_ingredients": deduire}
+
+        if payload:
+            col1, col2 = st.columns(2)
+            d_achat = col1.date_input(date_label, value=today, key="fr_achat")
+            sel_key = payload.get("ingredient_id") or f"r{payload.get('recipe_id')}"
+            d_per = col2.date_input("Date de péremption", value=d_achat + timedelta(days=duree),
+                                    key=f"fr_per_{sel_key}_{d_achat}")
+            st.caption(f"Conservation par défaut : {duree} jour(s)")
+            if st.button("➕ Ajouter au frigo", type="primary", use_container_width=True):
+                payload.update({"date_achat": str(d_achat), "date_peremption": str(d_per)})
+                if api_post(f"/users/{user['id']}/fridge/", payload):
+                    st.session_state["flash_frigo"] = f"« {nom_ajout} » ajouté au frigo"
+                    st.rerun()
+
+    # --- Historique ---
+    with tab_histo:
+        hist = api_get(f"/users/{user['id']}/fridge/history?limit=200") or []
+        if not hist:
+            st.info("Aucun mouvement pour l'instant.")
+        else:
+            actions = {
+                "ajout": "➕ Ajout", "repas": "🍽️ Repas", "cuisine": "🍳 Cuisine",
+                "modification": "✏️ Modification", "consomme": "✅ Consommé",
+                "perime": "🗑️ Périmé / jeté", "suppression": "🗑️ Retiré",
+            }
+            st.dataframe([{
+                "Date": (h.get("created_at") or "")[:10],
+                "Action": actions.get(h["action"], h["action"]),
+                "Aliment": fridge_item_name(h),
+                "Quantité": fridge_item_qty(h, signed=True),
+                "Péremption": h.get("date_peremption") or "",
+            } for h in hist], hide_index=True, use_container_width=True)
+
 
 elif page == "Sport":
     from streamlit_calendar import calendar as st_calendar

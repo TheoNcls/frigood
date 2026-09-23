@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import MealLog, User
 from app.schemas import MealLogCreate, MealLogRead
 from app.auth import verify_api_key
+from app.fridge_service import consume_for_meal
 
 router = APIRouter(tags=["meal_logs"], dependencies=[Depends(verify_api_key)])
 
@@ -17,6 +18,16 @@ def add_meal_log(user_id: int, data: MealLogCreate, db: Session = Depends(get_db
     db.add(log)
     db.commit()
     db.refresh(log)
+
+    # Le repas est déjà enregistré : un souci côté frigo ne doit jamais le bloquer
+    try:
+        updates = consume_for_meal(db, log)
+        db.commit()
+    except Exception:
+        db.rollback()
+        updates = []
+    db.refresh(log)
+    log.fridge_updates = updates
     return log
 
 

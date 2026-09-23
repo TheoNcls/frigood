@@ -42,6 +42,7 @@ def ingredient_from_claude(nom: str = Query(...)):
                     "lipides": {"type": "number", "description": "g pour 100g"},
                     "unite": {"type": "string", "description": "Unité principale (g pour solides, cl pour liquides)"},
                     "quantite_defaut": {"type": "number", "description": "Poids typique d'une unité en g (ex: 130 pour une pomme moyenne). Null si pas d'unité naturelle."},
+                    "duree_conservation": {"type": "integer", "description": "Durée de conservation typique en jours après achat, dans les conditions habituelles (frigo pour le frais, placard pour le sec)"},
                     "nutriments": {
                         "type": "array",
                         "description": "Nutriments supplémentaires importants (fibres, vitamines, minéraux)",
@@ -155,9 +156,22 @@ def ingredient_from_barcode(code: str = Query(...)):
         except (ValueError, TypeError):
             return None
 
+    # Description : generic_name + marque + quantité
+    parts = []
+    generic = product.get("generic_name_fr") or product.get("generic_name") or ""
+    if generic:
+        parts.append(generic)
+    brand = product.get("brands") or ""
+    if brand:
+        parts.append(brand)
+    quantity = product.get("quantity") or ""
+    if quantity:
+        parts.append(quantity)
+    description = " — ".join(parts)
+
     return {
         "nom": product.get("product_name_fr") or product.get("product_name") or "",
-        "description": product.get("generic_name_fr") or product.get("generic_name") or "",
+        "description": description,
         "categorie": categorie,
         "calories": calories,
         "proteines": _f("proteins_100g"),
@@ -165,6 +179,7 @@ def ingredient_from_barcode(code: str = Query(...)):
         "lipides": _f("fat_100g"),
         "unite": "g",
         "quantite_defaut": None,
+        "duree_conservation": 7,
         "nutriments": nutriments_list,
         "code_barre": code,
         "raw_data": json.dumps(data, ensure_ascii=False),
@@ -210,7 +225,7 @@ def update_ingredient(id: int, data: IngredientCreate, db: Session = Depends(get
     ingredient = db.get(Ingredient, id)
     if not ingredient:
         raise HTTPException(status_code=404, detail="Ingrédient introuvable")
-    for key, value in data.model_dump().items():
+    for key, value in data.model_dump(exclude={"source_type", "source_code_barre", "source_raw_data"}).items():
         setattr(ingredient, key, value)
     try:
         db.commit()

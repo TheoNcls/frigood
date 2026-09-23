@@ -17,6 +17,7 @@ class Ingredient(Base):
     lipides = Column(Float, nullable=True)
     unite = Column(String, default="g")
     quantite_defaut = Column(Float, nullable=True)
+    duree_conservation = Column(Integer, nullable=True, default=7, server_default="7")
 
     recettes = relationship("RecipeIngredient", back_populates="ingredient")
     nutriments = relationship("IngredientNutriment", back_populates="ingredient", cascade="all, delete-orphan")
@@ -100,6 +101,8 @@ class User(Base):
     meal_logs = relationship("MealLog", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")
     daily_stats = relationship("DailyStat", back_populates="user", cascade="all, delete-orphan")
+    fridge_items = relationship("FridgeItem", cascade="all, delete-orphan")
+    fridge_history = relationship("FridgeHistory", cascade="all, delete-orphan")
 
     @property
     def garmin_connected(self) -> bool:
@@ -202,3 +205,33 @@ class IngredientSource(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     ingredient = relationship("Ingredient", back_populates="sources")
+
+
+class FridgeItem(Base):
+    __tablename__ = "fridge_items"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=True)
+    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=True)
+    # Unité de base de l'ingrédient (g/cl) ou nombre de portions pour une recette
+    quantite = Column(Float, nullable=False)
+    date_achat = Column(Date, nullable=True)
+    date_peremption = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FridgeHistory(Base):
+    __tablename__ = "fridge_history"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="SET NULL"), nullable=True)
+    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True)
+    quantite = Column(Float, nullable=False)  # positif = ajout, négatif = retrait
+    action = Column(String(30), nullable=False)  # ajout, repas, cuisine, modification, suppression, perime
+    meal_log_id = Column(Integer, ForeignKey("meal_logs.id", ondelete="SET NULL"), nullable=True)
+    date_achat = Column(Date, nullable=True)
+    date_peremption = Column(Date, nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
