@@ -184,7 +184,7 @@ export default function Meals() {
                 kind === "recette" && recipe && (recipe.portions ?? 1) > 1
                   ? `Recette prévue pour ${recipe.portions} portions`
                   : kind === "ingredient" && mesure === "unite" && ingredient
-                    ? `1 unité ≈ ${ingredient.quantite_defaut} ${ingredient.unite}`
+                    ? `1 unité ≈ ${ingredient.quantite_defaut} ${ingredient.unite} · enregistré : ${fmt((parseFloat(quantite) || 0) * (ingredient.quantite_defaut ?? 0))} ${ingredient.unite}`
                     : undefined
               }
             >

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date as date_type
 from app.database import get_db
-from app.models import MealLog, User
+from app.models import Ingredient, MealLog, User
 from app.schemas import MealLogCreate, MealLogRead
 from app.auth import Principal, get_principal, check_user_access
 from app.fridge_service import consume_for_meal
@@ -16,7 +16,14 @@ def add_meal_log(user_id: int, data: MealLogCreate, principal: Principal = Depen
     check_user_access(principal, user_id)
     if not db.get(User, user_id):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    log = MealLog(user_id=user_id, **data.model_dump())
+    values = data.model_dump()
+    # « À l'unité » ne sert qu'à saisir plus vite : on enregistre la quantité réelle en g / ml
+    if values["ingredient_id"] and values["type_mesure"] == "unite" and values["quantite"] is not None:
+        ing = db.get(Ingredient, values["ingredient_id"])
+        if ing and ing.quantite_defaut:
+            values["quantite"] = round(values["quantite"] * ing.quantite_defaut, 2)
+            values["type_mesure"] = "poids"
+    log = MealLog(user_id=user_id, **values)
     db.add(log)
     db.commit()
     db.refresh(log)
