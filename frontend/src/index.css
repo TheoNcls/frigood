@@ -109,3 +109,18 @@ body::before {
     font-size: 0.8rem;
   }
 }
+
+/*
+ * iOS Safari zoome sur un champ dont le texte fait moins de 16 px (et ne dézoome pas) :
+ * sur téléphone, tous les champs passent à 16 px. Le double-tap ne zoome plus ; le pincement reste possible.
+ */
+html {
+  touch-action: manipulation;
+}
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
