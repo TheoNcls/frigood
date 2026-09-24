@@ -20,6 +20,7 @@ class Ingredient(Base):
     quantite_defaut = Column(Float, nullable=True)
     duree_conservation = Column(Integer, nullable=True, default=7, server_default="7")
     nutriscore = Column(String(1), nullable=True)   # a à e
+    greenscore = Column(String(6), nullable=True)   # a-plus, a à f (impact environnemental)
     nova = Column(Integer, nullable=True)           # 1 (brut) à 4 (ultra-transformé)
     regime = Column(String(20), nullable=True)      # vegan, vegetarien, non_vegetarien, incertain
 

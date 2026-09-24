@@ -1,4 +1,12 @@
-import type { Nova, NutriScore, Regime } from "../api/types";
+import type { GreenScore, Nova, NutriScore, Regime } from "../api/types";
+
+export const GREENSCORE_LABELS: Record<GreenScore, string> = {
+  "a-plus": "A+", a: "A", b: "B", c: "C", d: "D", e: "E", f: "F",
+};
+
+const GREENSCORE_COLORS: Record<GreenScore, string> = {
+  "a-plus": "#0b6b37", a: "#1e8f4e", b: "#60ac0e", c: "#eeae0e", d: "#ff6f1e", e: "#df1f1f", f: "#8f1515",
+};
 
 // Couleurs officielles du Nutri-Score
 const NUTRISCORE_COLORS: Record<NutriScore, string> = {
@@ -33,6 +41,20 @@ export function NutriScoreBadge({ grade }: { grade: NutriScore | null }) {
   );
 }
 
+export function GreenScoreBadge({ grade }: { grade: GreenScore | null }) {
+  if (!grade) return null;
+  const label = GREENSCORE_LABELS[grade];
+  return (
+    <span
+      className="badge font-bold"
+      style={{ background: GREENSCORE_COLORS[grade], color: grade === "c" ? "#3f3000" : "white" }}
+      title={`Green-Score ${label} (impact environnemental)`}
+    >
+      🌍 {label}
+    </span>
+  );
+}
+
 export function NovaBadge({ nova }: { nova: Nova | null }) {
   if (!nova) return null;
   const s = NOVA_STYLES[nova];
@@ -46,14 +68,15 @@ export function RegimeBadge({ regime, compact = false }: { regime: Regime | null
 }
 
 export function FoodBadges({ item, compact = false }: {
-  item: { nutriscore: NutriScore | null; nova: Nova | null; regime: Regime | null };
+  item: { nutriscore: NutriScore | null; greenscore: GreenScore | null; nova: Nova | null; regime: Regime | null };
   compact?: boolean;
 }) {
-  if (!item.nutriscore && !item.nova && !item.regime) return null;
+  if (!item.nutriscore && !item.greenscore && !item.nova && !item.regime) return null;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <RegimeBadge regime={item.regime} compact={compact} />
       <NutriScoreBadge grade={item.nutriscore} />
+      <GreenScoreBadge grade={item.greenscore} />
       <NovaBadge nova={item.nova} />
     </span>
   );

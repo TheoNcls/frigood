@@ -6,6 +6,7 @@ import type { Ingredient, Nutriment, Recipe } from "../api/types";
 import { useToast } from "../components/Toast";
 import { Card, ErrorMessage } from "../components/ui";
 import { todayISO } from "../lib/dates";
+import { GREENSCORE_LABELS } from "../components/FoodBadges";
 import { parseNum, useInvalidateCatalog } from "./catalog";
 
 type Row = Record<string, unknown>;
@@ -35,8 +36,9 @@ async function exportAll() {
   sheet(ingredients.map((i) => ({
     Nom: i.nom, Description: i.description, "Catégorie": i.categorie, Calories: i.calories, "Protéines": i.proteines,
     Glucides: i.glucides, Lipides: i.lipides, "Unité": i.unite, "Quantité défaut": i.quantite_defaut,
-    "Conservation (jours)": i.duree_conservation, "Nutri-Score": i.nutriscore?.toUpperCase() ?? null, NOVA: i.nova, "Régime": i.regime,
-  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Conservation (jours)", "Nutri-Score", "NOVA", "Régime"]);
+    "Conservation (jours)": i.duree_conservation, "Nutri-Score": i.nutriscore?.toUpperCase() ?? null,
+    "Green-Score": i.greenscore ? GREENSCORE_LABELS[i.greenscore] : null, NOVA: i.nova, "Régime": i.regime,
+  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Conservation (jours)", "Nutri-Score", "Green-Score", "NOVA", "Régime"]);
 
   sheet(recipes.flatMap((r) => {
     const base = { Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation };
@@ -81,7 +83,7 @@ const IMPORTS: ImportKind[] = [
     key: "ingredients",
     title: "Ingrédients",
     sheet: "Ingrédients",
-    columns: "Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut, Conservation (jours), Nutri-Score, NOVA, Régime",
+    columns: "Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut, Conservation (jours), Nutri-Score, Green-Score, NOVA, Régime",
     run: async (rows, progress) => {
       const res: Result = { ok: 0, skipped: [] };
       for (const [i, r] of rows.entries()) {
@@ -91,7 +93,7 @@ const IMPORTS: ImportKind[] = [
           calories: n(r["Calories"]), proteines: n(r["Protéines"]), glucides: n(r["Glucides"]), lipides: n(r["Lipides"]),
           unite: s(r["Unité"]) ?? "g", quantite_defaut: n(r["Quantité défaut"]),
           duree_conservation: Math.round(n(r["Conservation (jours)"]) ?? 7), source_type: "import",
-          nutriscore: s(r["Nutri-Score"]), nova: n(r["NOVA"]), regime: s(r["Régime"]),
+          nutriscore: s(r["Nutri-Score"]), greenscore: s(r["Green-Score"]), nova: n(r["NOVA"]), regime: s(r["Régime"]),
         })) res.ok++;
         else res.skipped.push(nom ?? `ligne ${i + 2}`);
         progress(i + 1);
@@ -239,7 +241,7 @@ function EnrichCard() {
     <Card title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4" /> Compléter depuis OpenFoodFacts</span>}>
       <p className="mb-3 text-sm text-slate-500">
         Relit les données OpenFoodFacts déjà enregistrées pour les ingrédients scannés, sans rien rescanner :
-        ajoute le Nutri-Score, le NOVA, le régime et les nutriments manquants (B12, zinc, iode…). Rien n'est écrasé.
+        ajoute le Nutri-Score, le Green-Score, le NOVA, le régime et les nutriments manquants (B12, zinc, iode…). Rien n'est écrasé.
       </p>
       <button className="btn-secondary" disabled={enrich.isPending} onClick={() => enrich.mutate()}>
         {enrich.isPending ? "Complétion…" : "Compléter les ingrédients scannés"}

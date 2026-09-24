@@ -43,6 +43,7 @@ class IngredientSourceRead(BaseModel):
 # --- Ingredient ---
 
 REGIMES = ("vegan", "vegetarien", "non_vegetarien", "incertain")
+GREENSCORES = ("a-plus", "a", "b", "c", "d", "e", "f")
 
 class IngredientBase(BaseModel):
     nom: str
@@ -56,8 +57,15 @@ class IngredientBase(BaseModel):
     quantite_defaut: float | None = None
     duree_conservation: int | None = 7
     nutriscore: str | None = None
+    greenscore: str | None = None
     nova: int | None = None
     regime: str | None = None
+
+    @field_validator("greenscore")
+    @classmethod
+    def _check_greenscore(cls, v: str | None) -> str | None:
+        v = (v or "").strip().lower().replace("+", "-plus")
+        return v if v in GREENSCORES else None
 
     @field_validator("nutriscore")
     @classmethod

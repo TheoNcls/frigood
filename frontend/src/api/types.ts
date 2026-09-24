@@ -42,6 +42,7 @@ export interface Ingredient {
   quantite_defaut: number | null;
   duree_conservation: number | null;
   nutriscore: NutriScore | null;
+  greenscore: GreenScore | null;
   nova: Nova | null;
   regime: Regime | null;
   nutriments: IngredientNutriment[];
@@ -49,6 +50,7 @@ export interface Ingredient {
 }
 
 export type NutriScore = "a" | "b" | "c" | "d" | "e";
+export type GreenScore = "a-plus" | "a" | "b" | "c" | "d" | "e" | "f";
 export type Nova = 1 | 2 | 3 | 4;
 export type Regime = "vegan" | "vegetarien" | "non_vegetarien" | "incertain";
 
@@ -73,6 +75,7 @@ export interface IngredientInput {
   quantite_defaut: number | null;
   duree_conservation: number | null;
   nutriscore: NutriScore | null;
+  greenscore: GreenScore | null;
   nova: Nova | null;
   regime: Regime | null;
 }

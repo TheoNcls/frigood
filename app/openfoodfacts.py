@@ -114,6 +114,12 @@ def nutriscore(product: dict) -> str | None:
     return grade if grade in ("a", "b", "c", "d", "e") else None
 
 
+def greenscore(product: dict) -> str | None:
+    # Ex-Eco-Score : le champ garde souvent son ancien nom ; "not-applicable" pour l'eau, "unknown" sinon
+    grade = (product.get("environmental_score_grade") or product.get("ecoscore_grade") or "").strip().lower()
+    return grade if grade in ("a-plus", "a", "b", "c", "d", "e", "f") else None
+
+
 def nova(product: dict) -> int | None:
     try:
         n = int(product.get("nova_group"))
@@ -162,6 +168,7 @@ def parse(product: dict) -> dict:
         "quantite_defaut": serving(product),
         "duree_conservation": 7,
         "nutriscore": nutriscore(product),
+        "greenscore": greenscore(product),
         "nova": nova(product),
         "regime": diet,
         "regime_causes": causes,

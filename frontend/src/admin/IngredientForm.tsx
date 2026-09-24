@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useIngredients } from "../api/queries";
-import type { IngredientInput, IngredientSuggestion, Nova, NutriScore, NutrimentSuggestion, Regime } from "../api/types";
-import { REGIME_INFO } from "../components/FoodBadges";
+import type { GreenScore, IngredientInput, IngredientSuggestion, Nova, NutriScore, NutrimentSuggestion, Regime } from "../api/types";
+import { GREENSCORE_LABELS, REGIME_INFO } from "../components/FoodBadges";
 import { Field } from "../components/ui";
 import { parseNum } from "./catalog";
 
@@ -30,6 +30,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
     quantite_defaut: str(initial.quantite_defaut),
     duree_conservation: str(initial.duree_conservation ?? 7),
     nutriscore: initial.nutriscore ?? "",
+    greenscore: initial.greenscore ?? "",
     nova: str(initial.nova),
     regime: initial.regime ?? "",
   });
@@ -65,6 +66,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         quantite_defaut: qd && qd > 0 ? qd : null,
         duree_conservation: duree && duree > 0 ? Math.round(duree) : 7,
         nutriscore: (f.nutriscore || null) as NutriScore | null,
+        greenscore: (f.greenscore || null) as GreenScore | null,
         nova: f.nova ? (Number(f.nova) as Nova) : null,
         regime: (f.regime || null) as Regime | null,
       },
@@ -151,7 +153,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         </Field>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="Régime">
           <select className="input" value={f.regime} onChange={set("regime")}>
             <option value="">Inconnu</option>
@@ -164,6 +166,12 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
           <select className="input" value={f.nutriscore} onChange={set("nutriscore")}>
             <option value="">—</option>
             {["a", "b", "c", "d", "e"].map((g) => <option key={g} value={g}>{g.toUpperCase()}</option>)}
+          </select>
+        </Field>
+        <Field label="Green-Score" hint="impact environnemental">
+          <select className="input" value={f.greenscore} onChange={set("greenscore")}>
+            <option value="">—</option>
+            {(Object.keys(GREENSCORE_LABELS) as GreenScore[]).map((g) => <option key={g} value={g}>{GREENSCORE_LABELS[g]}</option>)}
           </select>
         </Field>
         <Field label="NOVA" hint="1 brut … 4 ultra-transformé">

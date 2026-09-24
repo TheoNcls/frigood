@@ -299,6 +299,7 @@ function EditIngredient({ ingredient, onDeleted }: { ingredient: Ingredient; onD
           quantite_defaut: ingredient.quantite_defaut,
           duree_conservation: ingredient.duree_conservation,
           nutriscore: ingredient.nutriscore,
+          greenscore: ingredient.greenscore,
           nova: ingredient.nova,
           regime: ingredient.regime,
         }}
