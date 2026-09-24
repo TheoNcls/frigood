@@ -394,6 +394,17 @@ function SportCalendar() {
   const openDay = (iso: string) => {
     if (iso <= today) navigate(`/historique?date=${iso}`);
   };
+  const [openedActivity, setOpenedActivity] = useState<Activity | null>(null);
+
+  // Activité : fiche détaillée sur place ; repas : historique du jour
+  function onEventClick(arg: EventClickArg) {
+    const id = arg.event.id;
+    if (id.startsWith("a")) {
+      const activity = (acts.data ?? []).find((a) => a.id === Number(id.slice(1)));
+      if (activity) return setOpenedActivity(activity);
+    }
+    if (arg.event.start) openDay(toISODate(arg.event.start));
+  }
 
   function onDatesSet(arg: DatesSetArg) {
     const from = toISODate(arg.start);
@@ -403,8 +414,9 @@ function SportCalendar() {
 
   return (
     <Card title="Calendrier">
+      {openedActivity && <ActivityDetail activity={openedActivity} onClose={() => setOpenedActivity(null)} />}
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600">
-        <span className="text-slate-500">Clique sur un jour pour ouvrir son historique ·</span>
+        <span className="text-slate-500">Clique sur une activité pour son détail, sur un jour pour son historique ·</span>
         <Legend color="#059669" label="Repas" />
         <Legend color="#ea580c" label="Activité Garmin" />
         <Legend color="#2563eb" label="Activité manuelle" />
@@ -412,7 +424,7 @@ function SportCalendar() {
       <FullCalendar
         plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
         dateClick={(arg: DateClickArg) => openDay(toISODate(arg.date))}
-        eventClick={(arg: EventClickArg) => { if (arg.event.start) openDay(toISODate(arg.event.start)); }}
+        eventClick={onEventClick}
         dayCellClassNames={(arg) => (toISODate(arg.date) <= today ? "fc-day-clickable" : "")}
         locale={frLocale}
         initialView={window.innerWidth < 640 ? "listWeek" : "dayGridMonth"}
