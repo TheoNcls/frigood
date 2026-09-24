@@ -1,8 +1,8 @@
-import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
 import { useActivities, useIngredients, useMealLogs, useRecipes } from "../api/queries";
 import { addDays, parseISODate, todayISO } from "../lib/dates";
 import { logMacros } from "../lib/nutrition";
+import DaySummary from "./DaySummary";
 import { Card } from "./ui";
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
@@ -18,7 +18,7 @@ function shortKcal(kcal: number): string {
 
 /** Semaine en cours et suivante (lundi → dimanche) : repas, activités et calories de chaque jour. */
 export default function WeekStrip() {
-  const navigate = useNavigate();
+  const [openedDay, setOpenedDay] = useState<string | null>(null);
   const today = todayISO();
   const monday = mondayOf(today);
   const days = Array.from({ length: 14 }, (_, i) => addDays(monday, i));
@@ -48,6 +48,7 @@ export default function WeekStrip() {
 
   return (
     <Card title="Cette semaine et la suivante">
+      {openedDay && <DaySummary date={openedDay} onClose={() => setOpenedDay(null)} />}
       <div className="space-y-2">
         {weeks.map((week, w) => (
           <div key={w} className="grid grid-cols-7 gap-1 sm:gap-2">
@@ -61,8 +62,8 @@ export default function WeekStrip() {
                   key={d}
                   type="button"
                   disabled={isFuture}
-                  onClick={() => navigate(`/historique?date=${d}`)}
-                  title={isFuture ? undefined : "Ouvrir l'historique du jour"}
+                  onClick={() => setOpenedDay(d)}
+                  title={isFuture ? undefined : "Voir le résumé du jour"}
                   className={`flex min-h-[4.25rem] flex-col items-center rounded-xl px-0.5 py-1.5 text-center transition sm:min-h-[4.75rem] ${
                     isToday
                       ? "bg-brand-600 text-white shadow-sm"

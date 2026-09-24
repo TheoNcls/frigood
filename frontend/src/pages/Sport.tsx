@@ -4,7 +4,6 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import listPlugin from "@fullcalendar/list";
 import interactionPlugin, { type DateClickArg } from "@fullcalendar/interaction";
-import { useNavigate } from "react-router-dom";
 import frLocale from "@fullcalendar/core/locales/fr";
 import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import { RefreshCw, Trash2, Unplug, Watch } from "lucide-react";
@@ -13,6 +12,7 @@ import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipe
 import type { Activity, GarminSyncResult } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import ActivityDetail from "../components/ActivityDetail";
+import DaySummary from "../components/DaySummary";
 import { useToast } from "../components/Toast";
 import { Card, Empty, Field, PageHeader } from "../components/ui";
 import { addDays, formatFull, toISODate, todayISO } from "../lib/dates";
@@ -390,9 +390,9 @@ function SportCalendar() {
     return out;
   }, [acts.data, meals.data, types.byId, ingredients.byId, recipes.byId]);
 
-  const navigate = useNavigate();
+  const [openedDay, setOpenedDay] = useState<string | null>(null);
   const openDay = (iso: string) => {
-    if (iso <= today) navigate(`/historique?date=${iso}`);
+    if (iso <= today) setOpenedDay(iso);
   };
   const [openedActivity, setOpenedActivity] = useState<Activity | null>(null);
 
@@ -415,8 +415,9 @@ function SportCalendar() {
   return (
     <Card title="Calendrier">
       {openedActivity && <ActivityDetail activity={openedActivity} onClose={() => setOpenedActivity(null)} />}
+      {openedDay && <DaySummary date={openedDay} onClose={() => setOpenedDay(null)} />}
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600">
-        <span className="text-slate-500">Clique sur une activité pour son détail, sur un jour pour son historique ·</span>
+        <span className="text-slate-500">Clique sur une activité pour son détail, sur un jour pour son résumé ·</span>
         <Legend color="#059669" label="Repas" />
         <Legend color="#ea580c" label="Activité Garmin" />
         <Legend color="#2563eb" label="Activité manuelle" />
