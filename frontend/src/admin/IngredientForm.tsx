@@ -96,7 +96,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
       </Field>
 
       <div>
-        <div className="label">Valeurs pour 100 g</div>
+        <div className="label">Valeurs pour 100 {f.unite === "ml" ? "ml" : "g"}</div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {num("calories", "Calories (kcal)")}
           {num("proteines", "Protéines (g)")}
@@ -106,10 +106,17 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <Field label="Unité" hint="g ou cl">
-          <input className="input" required value={f.unite} onChange={set("unite")} />
+        <Field label="Unité" hint={f.unite === "ml" ? "liquide" : "solide"}>
+          <select className="input" value={f.unite} onChange={set("unite")}>
+            <option value="g">g</option>
+            <option value="ml">ml</option>
+            {!["g", "ml"].includes(f.unite) && <option value={f.unite}>{f.unite}</option>}
+          </select>
         </Field>
-        <Field label="Poids d'une unité" hint="ex. 130 pour une pomme">
+        <Field
+          label={f.unite === "ml" ? "Volume d'une unité (ml)" : "Poids d'une unité (g)"}
+          hint={f.unite === "ml" ? "ex. 250 pour un verre" : "ex. 130 pour une pomme"}
+        >
           <input className="input" type="number" min={0} step="any" value={f.quantite_defaut} onChange={set("quantite_defaut")} />
         </Field>
         <Field label="Conservation (jours)">
@@ -138,7 +145,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
                   disabled={!n.checked}
                   onChange={(e) => setNuts(nuts.map((x, j) => (j === i ? { ...x, valeurStr: e.target.value } : x)))}
                 />
-                <span className="w-20 whitespace-nowrap text-slate-500">{n.unite} / 100 g</span>
+                <span className="w-20 whitespace-nowrap text-slate-500">{n.unite} / 100 {f.unite === "ml" ? "ml" : "g"}</span>
               </li>
             ))}
           </ul>

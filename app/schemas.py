@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from datetime import date as date_type, datetime as datetime_type
 
 
@@ -53,6 +53,19 @@ class IngredientBase(BaseModel):
     unite: str = "g"
     quantite_defaut: float | None = None
     duree_conservation: int | None = 7
+
+    @model_validator(mode="after")
+    def _normalize_unit(self):
+        # Les valeurs sont pour 100 g ou 100 ml et les calculs lisent la quantité comme des g / ml :
+        # toute autre unité fausserait les calories (25 cl compteraient pour 25 ml)
+        unit = (self.unite or "g").strip().lower()
+        factor = {"cl": 10, "l": 1000, "kg": 1000}.get(unit)
+        if factor:
+            unit = "g" if unit == "kg" else "ml"
+            if self.quantite_defaut:
+                self.quantite_defaut = round(self.quantite_defaut * factor, 2)
+        self.unite = unit
+        return self
 
 class IngredientCreate(IngredientBase):
     # Champs optionnels pour traçabilité source (non stockés sur Ingredient)

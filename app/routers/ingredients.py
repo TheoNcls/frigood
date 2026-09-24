@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 import requests as http_requests
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
@@ -42,8 +43,8 @@ def ingredient_from_claude(nom: str = Query(...)):
                     "proteines": {"type": "number", "description": "g pour 100g"},
                     "glucides": {"type": "number", "description": "g pour 100g"},
                     "lipides": {"type": "number", "description": "g pour 100g"},
-                    "unite": {"type": "string", "description": "Unité principale (g pour solides, cl pour liquides)"},
-                    "quantite_defaut": {"type": "number", "description": "Poids typique d'une unité en g (ex: 130 pour une pomme moyenne). Null si pas d'unité naturelle."},
+                    "unite": {"type": "string", "enum": ["g", "ml"], "description": "g pour les solides, ml pour les liquides (valeurs alors pour 100 ml)"},
+                    "quantite_defaut": {"type": "number", "description": "Poids en g (ou volume en ml pour un liquide) d'une unité typique : 130 pour une pomme, 250 pour un verre de jus. Null si pas d'unité naturelle."},
                     "duree_conservation": {"type": "integer", "description": "Durée de conservation typique en jours après achat, dans les conditions habituelles (frigo pour le frais, placard pour le sec)"},
                     "nutriments": {
                         "type": "array",
@@ -68,7 +69,7 @@ def ingredient_from_claude(nom: str = Query(...)):
             "Utilise les tables officielles (CIQUAL France ou USDA). "
             "Inclus les principaux nutriments supplémentaires : fibres alimentaires, "
             "vitamines et minéraux importants pour cet aliment. "
-            "Pour les liquides (jus, lait, huile...) utilise 'cl' comme unité."
+            "Pour les liquides (jus, lait, huile...) utilise 'ml' comme unité et donne les valeurs pour 100 ml."
         )
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -105,6 +106,21 @@ def ingredient_from_claude(nom: str = Query(...)):
         raise HTTPException(status_code=500, detail=f"Erreur Claude API : {str(e)}")
 
 
+@router.get("/by_barcode/{code}", response_model=IngredientRead)
+def ingredient_by_barcode(code: str, db: Session = Depends(get_db)):
+    """Ingrédient du catalogue déjà créé depuis ce code-barre (EAN-13 et UPC-A comparés sans les zéros de tête)."""
+    digits = code.strip().lstrip("0")
+    if not digits:
+        raise HTTPException(status_code=404, detail="Code-barre inconnu du catalogue")
+    source = (db.query(IngredientSource)
+              .filter(func.ltrim(IngredientSource.code_barre, "0") == digits)
+              .order_by(IngredientSource.id.desc())
+              .first())
+    if not source:
+        raise HTTPException(status_code=404, detail="Code-barre inconnu du catalogue")
+    return source.ingredient
+
+
 def _name_with_brand(name: str, brands: str) -> str:
     """« Steak » + « Planted » → « Steak (Planted) » : première marque seulement, sauf si déjà dans le nom."""
     name = name.strip()
@@ -114,6 +130,14 @@ def _name_with_brand(name: str, brands: str) -> str:
     if not brand or brand.lower() in name.lower():
         return name
     return f"{name} ({brand})" if name else brand
+
+
+def _off_unit(product: dict) -> str:
+    """ml pour les boissons et autres liquides : OpenFoodFacts donne alors les valeurs pour 100 ml."""
+    units = {(product.get(k) or "").strip().lower() for k in ("product_quantity_unit", "serving_quantity_unit")}
+    if "ml" in units or product.get("nutrition_data_per") == "100ml":
+        return "ml"
+    return "g"
 
 
 def _serving_grams(product: dict) -> float | None:
@@ -224,7 +248,7 @@ def ingredient_from_barcode(code: str = Query(...)):
         "proteines": _f("proteins_100g"),
         "glucides": _f("carbohydrates_100g"),
         "lipides": _f("fat_100g"),
-        "unite": "g",
+        "unite": _off_unit(product),
         "quantite_defaut": _serving_grams(product),
         "duree_conservation": 7,
         "nutriments": nutriments_list,

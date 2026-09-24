@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Barcode, Plus, Search, Sparkles, Trash2 } from "lucide-react";
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import { useIngredients, useNutriments } from "../api/queries";
 import type { Ingredient, IngredientInput, IngredientSuggestion, NutrimentSuggestion } from "../api/types";
 import Modal from "../components/Modal";
@@ -139,7 +139,7 @@ function AddIngredient({ onDone }: { onDone: (createdId?: number) => void }) {
       />
 
       {!suggestion && mode === "claude" && <ClaudeLookup onFound={setSuggestion} />}
-      {!suggestion && mode === "barcode" && <BarcodeLookup onFound={setSuggestion} />}
+      {!suggestion && mode === "barcode" && <BarcodeLookup onFound={setSuggestion} onExisting={(id) => onDone(id)} />}
 
       {(suggestion || mode === "manual") && (
         <>
@@ -184,19 +184,57 @@ function ClaudeLookup({ onFound }: { onFound: (s: IngredientSuggestion) => void 
   );
 }
 
-function BarcodeLookup({ onFound }: { onFound: (s: IngredientSuggestion) => void }) {
+function BarcodeLookup({ onFound, onExisting }: {
+  onFound: (s: IngredientSuggestion) => void;
+  onExisting: (id: number) => void;
+}) {
   const [how, setHow] = useState<"scan" | "type">("scan");
   const [code, setCode] = useState("");
   const [scanKey, setScanKey] = useState(0);
+  const [existing, setExisting] = useState<Ingredient | null>(null);
   const lookup = useMutation({
-    mutationFn: (c: string) => api<IngredientSuggestion>("/ingredients/from_barcode", { query: { code: c } }),
-    onSuccess: onFound,
+    mutationFn: async (c: string): Promise<{ existing?: Ingredient; suggestion?: IngredientSuggestion }> => {
+      // Déjà scanné : inutile d'interroger OpenFoodFacts pour finir sur « existe déjà »
+      try {
+        return { existing: await api<Ingredient>(`/ingredients/by_barcode/${encodeURIComponent(c)}`) };
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) throw e;
+      }
+      return { suggestion: await api<IngredientSuggestion>("/ingredients/from_barcode", { query: { code: c } }) };
+    },
+    onSuccess: (r) => (r.existing ? setExisting(r.existing) : onFound(r.suggestion!)),
   });
 
   function search(c: string) {
     const clean = c.replace(/\s/g, "");
     setCode(clean);
+    setExisting(null);
     if (clean) lookup.mutate(clean);
+  }
+
+  function scanAgain() {
+    lookup.reset();
+    setExisting(null);
+    setCode("");
+    setScanKey((k) => k + 1);
+  }
+
+  if (existing) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl bg-sky-50 px-3 py-3 text-sm text-sky-900">
+          <div className="font-medium">Déjà dans le catalogue : {existing.nom}</div>
+          <div className="mt-0.5 text-xs text-sky-800">
+            Code {code}
+            {existing.calories !== null ? ` · ${fmt(existing.calories)} kcal / 100 ${existing.unite === "ml" ? "ml" : "g"}` : ""}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-primary" onClick={() => onExisting(existing.id)}>Ouvrir la fiche</button>
+          <button className="btn-secondary" onClick={scanAgain}>Scanner un autre produit</button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -219,7 +257,7 @@ function BarcodeLookup({ onFound }: { onFound: (s: IngredientSuggestion) => void
         <div className="space-y-2">
           <ErrorMessage error={lookup.error} />
           {how === "scan" && (
-            <button className="btn-secondary" onClick={() => { lookup.reset(); setScanKey((k) => k + 1); }}>Scanner un autre produit</button>
+            <button className="btn-secondary" onClick={scanAgain}>Scanner un autre produit</button>
           )}
         </div>
       )}
