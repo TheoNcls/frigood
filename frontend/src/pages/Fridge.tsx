@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
 import { api } from "../api/client";
@@ -18,6 +18,9 @@ import { fmt } from "../lib/nutrition";
 import { useUsageCounts } from "../lib/usage";
 
 type Tab = "contenu" | "ajouter" | "historique";
+
+// Caméra et lecteur de code-barre chargés seulement au premier scan
+const ScanFoodModal = lazy(() => import("../components/ScanFoodModal"));
 
 function useInvalidateFridge() {
   const queryClient = useQueryClient();
@@ -203,6 +206,15 @@ function AddForm({ onDone }: { onDone: () => void }) {
   const [deduire, setDeduire] = useState(true);
   const [dateAchat, setDateAchat] = useState(todayISO());
   const [peremption, setPeremption] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+
+  // L'ingrédient scanné est passé directement : il peut venir d'être créé et ne pas encore être dans la liste
+  function chooseIngredient(id: number, ing = ingredients.byId.get(id)) {
+    setIngredientId(id);
+    setPeremption(null);
+    setMesure("poids");
+    setQuantite(String(ing?.quantite_defaut ?? 100));
+  }
 
   const ingredient = ingredientId ? ingredients.byId.get(ingredientId) : undefined;
   const recipe = recipeId ? recipes.byId.get(recipeId) : undefined;
@@ -243,6 +255,11 @@ function AddForm({ onDone }: { onDone: () => void }) {
 
   return (
     <Card>
+      {scanning && (
+        <Suspense fallback={null}>
+          <ScanFoodModal onSelect={(ing) => chooseIngredient(ing.id, ing)} onClose={() => setScanning(false)} />
+        </Suspense>
+      )}
       <form onSubmit={submit} className="max-w-xl space-y-4">
         <Segmented
           value={kind}
@@ -257,7 +274,8 @@ function AddForm({ onDone }: { onDone: () => void }) {
               items={ingredients.list}
               counts={usage.ingredients}
               value={ingredientId}
-              onChange={(id) => { setIngredientId(id); setPeremption(null); setMesure("poids"); setQuantite(String(ingredients.byId.get(id)?.quantite_defaut ?? 100)); }}
+              onChange={chooseIngredient}
+              onScan={() => setScanning(true)}
             />
             {ingredient?.quantite_defaut ? (
               <Segmented

@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { User } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import { useToast } from "../components/Toast";
+import { usePreferences } from "../lib/preferences";
 import { Card, Field, PageHeader } from "../components/ui";
 
 function numOrNull(v: string): number | null {
@@ -16,6 +17,7 @@ export default function Profile() {
     <div className="max-w-2xl space-y-4">
       <PageHeader title="Profil" />
       <ProfileForm />
+      <PreferencesCard />
       <PasswordForm />
     </div>
   );
@@ -67,6 +69,36 @@ function ProfileForm() {
         </div>
         <button type="submit" className="btn-primary" disabled={save.isPending}>Enregistrer</button>
       </form>
+    </Card>
+  );
+}
+
+function PreferencesCard() {
+  const { showPhotos, setPreference } = usePreferences();
+  return (
+    <Card title="Préférences">
+      <label className="flex cursor-pointer items-start justify-between gap-4">
+        <span>
+          <span className="block text-sm font-medium text-slate-800">Photos des produits</span>
+          <span className="block text-xs text-slate-500">
+            {showPhotos
+              ? "Photo du produit quand elle existe, sinon l'emoji de sa catégorie."
+              : "Emoji de la catégorie uniquement : aucune image n'est téléchargée."}
+            {" "}Réglage propre à cet appareil.
+          </span>
+        </span>
+        <span className="relative mt-0.5 inline-flex shrink-0">
+          <input
+            type="checkbox"
+            role="switch"
+            className="peer sr-only"
+            checked={showPhotos}
+            onChange={(e) => setPreference("showPhotos", e.target.checked)}
+          />
+          <span className="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-100" />
+          <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+        </span>
+      </label>
     </Card>
   );
 }

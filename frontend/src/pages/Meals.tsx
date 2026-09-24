@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { lazy, Suspense, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { api } from "../api/client";
@@ -14,6 +14,9 @@ import {
   MOMENTS, MOMENT_LABELS, defaultMoment, describeLog, fmt, logMacros, totalMacros,
 } from "../lib/nutrition";
 import { useUsageCounts } from "../lib/usage";
+
+// Caméra et lecteur de code-barre chargés seulement au premier scan
+const ScanFoodModal = lazy(() => import("../components/ScanFoodModal"));
 
 export default function Meals() {
   const user = useCurrentUser();
@@ -34,6 +37,7 @@ export default function Meals() {
   const [mesure, setMesure] = useState<TypeMesure>("poids");
   const [quantite, setQuantite] = useState("1");
   const [notes, setNotes] = useState("");
+  const [scanning, setScanning] = useState(false);
 
   const recipe = recipeId ? recipes.byId.get(recipeId) : undefined;
   const ingredient = ingredientId ? ingredients.byId.get(ingredientId) : undefined;
@@ -41,10 +45,11 @@ export default function Meals() {
   const fridgeIngIds = useMemo(() => new Set((fridge.data ?? []).flatMap((f) => (f.ingredient_id ? [f.ingredient_id] : []))), [fridge.data]);
   const fridgeRecIds = useMemo(() => new Set((fridge.data ?? []).flatMap((f) => (f.recipe_id ? [f.recipe_id] : []))), [fridge.data]);
 
-  function chooseIngredient(id: number) {
+  // L'ingrédient scanné est passé directement : il peut venir d'être créé et ne pas encore être dans la liste
+  function chooseIngredient(id: number, ing = ingredients.byId.get(id)) {
     setIngredientId(id);
     setMesure("poids");
-    setQuantite(String(ingredients.byId.get(id)?.quantite_defaut ?? 100));
+    setQuantite(String(ing?.quantite_defaut ?? 100));
   }
 
   function chooseMesure(m: TypeMesure) {
@@ -107,6 +112,11 @@ export default function Meals() {
 
   return (
     <div className="space-y-4">
+      {scanning && (
+        <Suspense fallback={null}>
+          <ScanFoodModal onSelect={(ing) => chooseIngredient(ing.id, ing)} onClose={() => setScanning(false)} />
+        </Suspense>
+      )}
       <PageHeader
         title="Repas"
         subtitle={formatLong(date)}
@@ -145,7 +155,15 @@ export default function Meals() {
             {kind === "recette" ? (
               <FoodPicker label="Recette" items={recipes.list} counts={usage.recipes} inFridge={fridgeRecIds} value={recipeId} onChange={chooseRecipe} />
             ) : (
-              <FoodPicker label="Ingrédient" items={ingredients.list} counts={usage.ingredients} inFridge={fridgeIngIds} value={ingredientId} onChange={chooseIngredient} />
+              <FoodPicker
+                label="Ingrédient"
+                items={ingredients.list}
+                counts={usage.ingredients}
+                inFridge={fridgeIngIds}
+                value={ingredientId}
+                onChange={chooseIngredient}
+                onScan={() => setScanning(true)}
+              />
             )}
 
             {kind === "ingredient" && ingredient?.quantite_defaut ? (

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Barcode, Search } from "lucide-react";
 import { sortByUsage } from "../lib/usage";
 
 interface Item {
@@ -7,13 +7,14 @@ interface Item {
   nom: string;
 }
 
-export default function FoodPicker<T extends Item>({ label, items, counts, inFridge, value, onChange }: {
+export default function FoodPicker<T extends Item>({ label, items, counts, inFridge, value, onChange, onScan }: {
   label: string;
   items: T[];
   counts: Map<number, number>;
   inFridge?: Set<number>;
   value: number | null;
   onChange: (id: number) => void;
+  onScan?: () => void;
 }) {
   const [search, setSearch] = useState("");
 
@@ -27,7 +28,14 @@ export default function FoodPicker<T extends Item>({ label, items, counts, inFri
 
   return (
     <div>
-      <span className="label">{label}</span>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="label mb-0">{label}</span>
+        {onScan && (
+          <button type="button" className="btn-ghost py-1 text-brand-700" onClick={onScan}>
+            <Barcode className="h-4 w-4" /> Scanner
+          </button>
+        )}
+      </div>
       <div className="relative mb-2">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input

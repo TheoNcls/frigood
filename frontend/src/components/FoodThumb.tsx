@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePreferences } from "../lib/preferences";
 
 // Emoji de secours d'après la catégorie ou le nom (ingrédients sans photo : Claude, saisie manuelle)
 const EMOJI_RULES: [RegExp, string][] = [
@@ -31,8 +32,10 @@ export default function FoodThumb({ nom, categorie, imageUrl, size = "sm", recip
   size?: keyof typeof SIZES;
   recipe?: boolean;
 }) {
+  const { showPhotos } = usePreferences();
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
-  const showImage = !!imageUrl && status !== "failed";
+  // Photos désactivées : pas de balise <img>, donc rien n'est téléchargé
+  const showImage = showPhotos && !!imageUrl && status !== "failed";
 
   // L'emoji reste visible tant que la photo n'est pas chargée : une image lente ou introuvable
   // (le serveur d'OpenFoodFacts ne répond parfois pas du tout) ne laisse jamais de case vide

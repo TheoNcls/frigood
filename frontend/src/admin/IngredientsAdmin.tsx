@@ -11,7 +11,7 @@ import { useToast } from "../components/Toast";
 import { Card, ConfirmButton, Empty, ErrorMessage, Field, Segmented, Spinner } from "../components/ui";
 import { formatFull } from "../lib/dates";
 import { fmt } from "../lib/nutrition";
-import BarcodeScanner from "./BarcodeScanner";
+import BarcodeScanner from "../components/BarcodeScanner";
 import IngredientForm from "./IngredientForm";
 import { SOURCE_LABELS, createIngredient, parseNum, useInvalidateCatalog, type SourceType } from "./catalog";
 
