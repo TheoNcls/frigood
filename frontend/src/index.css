@@ -83,6 +83,14 @@ body::before {
 .fc .fc-day-clickable:hover {
   background: #f0fdf4;
 }
+/* Tâche faite : estompée et barrée */
+.fc .fc-task-done {
+  opacity: 0.5;
+}
+.fc .fc-task-done .fc-event-title,
+.fc .fc-task-done .fc-list-event-title {
+  text-decoration: line-through;
+}
 @media (max-width: 640px) {
   .fc .fc-toolbar {
     flex-wrap: wrap;

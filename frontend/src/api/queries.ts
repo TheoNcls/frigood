@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 import { useAuth } from "../auth/AuthContext";
 import type {
-  Activity, ActivityType, DailyStat, FridgeHistory, FridgeItem, Ingredient, MealLog, Nutriment, Recipe,
+  Activity, ActivityType, DailyStat, FridgeHistory, FridgeItem, Ingredient, MealLog, Nutriment, Recipe, TaskOccurrence,
 } from "./types";
 
 const CATALOG_STALE = 2 * 60 * 1000;
@@ -109,5 +109,13 @@ export function useFridgeHistory() {
   return useQuery({
     queryKey: ["fridge_history", uid],
     queryFn: () => api<FridgeHistory[]>(`/users/${uid}/fridge/history`, { query: { limit: 200 } }),
+  });
+}
+
+export function useTasks(date_from: string, date_to: string) {
+  const uid = useUserId();
+  return useQuery({
+    queryKey: ["tasks", uid, date_from, date_to],
+    queryFn: () => api<TaskOccurrence[]>(`/users/${uid}/tasks/`, { query: { date_from, date_to } }),
   });
 }

@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, Text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, Text, UniqueConstraint
 from sqlalchemy.orm import deferred, relationship
 from app.database import Base
 
@@ -111,6 +111,7 @@ class User(Base):
     daily_stats = relationship("DailyStat", back_populates="user", cascade="all, delete-orphan")
     fridge_items = relationship("FridgeItem", cascade="all, delete-orphan")
     fridge_history = relationship("FridgeHistory", cascade="all, delete-orphan")
+    tasks = relationship("Task", cascade="all, delete-orphan")
 
     @property
     def garmin_connected(self) -> bool:
@@ -257,3 +258,32 @@ class FridgeHistory(Base):
     date_peremption = Column(Date, nullable=True)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    titre = Column(String(200), nullable=False)
+    notes = Column(String, nullable=True)
+    date = Column(Date, nullable=False)                 # date de la tâche, ou première occurrence si récurrente
+    heure = Column(String(5), nullable=True)            # "HH:MM", facultative
+    recurrence = Column(String(10), nullable=True)      # None, daily, weekly, monthly
+    recurrence_fin = Column(Date, nullable=True)        # dernière occurrence possible, facultative
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    completions = relationship("TaskCompletion", cascade="all, delete-orphan", back_populates="task")
+
+
+class TaskCompletion(Base):
+    """Une occurrence cochée : sert aussi d'historique (quand la tâche a été faite)."""
+    __tablename__ = "task_completions"
+    __table_args__ = (UniqueConstraint("task_id", "date", name="uq_task_completion_day"),)
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    done_at = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("Task", back_populates="completions")

@@ -334,3 +334,76 @@ class FridgeHistoryRead(BaseModel):
     created_at: datetime_type | None = None
 
     model_config = {"from_attributes": True}
+
+
+# --- Tâches ---
+
+RECURRENCES = ("daily", "weekly", "monthly")
+
+
+class TaskBase(BaseModel):
+    titre: str
+    notes: str | None = None
+    date: date_type
+    heure: str | None = None
+    recurrence: str | None = None
+    recurrence_fin: date_type | None = None
+
+    @field_validator("titre")
+    @classmethod
+    def _check_titre(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Le titre est obligatoire")
+        return v[:200]
+
+    @field_validator("heure")
+    @classmethod
+    def _check_heure(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        hh, _, mm = v.partition(":")
+        if not (hh.isdigit() and mm.isdigit() and 0 <= int(hh) < 24 and 0 <= int(mm) < 60):
+            raise ValueError("Heure invalide (format HH:MM)")
+        return f"{int(hh):02d}:{int(mm):02d}"
+
+    @field_validator("recurrence")
+    @classmethod
+    def _check_recurrence(cls, v: str | None) -> str | None:
+        v = (v or "").strip().lower()
+        return v if v in RECURRENCES else None
+
+    @model_validator(mode="after")
+    def _check_fin(self):
+        if self.recurrence is None or (self.recurrence_fin and self.recurrence_fin < self.date):
+            self.recurrence_fin = None
+        return self
+
+
+class TaskCreate(TaskBase):
+    pass
+
+
+class TaskRead(TaskBase):
+    id: int
+    model_config = {"from_attributes": True}
+
+
+class TaskOccurrence(BaseModel):
+    """Une tâche à une date donnée : les tâches récurrentes ont une occurrence par jour concerné."""
+    task_id: int
+    date: date_type
+    titre: str
+    notes: str | None = None
+    heure: str | None = None
+    recurrence: str | None = None
+    recurrence_fin: date_type | None = None
+    serie_debut: date_type
+    fait: bool
+    done_at: datetime_type | None = None
+
+
+class TaskDone(BaseModel):
+    date: date_type
+    fait: bool = True

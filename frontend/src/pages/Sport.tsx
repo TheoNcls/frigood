@@ -8,11 +8,12 @@ import frLocale from "@fullcalendar/core/locales/fr";
 import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import { RefreshCw, Trash2, Unplug, Watch } from "lucide-react";
 import { ApiError, api } from "../api/client";
-import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes } from "../api/queries";
-import type { Activity, GarminSyncResult } from "../api/types";
+import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
+import type { Activity, GarminSyncResult, TaskOccurrence } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import ActivityDetail from "../components/ActivityDetail";
 import DaySummary from "../components/DaySummary";
+import { TASK_COLOR, TaskForm } from "../components/Tasks";
 import { useToast } from "../components/Toast";
 import { Card, Empty, Field, PageHeader } from "../components/ui";
 import { addDays, formatFull, toISODate, todayISO } from "../lib/dates";
@@ -357,6 +358,8 @@ function ManualActivityForm() {
   );
 }
 
+const SPORT_COLOR = "#ea580c";
+
 function SportCalendar() {
   const today = todayISO();
   const [range, setRange] = useState({ from: addDays(today, -40), to: addDays(today, 40) });
@@ -365,6 +368,7 @@ function SportCalendar() {
   const recipes = useRecipes();
   const acts = useActivities({ date_from: range.from, date_to: range.to });
   const meals = useMealLogs({ date_from: range.from, date_to: range.to });
+  const tasks = useTasks(range.from, range.to);
 
   const events = useMemo<EventInput[]>(() => {
     const out: EventInput[] = (acts.data ?? []).map((a) => {
@@ -374,7 +378,7 @@ function SportCalendar() {
         title: [activityLabel(a, types.byId), details].filter(Boolean).join(" · "),
         start: a.date,
         allDay: true,
-        color: a.source === "garmin" ? "#ea580c" : "#2563eb",
+        color: SPORT_COLOR,
       };
     });
     const byDate = new Map<string, { count: number; cal: number }>();
@@ -387,18 +391,34 @@ function SportCalendar() {
     for (const [date, d] of byDate) {
       out.push({ id: `m${date}`, title: `🍽 ${d.count} repas · ${fmt(d.cal)} kcal`, start: date, allDay: true, color: "#059669" });
     }
+    for (const t of tasks.data ?? []) {
+      out.push({
+        id: `t${t.task_id}_${t.date}`,
+        title: `${t.fait ? "✓" : "☐"} ${t.titre}`,
+        // Avec une heure : événement horaire (heure affichée par le calendrier, tri chronologique)
+        start: t.heure ? `${t.date}T${t.heure}` : t.date,
+        allDay: !t.heure,
+        color: TASK_COLOR,
+        textColor: "#fff",
+        classNames: t.fait ? ["fc-task-done"] : [],
+      });
+    }
     return out;
-  }, [acts.data, meals.data, types.byId, ingredients.byId, recipes.byId]);
+  }, [acts.data, meals.data, tasks.data, types.byId, ingredients.byId, recipes.byId]);
 
   const [openedDay, setOpenedDay] = useState<string | null>(null);
-  const openDay = (iso: string) => {
-    if (iso <= today) setOpenedDay(iso);
-  };
+  const openDay = (iso: string) => setOpenedDay(iso);
   const [openedActivity, setOpenedActivity] = useState<Activity | null>(null);
+  const [openedTask, setOpenedTask] = useState<TaskOccurrence | null>(null);
 
-  // Activité : fiche détaillée sur place ; repas : historique du jour
+  // Activité : fiche détaillée ; tâche : modification ; repas : résumé du jour
   function onEventClick(arg: EventClickArg) {
     const id = arg.event.id;
+    if (id.startsWith("t")) {
+      const [taskId, date] = id.slice(1).split("_");
+      const task = (tasks.data ?? []).find((t) => t.task_id === Number(taskId) && t.date === date);
+      if (task) return setOpenedTask(task);
+    }
     if (id.startsWith("a")) {
       const activity = (acts.data ?? []).find((a) => a.id === Number(id.slice(1)));
       if (activity) return setOpenedActivity(activity);
@@ -415,18 +435,19 @@ function SportCalendar() {
   return (
     <Card title="Calendrier">
       {openedActivity && <ActivityDetail activity={openedActivity} onClose={() => setOpenedActivity(null)} />}
+      {openedTask && <TaskForm task={openedTask} onClose={() => setOpenedTask(null)} />}
       {openedDay && <DaySummary date={openedDay} onClose={() => setOpenedDay(null)} />}
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600">
-        <span className="text-slate-500">Clique sur une activité pour son détail, sur un jour pour son résumé ·</span>
+        <span className="text-slate-500">Clique sur un événement pour son détail, sur un jour pour son résumé ou ajouter une tâche ·</span>
         <Legend color="#059669" label="Repas" />
-        <Legend color="#ea580c" label="Activité Garmin" />
-        <Legend color="#2563eb" label="Activité manuelle" />
+        <Legend color={SPORT_COLOR} label="Sport" />
+        <Legend color={TASK_COLOR} label="Tâche" />
       </div>
       <FullCalendar
         plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
         dateClick={(arg: DateClickArg) => openDay(toISODate(arg.date))}
         eventClick={onEventClick}
-        dayCellClassNames={(arg) => (toISODate(arg.date) <= today ? "fc-day-clickable" : "")}
+        dayCellClassNames="fc-day-clickable"
         locale={frLocale}
         initialView={window.innerWidth < 640 ? "listWeek" : "dayGridMonth"}
         headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,listWeek" }}
@@ -435,6 +456,7 @@ function SportCalendar() {
         height="auto"
         eventDisplay="block"
         dayMaxEvents={3}
+        eventTimeFormat={{ hour: "2-digit", minute: "2-digit" }}
       />
     </Card>
   );

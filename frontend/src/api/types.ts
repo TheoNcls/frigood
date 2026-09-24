@@ -236,3 +236,28 @@ export interface GarminSyncResult {
   /** Jours encore à récupérer (synchronisation par lots) */
   remaining_days: number;
 }
+
+export type Recurrence = "daily" | "weekly" | "monthly";
+
+export interface TaskInput {
+  titre: string;
+  notes: string | null;
+  date: string;
+  heure: string | null;
+  recurrence: Recurrence | null;
+  recurrence_fin: string | null;
+}
+
+/** Une tâche à une date donnée (les tâches récurrentes ont une occurrence par jour concerné). */
+export interface TaskOccurrence {
+  task_id: number;
+  date: string;
+  titre: string;
+  notes: string | null;
+  heure: string | null;
+  recurrence: Recurrence | null;
+  recurrence_fin: string | null;
+  serie_debut: string;
+  fait: boolean;
+  done_at: string | null;
+}

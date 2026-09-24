@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import ingredients, recipes, nutriments, users, meal_logs, activity_types, activities, fridge
+from app.routers import ingredients, recipes, nutriments, users, meal_logs, activity_types, activities, fridge, tasks
 
 app = FastAPI(title="Frigood", version="0.1")
 
@@ -29,6 +29,7 @@ app.include_router(meal_logs.router)
 app.include_router(activity_types.router)
 app.include_router(activities.router)
 app.include_router(fridge.router)
+app.include_router(tasks.router)
 
 @app.get("/")
 def root():

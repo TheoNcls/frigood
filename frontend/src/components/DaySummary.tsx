@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
-import { useActivities, useActivityTypes, useDailyStat, useIngredients, useMealLogs, useRecipes } from "../api/queries";
-import type { Activity } from "../api/types";
+import { ArrowRight, Plus } from "lucide-react";
+import { useActivities, useActivityTypes, useDailyStat, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
+import type { Activity, TaskOccurrence } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { activityDetails, activityLabel } from "../lib/activity";
-import { formatLong } from "../lib/dates";
+import { formatLong, todayISO } from "../lib/dates";
+import { TaskForm, TaskRow } from "./Tasks";
 import { MOMENTS, MOMENT_LABELS, describeLog, fmt, logMacros, totalMacros } from "../lib/nutrition";
 import ActivityDetail from "./ActivityDetail";
 import FoodThumb from "./FoodThumb";
@@ -44,23 +45,56 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
   const ingredients = useIngredients();
   const recipes = useRecipes();
   const types = useActivityTypes();
+  const tasks = useTasks(date, date);
   const [openedActivity, setOpenedActivity] = useState<Activity | null>(null);
+  const [editingTask, setEditingTask] = useState<TaskOccurrence | null>(null);
+  const [addingTask, setAddingTask] = useState(false);
 
-  // Une seule fenêtre à la fois : la fiche d'activité remplace le résumé, qui revient à sa fermeture
+  // Une seule fenêtre à la fois : fiche d'activité ou tâche remplacent le résumé, qui revient à leur fermeture
   if (openedActivity) {
     return <ActivityDetail activity={openedActivity} onClose={() => setOpenedActivity(null)} />;
   }
+  if (editingTask) return <TaskForm task={editingTask} onClose={() => setEditingTask(null)} />;
+  if (addingTask) return <TaskForm date={date} onClose={() => setAddingTask(false)} />;
 
+  const isFuture = date > todayISO();
   const logs = [...(meals.data ?? [])].sort((a, b) => MOMENTS.indexOf(a.moment) - MOMENTS.indexOf(b.moment));
   const total = totalMacros(logs, ingredients.byId, recipes.byId);
   const activities = acts.data ?? [];
+  const dayTasks = tasks.data ?? [];
   const ds = stat.data;
-  const loading = meals.isLoading || acts.isLoading;
+  const loading = meals.isLoading || acts.isLoading || tasks.isLoading;
+
+  const tasksSection = (
+    <Section
+      title="Tâches"
+      action={
+        <button type="button" className="btn-ghost py-1 text-violet-700" onClick={() => setAddingTask(true)}>
+          <Plus className="h-4 w-4" /> Ajouter une tâche
+        </button>
+      }
+    >
+      {!dayTasks.length ? <Empty>Aucune tâche ce jour-là.</Empty> : (
+        <ul className="space-y-1.5">
+          {dayTasks.map((t) => <TaskRow key={`${t.task_id}-${t.date}`} task={t} onEdit={setEditingTask} />)}
+        </ul>
+      )}
+    </Section>
+  );
+
+  if (isFuture) {
+    return (
+      <Modal title={formatLong(date)} onClose={onClose}>
+        {tasks.isLoading ? <Spinner /> : tasksSection}
+      </Modal>
+    );
+  }
 
   return (
     <Modal title={formatLong(date)} onClose={onClose} wide>
       {loading ? <Spinner /> : (
         <div className="space-y-5">
+          {tasksSection}
           <Section title="Nutrition">
             {!logs.length ? <Empty>Aucun repas enregistré.</Empty> : (
               <>
