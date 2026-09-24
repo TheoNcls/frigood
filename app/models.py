@@ -19,6 +19,9 @@ class Ingredient(Base):
     unite = Column(String, default="g")
     quantite_defaut = Column(Float, nullable=True)
     duree_conservation = Column(Integer, nullable=True, default=7, server_default="7")
+    nutriscore = Column(String(1), nullable=True)   # a à e
+    nova = Column(Integer, nullable=True)           # 1 (brut) à 4 (ultra-transformé)
+    regime = Column(String(20), nullable=True)      # vegan, vegetarien, non_vegetarien, incertain
 
     recettes = relationship("RecipeIngredient", back_populates="ingredient")
     nutriments = relationship("IngredientNutriment", back_populates="ingredient", cascade="all, delete-orphan")

@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useFridge, useFridgeHistory, useIngredients, useRecipes } from "../api/queries";
 import type { FridgeItem, TypeMesure } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
+import { FoodBadges } from "../components/FoodBadges";
 import FoodPicker from "../components/FoodPicker";
 import { useToast } from "../components/Toast";
 import { Card, Empty, ErrorMessage, Field, PageHeader, Segmented, Spinner } from "../components/ui";
@@ -79,6 +80,7 @@ function Contents({ onAdd }: { onAdd: () => void }) {
       <ul className="grid gap-3 md:grid-cols-2">
         {items.map((item) => {
           const exp = expiryInfo(item.date_peremption);
+          const ing = item.ingredient_id ? ingredients.byId.get(item.ingredient_id) : undefined;
           return (
             <li key={item.id} className="card">
               <div className="flex items-start gap-3">
@@ -89,6 +91,7 @@ function Contents({ onAdd }: { onAdd: () => void }) {
                   <div className="text-sm text-slate-500">{fridgeItemQty(item, ingredients.byId)}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     <span className={`badge ${EXPIRY_STYLES[exp.level]}`}>{exp.label}</span>
+                    {ing && <FoodBadges item={ing} compact />}
                     {item.date_achat && <span className="text-slate-500">Ajouté le {formatFull(item.date_achat)}</span>}
                   </div>
                 </div>

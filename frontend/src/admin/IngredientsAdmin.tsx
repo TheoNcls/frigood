@@ -4,6 +4,7 @@ import { Barcode, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { ApiError, api } from "../api/client";
 import { useIngredients, useNutriments } from "../api/queries";
 import type { Ingredient, IngredientInput, IngredientSuggestion, NutrimentSuggestion } from "../api/types";
+import { FoodBadges } from "../components/FoodBadges";
 import Modal from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { Card, ConfirmButton, Empty, ErrorMessage, Field, Segmented, Spinner } from "../components/ui";
@@ -65,6 +66,7 @@ export default function IngredientsAdmin() {
                     <div className="text-xs text-slate-500">
                       {[i.categorie, i.nutriments.length ? `${i.nutriments.length} nutriment(s)` : null].filter(Boolean).join(" · ")}
                     </div>
+                    <div className="mt-1"><FoodBadges item={i} compact /></div>
                   </td>
                   <td className="px-3 py-2.5 text-right">{i.calories !== null ? fmt(i.calories) : "—"}</td>
                   <td className="px-3 py-2.5 text-right">{i.proteines !== null ? fmt(i.proteines, 1) : "—"}</td>
@@ -296,6 +298,9 @@ function EditIngredient({ ingredient, onDeleted }: { ingredient: Ingredient; onD
           unite: ingredient.unite,
           quantite_defaut: ingredient.quantite_defaut,
           duree_conservation: ingredient.duree_conservation,
+          nutriscore: ingredient.nutriscore,
+          nova: ingredient.nova,
+          regime: ingredient.regime,
         }}
         currentId={ingredient.id}
         submitLabel="Enregistrer"

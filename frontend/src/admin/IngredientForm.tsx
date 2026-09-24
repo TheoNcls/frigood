@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useIngredients } from "../api/queries";
-import type { IngredientInput, IngredientSuggestion, NutrimentSuggestion } from "../api/types";
+import type { IngredientInput, IngredientSuggestion, Nova, NutriScore, NutrimentSuggestion, Regime } from "../api/types";
+import { REGIME_INFO } from "../components/FoodBadges";
 import { Field } from "../components/ui";
 import { parseNum } from "./catalog";
 
@@ -28,6 +29,9 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
     unite: initial.unite || "g",
     quantite_defaut: str(initial.quantite_defaut),
     duree_conservation: str(initial.duree_conservation ?? 7),
+    nutriscore: initial.nutriscore ?? "",
+    nova: str(initial.nova),
+    regime: initial.regime ?? "",
   });
   const suggested = initial.nutriments ?? [];
   const [nuts, setNuts] = useState(suggested.map((n) => ({ ...n, valeurStr: String(n.valeur), checked: true })));
@@ -60,6 +64,9 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         unite: f.unite.trim() || "g",
         quantite_defaut: qd && qd > 0 ? qd : null,
         duree_conservation: duree && duree > 0 ? Math.round(duree) : 7,
+        nutriscore: (f.nutriscore || null) as NutriScore | null,
+        nova: f.nova ? (Number(f.nova) as Nova) : null,
+        regime: (f.regime || null) as Regime | null,
       },
       nuts
         .filter((n) => n.checked && parseNum(n.valeurStr) !== null)
@@ -73,8 +80,28 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
     </Field>
   );
 
+  const causes = initial.regime_causes ?? [];
+
   return (
     <form onSubmit={submit} className="space-y-4">
+      {f.regime === "non_vegetarien" && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">Ce produit n'est pas végétarien</div>
+            {causes.length > 0 && <div>Contient : {causes.join(", ")}</div>}
+          </div>
+        </div>
+      )}
+      {f.regime === "incertain" && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">Peut-être pas végétarien : vérifie la liste d'ingrédients</div>
+            {causes.length > 0 && <div>À vérifier : {causes.join(", ")}</div>}
+          </div>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Nom">
           <input className="input" required value={f.nom} onChange={set("nom")} />
@@ -121,6 +148,29 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         </Field>
         <Field label="Conservation (jours)">
           <input className="input" type="number" min={1} step={1} value={f.duree_conservation} onChange={set("duree_conservation")} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Régime">
+          <select className="input" value={f.regime} onChange={set("regime")}>
+            <option value="">Inconnu</option>
+            {(Object.keys(REGIME_INFO) as Regime[]).map((r) => (
+              <option key={r} value={r}>{REGIME_INFO[r].icon} {REGIME_INFO[r].label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Nutri-Score">
+          <select className="input" value={f.nutriscore} onChange={set("nutriscore")}>
+            <option value="">—</option>
+            {["a", "b", "c", "d", "e"].map((g) => <option key={g} value={g}>{g.toUpperCase()}</option>)}
+          </select>
+        </Field>
+        <Field label="NOVA" hint="1 brut … 4 ultra-transformé">
+          <select className="input" value={f.nova} onChange={set("nova")}>
+            <option value="">—</option>
+            {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
         </Field>
       </div>
 

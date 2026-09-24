@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Download, FileSpreadsheet, Upload } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Download, FileSpreadsheet, Sparkles, Upload } from "lucide-react";
 import { api } from "../api/client";
 import type { Ingredient, Nutriment, Recipe } from "../api/types";
 import { useToast } from "../components/Toast";
@@ -35,8 +35,8 @@ async function exportAll() {
   sheet(ingredients.map((i) => ({
     Nom: i.nom, Description: i.description, "Catégorie": i.categorie, Calories: i.calories, "Protéines": i.proteines,
     Glucides: i.glucides, Lipides: i.lipides, "Unité": i.unite, "Quantité défaut": i.quantite_defaut,
-    "Conservation (jours)": i.duree_conservation,
-  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Conservation (jours)"]);
+    "Conservation (jours)": i.duree_conservation, "Nutri-Score": i.nutriscore?.toUpperCase() ?? null, NOVA: i.nova, "Régime": i.regime,
+  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Conservation (jours)", "Nutri-Score", "NOVA", "Régime"]);
 
   sheet(recipes.flatMap((r) => {
     const base = { Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation };
@@ -81,7 +81,7 @@ const IMPORTS: ImportKind[] = [
     key: "ingredients",
     title: "Ingrédients",
     sheet: "Ingrédients",
-    columns: "Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut, Conservation (jours)",
+    columns: "Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut, Conservation (jours), Nutri-Score, NOVA, Régime",
     run: async (rows, progress) => {
       const res: Result = { ok: 0, skipped: [] };
       for (const [i, r] of rows.entries()) {
@@ -91,6 +91,7 @@ const IMPORTS: ImportKind[] = [
           calories: n(r["Calories"]), proteines: n(r["Protéines"]), glucides: n(r["Glucides"]), lipides: n(r["Lipides"]),
           unite: s(r["Unité"]) ?? "g", quantite_defaut: n(r["Quantité défaut"]),
           duree_conservation: Math.round(n(r["Conservation (jours)"]) ?? 7), source_type: "import",
+          nutriscore: s(r["Nutri-Score"]), nova: n(r["NOVA"]), regime: s(r["Régime"]),
         })) res.ok++;
         else res.skipped.push(nom ?? `ligne ${i + 2}`);
         progress(i + 1);
@@ -215,10 +216,40 @@ export default function DataAdmin() {
         </button>
       </Card>
 
+      <EnrichCard />
+
       <div className="grid gap-4 lg:grid-cols-2">
         {IMPORTS.map((kind) => <ImportCard key={kind.key} kind={kind} />)}
       </div>
     </div>
+  );
+}
+
+function EnrichCard() {
+  const invalidate = useInvalidateCatalog();
+  const toast = useToast();
+  const [result, setResult] = useState<{ ingredients: number; nutriments_added: number } | null>(null);
+  const enrich = useMutation({
+    mutationFn: () => api<{ ingredients: number; nutriments_added: number }>("/ingredients/enrich_from_sources", { method: "POST" }),
+    onSuccess: (r) => { invalidate(); setResult(r); },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  return (
+    <Card title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4" /> Compléter depuis OpenFoodFacts</span>}>
+      <p className="mb-3 text-sm text-slate-500">
+        Relit les données OpenFoodFacts déjà enregistrées pour les ingrédients scannés, sans rien rescanner :
+        ajoute le Nutri-Score, le NOVA, le régime et les nutriments manquants (B12, zinc, iode…). Rien n'est écrasé.
+      </p>
+      <button className="btn-secondary" disabled={enrich.isPending} onClick={() => enrich.mutate()}>
+        {enrich.isPending ? "Complétion…" : "Compléter les ingrédients scannés"}
+      </button>
+      {result && (
+        <p className="mt-3 text-sm text-slate-700">
+          {result.ingredients} ingrédient(s) complété(s), {result.nutriments_added} nutriment(s) ajouté(s).
+        </p>
+      )}
+    </Card>
   );
 }
 

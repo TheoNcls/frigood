@@ -42,6 +42,8 @@ class IngredientSourceRead(BaseModel):
 
 # --- Ingredient ---
 
+REGIMES = ("vegan", "vegetarien", "non_vegetarien", "incertain")
+
 class IngredientBase(BaseModel):
     nom: str
     description: str | None = None
@@ -53,6 +55,26 @@ class IngredientBase(BaseModel):
     unite: str = "g"
     quantite_defaut: float | None = None
     duree_conservation: int | None = 7
+    nutriscore: str | None = None
+    nova: int | None = None
+    regime: str | None = None
+
+    @field_validator("nutriscore")
+    @classmethod
+    def _check_nutriscore(cls, v: str | None) -> str | None:
+        v = (v or "").strip().lower()
+        return v if v in ("a", "b", "c", "d", "e") else None
+
+    @field_validator("nova")
+    @classmethod
+    def _check_nova(cls, v: int | None) -> int | None:
+        return v if v in (1, 2, 3, 4) else None
+
+    @field_validator("regime")
+    @classmethod
+    def _check_regime(cls, v: str | None) -> str | None:
+        v = (v or "").strip().lower()
+        return v if v in REGIMES else None
 
     @model_validator(mode="after")
     def _normalize_unit(self):

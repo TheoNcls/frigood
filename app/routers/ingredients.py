@@ -1,5 +1,4 @@
 import os
-import re
 import json
 from datetime import datetime
 import requests as http_requests
@@ -8,7 +7,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
-from app.models import Ingredient, IngredientSource
+from app import openfoodfacts as off
+from app.models import Ingredient, IngredientNutriment, IngredientSource, Nutriment
 from app.schemas import IngredientCreate, IngredientRead
 from app.auth import get_principal, require_admin
 
@@ -46,6 +46,8 @@ def ingredient_from_claude(nom: str = Query(...)):
                     "unite": {"type": "string", "enum": ["g", "ml"], "description": "g pour les solides, ml pour les liquides (valeurs alors pour 100 ml)"},
                     "quantite_defaut": {"type": "number", "description": "Poids en g (ou volume en ml pour un liquide) d'une unité typique : 130 pour une pomme, 250 pour un verre de jus. Null si pas d'unité naturelle."},
                     "duree_conservation": {"type": "integer", "description": "Durée de conservation typique en jours après achat, dans les conditions habituelles (frigo pour le frais, placard pour le sec)"},
+                    "regime": {"type": "string", "enum": ["vegan", "vegetarien", "non_vegetarien"], "description": "vegan : aucun produit animal ; vegetarien : produits laitiers, œufs ou miel mais ni viande ni poisson ; non_vegetarien : viande, poisson, gélatine, présure animale…"},
+                    "nova": {"type": "integer", "enum": [1, 2, 3, 4], "description": "Groupe NOVA : 1 brut ou peu transformé, 2 ingrédient culinaire (huile, sucre…), 3 transformé, 4 ultra-transformé"},
                     "nutriments": {
                         "type": "array",
                         "description": "Nutriments supplémentaires importants (fibres, vitamines, minéraux)",
@@ -67,8 +69,9 @@ def ingredient_from_claude(nom: str = Query(...)):
         prompt = (
             f"Donne-moi les valeurs nutritionnelles précises pour 100g de « {nom} ». "
             "Utilise les tables officielles (CIQUAL France ou USDA). "
-            "Inclus les principaux nutriments supplémentaires : fibres alimentaires, "
-            "vitamines et minéraux importants pour cet aliment. "
+            "Inclus les nutriments supplémentaires présents en quantité notable, en particulier ceux qui comptent "
+            "dans une alimentation végétarienne. Utilise exactement ces noms et unités : "
+            + ", ".join(f"{nom} ({unite})" for nom, _, unite, _ in off.NUTRIMENTS) + ". "
             "Pour les liquides (jus, lait, huile...) utilise 'ml' comme unité et donne les valeurs pour 100 ml."
         )
         response = client.messages.create(
@@ -121,42 +124,6 @@ def ingredient_by_barcode(code: str, db: Session = Depends(get_db)):
     return source.ingredient
 
 
-def _name_with_brand(name: str, brands: str) -> str:
-    """« Steak » + « Planted » → « Steak (Planted) » : première marque seulement, sauf si déjà dans le nom."""
-    name = name.strip()
-    brand = (brands or "").split(",")[0].strip()
-    if brand.isupper() and len(brand) > 3:
-        brand = brand.title()  # "DANONE" → "Danone"
-    if not brand or brand.lower() in name.lower():
-        return name
-    return f"{name} ({brand})" if name else brand
-
-
-def _off_unit(product: dict) -> str:
-    """ml pour les boissons et autres liquides : OpenFoodFacts donne alors les valeurs pour 100 ml."""
-    units = {(product.get(k) or "").strip().lower() for k in ("product_quantity_unit", "serving_quantity_unit")}
-    if "ml" in units or product.get("nutrition_data_per") == "100ml":
-        return "ml"
-    return "g"
-
-
-def _serving_grams(product: dict) -> float | None:
-    """Portion conseillée en g (ml assimilés à des g), depuis serving_quantity ou le texte serving_size."""
-    unit = (product.get("serving_quantity_unit") or "g").strip().lower()
-    try:
-        qty = float(str(product.get("serving_quantity") or 0).replace(",", "."))
-    except (ValueError, TypeError):
-        qty = 0
-    if qty > 0 and unit in ("g", "ml"):
-        return round(qty, 1)
-    # Sinon, premier nombre suivi de g / ml dans le texte, ex. "1 serving (140 g)" ou "30g"
-    match = re.search(r"(\d+(?:[.,]\d+)?)\s*(g|ml)\b", product.get("serving_size") or "", re.IGNORECASE)
-    if match:
-        qty = float(match.group(1).replace(",", "."))
-        return round(qty, 1) if qty > 0 else None
-    return None
-
-
 @router.get("/from_barcode", dependencies=[Depends(require_admin)])
 def ingredient_from_barcode(code: str = Query(...)):
     try:
@@ -172,89 +139,57 @@ def ingredient_from_barcode(code: str = Query(...)):
 
     if resp.status_code != 200:
         raise HTTPException(status_code=404, detail="Produit introuvable sur OpenFoodFacts")
-
     data = resp.json()
     if data.get("status") != 1:
         raise HTTPException(status_code=404, detail="Code-barres non trouvé sur OpenFoodFacts")
 
-    product = data.get("product") or {}
-    nutriments = product.get("nutriments") or {}
+    result = off.parse(data.get("product") or {})
+    result["code_barre"] = code
+    result["raw_data"] = json.dumps(data, ensure_ascii=False)
+    return result
 
-    # Calories : préférence kcal direct, sinon conversion depuis kJ
-    calories = nutriments.get("energy-kcal_100g")
-    if calories is None and nutriments.get("energy_100g"):
+
+@router.post("/enrich_from_sources", dependencies=[Depends(require_admin)])
+def enrich_from_sources(db: Session = Depends(get_db)):
+    """Complète les ingrédients scannés depuis le JSON OpenFoodFacts déjà stocké, sans rien écraser :
+    Nutri-Score, NOVA, régime et nutriments manquants."""
+    nutriments_by_name = {n.nom.lower(): n for n in db.query(Nutriment)}
+    ingredients_done = nutriments_added = 0
+    sources = (db.query(IngredientSource)
+               .filter(IngredientSource.source_type == "openfoodfacts", IngredientSource.raw_data.isnot(None))
+               .order_by(IngredientSource.id.desc()))
+    seen = set()
+    for source in sources:
+        if source.ingredient_id in seen:
+            continue
+        seen.add(source.ingredient_id)
         try:
-            calories = round(float(nutriments["energy_100g"]) / 4.184, 1)
-        except (ValueError, TypeError):
-            calories = None
-
-    # Catégories en français, de la plus générale à la plus précise ; les tags non traduits gardent
-    # un préfixe de langue ("de:Other") et sont écartés. Repli sur les tags anglais nettoyés.
-    categories = [c.strip() for c in (product.get("categories_tags_fr") or []) if c and ":" not in c]
-    if not categories:
-        categories = [t.split(":", 1)[-1].replace("-", " ").strip() for t in (product.get("categories_tags") or [])]
-        categories = [c for c in categories if c]
-    categorie = categories[-1] if categories else ""
-
-    # Nutriments supplémentaires
-    extra_map = [
-        ("Fibres", "fiber_100g", "g", 1),
-        ("Sucres", "sugars_100g", "g", 1),
-        ("Acides gras saturés", "saturated-fat_100g", "g", 1),
-        ("Sel", "salt_100g", "g", 1),
-        ("Sodium", "sodium_100g", "mg", 1000),
-        ("Calcium", "calcium_100g", "mg", 1000),
-        ("Fer", "iron_100g", "mg", 1000),
-        ("Vitamine C", "vitamin-c_100g", "mg", 1000),
-    ]
-    nutriments_list = []
-    for nom_nut, key, unite_nut, mult in extra_map:
-        val = nutriments.get(key)
-        if val is not None:
-            try:
-                nutriments_list.append({"nom": nom_nut, "unite": unite_nut, "valeur": round(float(val) * mult, 2)})
-            except (ValueError, TypeError):
-                pass
-
-    def _f(key):
-        v = nutriments.get(key)
-        try:
-            return round(float(v), 2) if v is not None else None
-        except (ValueError, TypeError):
-            return None
-
-    # Description : generic_name + marque + quantité
-    parts = []
-    generic = product.get("generic_name_fr") or product.get("generic_name") or ""
-    if generic:
-        parts.append(generic)
-    brand = product.get("brands") or ""
-    if brand:
-        parts.append(brand)
-    quantity = product.get("quantity") or ""
-    if quantity:
-        parts.append(quantity)
-    serving_size = (product.get("serving_size") or "").strip()
-    if serving_size:
-        parts.append(f"portion : {serving_size}")
-    description = " — ".join(parts)
-
-    return {
-        "nom": _name_with_brand(product.get("product_name_fr") or product.get("product_name") or "", brand),
-        "description": description,
-        "categorie": categorie,
-        "categories": list(reversed(categories)),
-        "calories": calories,
-        "proteines": _f("proteins_100g"),
-        "glucides": _f("carbohydrates_100g"),
-        "lipides": _f("fat_100g"),
-        "unite": _off_unit(product),
-        "quantite_defaut": _serving_grams(product),
-        "duree_conservation": 7,
-        "nutriments": nutriments_list,
-        "code_barre": code,
-        "raw_data": json.dumps(data, ensure_ascii=False),
-    }
+            product = json.loads(source.raw_data).get("product") or {}
+        except (ValueError, AttributeError):
+            continue
+        parsed = off.parse(product)
+        ing = source.ingredient
+        changed = False
+        for field in ("nutriscore", "nova", "regime"):
+            if getattr(ing, field) is None and parsed[field] is not None:
+                setattr(ing, field, parsed[field])
+                changed = True
+        present = {link.nutriment.nom.lower() for link in ing.nutriments}
+        for n in parsed["nutriments"]:
+            if n["nom"].lower() in present:
+                continue
+            nutriment = nutriments_by_name.get(n["nom"].lower())
+            if not nutriment:
+                nutriment = Nutriment(nom=n["nom"], unite=n["unite"])
+                db.add(nutriment)
+                db.flush()
+                nutriments_by_name[n["nom"].lower()] = nutriment
+            db.add(IngredientNutriment(ingredient_id=ing.id, nutriment_id=nutriment.id, valeur=n["valeur"]))
+            nutriments_added += 1
+            changed = True
+        ingredients_done += changed
+    db.commit()
+    return {"ingredients": ingredients_done, "nutriments_added": nutriments_added}
 
 
 @router.get("/{id}", response_model=IngredientRead)

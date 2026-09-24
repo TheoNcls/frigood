@@ -41,9 +41,16 @@ export interface Ingredient {
   unite: string;
   quantite_defaut: number | null;
   duree_conservation: number | null;
+  nutriscore: NutriScore | null;
+  nova: Nova | null;
+  regime: Regime | null;
   nutriments: IngredientNutriment[];
   sources: IngredientSource[];
 }
+
+export type NutriScore = "a" | "b" | "c" | "d" | "e";
+export type Nova = 1 | 2 | 3 | 4;
+export type Regime = "vegan" | "vegetarien" | "non_vegetarien" | "incertain";
 
 export interface IngredientSource {
   id: number;
@@ -65,6 +72,9 @@ export interface IngredientInput {
   unite: string;
   quantite_defaut: number | null;
   duree_conservation: number | null;
+  nutriscore: NutriScore | null;
+  nova: Nova | null;
+  regime: Regime | null;
 }
 
 export interface NutrimentSuggestion {
@@ -77,6 +87,8 @@ export interface NutrimentSuggestion {
 export interface IngredientSuggestion extends Partial<IngredientInput> {
   /** Catégories OpenFoodFacts en français, de la plus précise à la plus générale. */
   categories?: string[];
+  /** Ingrédients qui rendent le produit non végétarien (ou douteux), selon OpenFoodFacts */
+  regime_causes?: string[];
   nutriments?: NutrimentSuggestion[];
   raw_data?: string;
   code_barre?: string;
