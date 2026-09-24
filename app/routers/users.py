@@ -93,9 +93,8 @@ def update_user(id: int, data: UserUpdate, principal: Principal = Depends(get_pr
     return user
 
 
-@router.delete("/{id}")
-def delete_user(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    check_user_access(principal, id)
+@router.delete("/{id}", dependencies=[Depends(require_service)])
+def delete_user(id: int, db: Session = Depends(get_db)):
     db.delete(_get_user(db, id))
     db.commit()
     return {"message": "Compte supprimé"}

@@ -20,7 +20,7 @@ JWT_ALGORITHM = "HS256"
 
 @dataclass
 class Principal:
-    # Clé API (Streamlit) : accès complet, y compris aux données de tous les utilisateurs
+    # Clé API (scripts, maintenance) : accès complet, y compris aux données de tous les utilisateurs
     is_service: bool
     user_id: int | None = None
     # Utilisateur listé dans ADMIN_EMAILS : gère le catalogue, mais ne voit que ses propres données

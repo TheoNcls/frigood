@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models import FridgeItem, FridgeHistory, Ingredient, Recipe, User
 from app.schemas import FridgeItemCreate, FridgeItemUpdate, FridgeItemRead, FridgeHistoryRead
 from app.auth import Principal, get_principal, check_user_access
-from app.fridge_service import log_history, consume_recipe_ingredients
+from app.fridge_service import log_history, consume_recipe_ingredients, remove_item
 
 router = APIRouter(tags=["fridge"], dependencies=[Depends(get_principal)])
 
@@ -111,7 +111,31 @@ def delete_fridge_item(id: int, raison: str = Query(default="suppression"),
                        principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     item = _get_own_item(db, id, principal)
     action = raison if raison in ("suppression", "perime", "consomme") else "suppression"
-    log_history(db, item.user_id, item, -item.quantite, action)
-    db.delete(item)
+
+    if action == "suppression":
+        # Erreur de saisie : l'élément n'aurait jamais dû exister, on efface aussi son historique
+        linked = db.query(FridgeHistory).filter(FridgeHistory.fridge_item_id == item.id)
+        if linked.count():
+            linked.delete(synchronize_session=False)
+        else:
+            # Élément ajouté avant l'existence du lien : on retrouve sa ligne d'ajout par l'aliment et les dates
+            query = db.query(FridgeHistory).filter(
+                FridgeHistory.user_id == item.user_id,
+                FridgeHistory.action == "ajout",
+                FridgeHistory.fridge_item_id.is_(None),
+                FridgeHistory.date_achat == item.date_achat,
+            )
+            if item.ingredient_id:
+                query = query.filter(FridgeHistory.ingredient_id == item.ingredient_id)
+            else:
+                query = query.filter(FridgeHistory.recipe_id == item.recipe_id)
+            ajout = query.order_by(FridgeHistory.id.desc()).first()
+            if ajout:
+                db.delete(ajout)
+        db.delete(item)
+    else:
+        log_history(db, item.user_id, item, -item.quantite, action)
+        remove_item(db, item)
+
     db.commit()
     return {"message": "Retiré du frigo"}

@@ -17,7 +17,6 @@ export default function Profile() {
       <PageHeader title="Profil" />
       <ProfileForm />
       <PasswordForm />
-      <DangerZone />
     </div>
   );
 }
@@ -106,37 +105,6 @@ function PasswordForm() {
         </Field>
         <button type="submit" className="btn-secondary" disabled={change.isPending}>Changer</button>
       </form>
-    </Card>
-  );
-}
-
-function DangerZone() {
-  const user = useCurrentUser();
-  const { logout } = useAuth();
-  const toast = useToast();
-  const [confirming, setConfirming] = useState(false);
-
-  const remove = useMutation({
-    mutationFn: () => api(`/users/${user.id}`, { method: "DELETE" }),
-    onSuccess: logout,
-    onError: (e) => toast(e.message, "error"),
-  });
-
-  return (
-    <Card title="Zone danger" className="border-red-200">
-      {!confirming ? (
-        <button className="btn-secondary text-red-600" onClick={() => setConfirming(true)}>Supprimer mon compte</button>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-sm text-red-700">
-            Cette action est irréversible : tes repas, activités, données Garmin et ton frigo seront supprimés.
-          </p>
-          <div className="flex gap-2">
-            <button className="btn-danger" disabled={remove.isPending} onClick={() => remove.mutate()}>Oui, supprimer définitivement</button>
-            <button className="btn-secondary" onClick={() => setConfirming(false)}>Annuler</button>
-          </div>
-        </div>
-      )}
     </Card>
   );
 }

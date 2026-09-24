@@ -55,7 +55,10 @@ function GarminCard() {
       setNeedsMfa(false);
       setPassword("");
       setMfa("");
-      toast(`${res.imported} activité(s) importée(s), ${res.stats_days} jour(s) de données santé synchronisé(s)`);
+      toast(
+        `${res.imported} activité(s) importée(s), ${res.stats_days} jour(s) de données santé synchronisé(s)` +
+        (res.remaining_days > 0 ? ` — ${res.remaining_days} jour(s) restant(s) : utilise « Récupérer l'historique »` : ""),
+      );
       invalidate();
       await refreshUser();
     },
@@ -93,7 +96,10 @@ function GarminCard() {
               <Unplug className="h-4 w-4" /> Déconnecter
             </button>
           </div>
-          <p className="text-xs text-slate-500">Importe les 50 dernières activités et 7 jours de données santé.</p>
+          <p className="text-xs text-slate-500">
+            Importe les 50 dernières activités et complète les données santé depuis la dernière synchronisation (30 jours max).
+          </p>
+          <GarminMoreOptions />
         </div>
       ) : (
         <form
@@ -126,6 +132,95 @@ function GarminCard() {
         </form>
       )}
     </Card>
+  );
+}
+
+const HISTORY_OPTIONS = [30, 90, 180, 365];
+
+function GarminMoreOptions() {
+  const user = useCurrentUser();
+  const { refreshUser } = useAuth();
+  const toast = useToast();
+  const invalidate = useInvalidateSport();
+  const [days, setDays] = useState(90);
+  const [progress, setProgress] = useState<{ done: number; remaining: number | null } | null>(null);
+
+  const history = useMutation({
+    mutationFn: async (n: number) => {
+      // Le serveur traite 30 jours par appel : on relance tant qu'il en reste et que ça avance
+      let done = 0;
+      let imported = 0;
+      let previous = Infinity;
+      setProgress({ done: 0, remaining: null });
+      for (let i = 0; i < 20; i++) {
+        const res = await api<GarminSyncResult>(`/users/${user.id}/garmin_sync`, {
+          method: "POST", body: {}, query: { history_days: n },
+        });
+        done += res.stats_days;
+        imported += res.imported;
+        setProgress({ done, remaining: res.remaining_days });
+        if (res.remaining_days === 0 || res.stats_days === 0 || res.remaining_days >= previous) {
+          return { done, imported, remaining: res.remaining_days };
+        }
+        previous = res.remaining_days;
+      }
+      return { done, imported, remaining: previous };
+    },
+    onSuccess: (r) => {
+      invalidate();
+      toast(
+        `${r.done} jour(s) récupéré(s), ${r.imported} activité(s) importée(s)` +
+        (r.remaining > 0 ? ` — ${r.remaining} jour(s) n'ont pas pu être récupérés, réessaie plus tard` : ""),
+      );
+    },
+    onError: async (e) => {
+      invalidate();
+      if (e instanceof ApiError && e.message === "SESSION_GARMIN_EXPIREE") {
+        toast("Session Garmin expirée, reconnecte-toi", "error");
+        await refreshUser();
+        return;
+      }
+      toast(e.message, "error");
+    },
+    onSettled: () => setProgress(null),
+  });
+
+  const recompute = useMutation({
+    mutationFn: () => api<{ stats_days: number }>(`/users/${user.id}/garmin_recompute`, { method: "POST" }),
+    onSuccess: (r) => { invalidate(); toast(`${r.stats_days} jour(s) recalculé(s) depuis les données brutes`); },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  return (
+    <details className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+      <summary className="cursor-pointer font-medium text-slate-600">Plus d'options</summary>
+      <div className="mt-3 space-y-4">
+        <div className="space-y-2">
+          <div className="font-medium text-slate-700">Récupérer l'historique</div>
+          <p className="text-xs text-slate-500">Comble les jours manquants ou incomplets sur la période. Compte environ une minute par mois.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select className="input w-auto" value={days} disabled={history.isPending} onChange={(e) => setDays(Number(e.target.value))}>
+              {HISTORY_OPTIONS.map((d) => <option key={d} value={d}>{d === 365 ? "1 an" : `${d} jours`}</option>)}
+            </select>
+            <button className="btn-secondary" disabled={history.isPending} onClick={() => history.mutate(days)}>
+              {history.isPending ? "Récupération…" : "Récupérer"}
+            </button>
+          </div>
+          {progress && (
+            <p className="text-xs text-slate-600">
+              {progress.done} jour(s) récupéré(s){progress.remaining !== null ? `, ${progress.remaining} restant(s)` : ""}…
+            </p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <div className="font-medium text-slate-700">Recalculer les données santé</div>
+          <p className="text-xs text-slate-500">Relit les réponses Garmin déjà enregistrées, sans rien redemander à Garmin.</p>
+          <button className="btn-secondary" disabled={recompute.isPending} onClick={() => recompute.mutate()}>
+            {recompute.isPending ? "Recalcul…" : "Recalculer"}
+          </button>
+        </div>
+      </div>
+    </details>
   );
 }
 

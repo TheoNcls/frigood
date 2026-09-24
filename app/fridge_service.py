@@ -20,10 +20,20 @@ def log_history(db: Session, user_id: int, item: FridgeItem, quantite: float, ac
         quantite=quantite,
         action=action,
         meal_log_id=meal_log_id,
+        fridge_item_id=item.id,
         date_achat=item.date_achat,
         date_peremption=item.date_peremption,
         notes=notes,
     ))
+
+
+def remove_item(db: Session, item: FridgeItem):
+    """Retire un élément du frigo en gardant son historique, détaché de l'élément disparu."""
+    db.flush()
+    (db.query(FridgeHistory)
+     .filter(FridgeHistory.fridge_item_id == item.id)
+     .update({FridgeHistory.fridge_item_id: None}, synchronize_session=False))
+    db.delete(item)
 
 
 def consume(db: Session, user_id: int, qty: float, action: str, meal_log_id: int | None = None,
@@ -46,7 +56,7 @@ def consume(db: Session, user_id: int, qty: float, action: str, meal_log_id: int
         remaining -= take
         log_history(db, user_id, item, -take, action, meal_log_id)
         if item.quantite <= EPS:
-            db.delete(item)
+            remove_item(db, item)
     return qty - remaining
 
 

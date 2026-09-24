@@ -75,6 +75,8 @@ export interface NutrimentSuggestion {
 
 /** Réponse de /ingredients/from_claude et /ingredients/from_barcode. */
 export interface IngredientSuggestion extends Partial<IngredientInput> {
+  /** Catégories OpenFoodFacts en français, de la plus précise à la plus générale. */
+  categories?: string[];
   nutriments?: NutrimentSuggestion[];
   raw_data?: string;
   code_barre?: string;
@@ -213,4 +215,6 @@ export interface GarminSyncResult {
   imported: number;
   skipped: number;
   stats_days: number;
+  /** Jours encore à récupérer (synchronisation par lots) */
+  remaining_days: number;
 }

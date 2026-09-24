@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import deferred, relationship
 from app.database import Base
 
 
@@ -147,6 +147,8 @@ class Activity(Base):
     distance_km = Column(Float, nullable=True)
     freq_cardiaque_moy = Column(Integer, nullable=True)
     notes = Column(String, nullable=True)
+    # JSON brut Garmin, chargé seulement à la demande (volumineux)
+    raw_data = deferred(Column(Text, nullable=True))
 
     user = relationship("User", back_populates="activities")
     activity_type = relationship("ActivityType", back_populates="activities")
@@ -197,6 +199,11 @@ class DailyStat(Base):
     # HRV
     hrv_moy = Column(Integer, nullable=True)
 
+    # Réponses Garmin brutes de la journée (stats, sommeil, body battery…), chargées seulement à la demande
+    raw_data = deferred(Column(Text, nullable=True))
+    # Une journée est complète si elle a été synchronisée après sa fin
+    synced_at = Column(DateTime, nullable=True)
+
     user = relationship("User", back_populates="daily_stats")
 
 
@@ -237,6 +244,8 @@ class FridgeHistory(Base):
     quantite = Column(Float, nullable=False)  # positif = ajout, négatif = retrait
     action = Column(String(30), nullable=False)  # ajout, repas, cuisine, modification, suppression, perime
     meal_log_id = Column(Integer, ForeignKey("meal_logs.id", ondelete="SET NULL"), nullable=True)
+    # Pas de clé étrangère : la ligne d'historique survit à la suppression de l'élément du frigo
+    fridge_item_id = Column(Integer, nullable=True, index=True)
     date_achat = Column(Date, nullable=True)
     date_peremption = Column(Date, nullable=True)
     notes = Column(String, nullable=True)

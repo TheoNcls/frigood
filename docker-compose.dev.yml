@@ -26,27 +26,13 @@ services:
       API_KEY: ${API_KEY}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGINS: http://localhost:5173
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
     volumes:
       - .:/app
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     depends_on:
       postgres:
         condition: service_healthy
-
-  streamlit:
-    build:
-      context: .
-      dockerfile: Dockerfile.streamlit
-    ports:
-      - "8501:8501"
-    environment:
-      API_URL: http://api:8000
-      API_KEY: ${API_KEY}
-      STREAMLIT_PASSWORD: ${STREAMLIT_PASSWORD}
-    volumes:
-      - .:/app
-    depends_on:
-      - api
 
 volumes:
   postgres_data:

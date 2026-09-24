@@ -34,6 +34,12 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
 
   const set = (key: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [key]: e.target.value });
 
+  // Suggestions : catégories OpenFoodFacts d'abord, puis celles déjà utilisées dans le catalogue
+  const categoryOptions = [...new Set([
+    ...(initial.categories ?? []),
+    ...ingredients.list.map((i) => i.categorie?.trim()).filter((c): c is string => !!c).sort((a, b) => a.localeCompare(b, "fr")),
+  ])];
+
   const duplicate = ingredients.list.find(
     (i) => i.id !== currentId && i.nom.trim().toLowerCase() === f.nom.trim().toLowerCase(),
   );
@@ -73,8 +79,11 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         <Field label="Nom">
           <input className="input" required value={f.nom} onChange={set("nom")} />
         </Field>
-        <Field label="Catégorie" hint="légume, fruit, céréale, légumineuse…">
-          <input className="input" value={f.categorie} onChange={set("categorie")} />
+        <Field label="Catégorie" hint={initial.categories?.length ? "Autres catégories proposées dans la liste" : "légume, fruit, céréale, légumineuse…"}>
+          <input className="input" list="categorie-options" value={f.categorie} onChange={set("categorie")} />
+          <datalist id="categorie-options">
+            {categoryOptions.map((c) => <option key={c} value={c} />)}
+          </datalist>
         </Field>
       </div>
       {duplicate && (

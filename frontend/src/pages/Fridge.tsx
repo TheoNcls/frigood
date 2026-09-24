@@ -149,7 +149,7 @@ function EditPanel({ item, onClose }: { item: FridgeItem; onClose: () => void })
 const REMOVE_REASONS = [
   { value: "consomme", label: "Consommé" },
   { value: "perime", label: "Périmé / jeté" },
-  { value: "suppression", label: "Erreur de saisie" },
+  { value: "suppression", label: "Erreur de saisie (efface de l'historique)" },
 ] as const;
 
 function RemovePanel({ item, onClose }: { item: FridgeItem; onClose: () => void }) {

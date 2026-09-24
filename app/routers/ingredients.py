@@ -1,5 +1,7 @@
 import os
+import re
 import json
+from datetime import datetime
 import requests as http_requests
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -61,27 +63,38 @@ def ingredient_from_claude(nom: str = Query(...)):
             }
         }
 
+        prompt = (
+            f"Donne-moi les valeurs nutritionnelles précises pour 100g de « {nom} ». "
+            "Utilise les tables officielles (CIQUAL France ou USDA). "
+            "Inclus les principaux nutriments supplémentaires : fibres alimentaires, "
+            "vitamines et minéraux importants pour cet aliment. "
+            "Pour les liquides (jus, lait, huile...) utilise 'cl' comme unité."
+        )
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             tools=[tool],
             tool_choice={"type": "any"},
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Donne-moi les valeurs nutritionnelles précises pour 100g de « {nom} ». "
-                    "Utilise les tables officielles (CIQUAL France ou USDA). "
-                    "Inclus les principaux nutriments supplémentaires : fibres alimentaires, "
-                    "vitamines et minéraux importants pour cet aliment. "
-                    "Pour les liquides (jus, lait, huile...) utilise 'cl' comme unité."
-                )
-            }]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         for block in response.content:
             if block.type == "tool_use":
                 result = dict(block.input)
-                result["raw_data"] = json.dumps(block.input, ensure_ascii=False)
+                # Trace complète : on sait plus tard quel modèle et quelle question ont produit ces valeurs
+                result["raw_data"] = json.dumps({
+                    "source": "claude",
+                    "model": response.model,
+                    "response_id": response.id,
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                    "prompt": prompt,
+                    "stop_reason": response.stop_reason,
+                    "usage": {
+                        "input_tokens": response.usage.input_tokens,
+                        "output_tokens": response.usage.output_tokens,
+                    },
+                    "tool_input": block.input,
+                }, ensure_ascii=False)
                 return result
 
         raise HTTPException(status_code=500, detail="Claude n'a pas retourné de données structurées")
@@ -92,11 +105,30 @@ def ingredient_from_claude(nom: str = Query(...)):
         raise HTTPException(status_code=500, detail=f"Erreur Claude API : {str(e)}")
 
 
+def _serving_grams(product: dict) -> float | None:
+    """Portion conseillée en g (ml assimilés à des g), depuis serving_quantity ou le texte serving_size."""
+    unit = (product.get("serving_quantity_unit") or "g").strip().lower()
+    try:
+        qty = float(str(product.get("serving_quantity") or 0).replace(",", "."))
+    except (ValueError, TypeError):
+        qty = 0
+    if qty > 0 and unit in ("g", "ml"):
+        return round(qty, 1)
+    # Sinon, premier nombre suivi de g / ml dans le texte, ex. "1 serving (140 g)" ou "30g"
+    match = re.search(r"(\d+(?:[.,]\d+)?)\s*(g|ml)\b", product.get("serving_size") or "", re.IGNORECASE)
+    if match:
+        qty = float(match.group(1).replace(",", "."))
+        return round(qty, 1) if qty > 0 else None
+    return None
+
+
 @router.get("/from_barcode", dependencies=[Depends(require_admin)])
 def ingredient_from_barcode(code: str = Query(...)):
     try:
+        # categories_tags_fr n'est renvoyé que s'il est demandé explicitement, en plus de "all"
         resp = http_requests.get(
             f"https://world.openfoodfacts.org/api/v2/product/{code}.json",
+            params={"lc": "fr", "fields": "all,categories_tags_fr"},
             timeout=10,
             headers={"User-Agent": "Frigood/1.0 (contact: frigood@example.com)"},
         )
@@ -121,13 +153,13 @@ def ingredient_from_barcode(code: str = Query(...)):
         except (ValueError, TypeError):
             calories = None
 
-    # Catégorie : premier tag lisible
-    categorie = ""
-    for tag in (product.get("categories_tags") or []):
-        cleaned = tag.split(":", 1)[-1].replace("-", " ").strip()
-        if cleaned:
-            categorie = cleaned
-            break
+    # Catégories en français, de la plus générale à la plus précise ; les tags non traduits gardent
+    # un préfixe de langue ("de:Other") et sont écartés. Repli sur les tags anglais nettoyés.
+    categories = [c.strip() for c in (product.get("categories_tags_fr") or []) if c and ":" not in c]
+    if not categories:
+        categories = [t.split(":", 1)[-1].replace("-", " ").strip() for t in (product.get("categories_tags") or [])]
+        categories = [c for c in categories if c]
+    categorie = categories[-1] if categories else ""
 
     # Nutriments supplémentaires
     extra_map = [
@@ -167,18 +199,22 @@ def ingredient_from_barcode(code: str = Query(...)):
     quantity = product.get("quantity") or ""
     if quantity:
         parts.append(quantity)
+    serving_size = (product.get("serving_size") or "").strip()
+    if serving_size:
+        parts.append(f"portion : {serving_size}")
     description = " — ".join(parts)
 
     return {
         "nom": product.get("product_name_fr") or product.get("product_name") or "",
         "description": description,
         "categorie": categorie,
+        "categories": list(reversed(categories)),
         "calories": calories,
         "proteines": _f("proteins_100g"),
         "glucides": _f("carbohydrates_100g"),
         "lipides": _f("fat_100g"),
         "unite": "g",
-        "quantite_defaut": None,
+        "quantite_defaut": _serving_grams(product),
         "duree_conservation": 7,
         "nutriments": nutriments_list,
         "code_barre": code,
