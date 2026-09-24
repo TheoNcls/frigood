@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Activity } from "../api/types";
 import ActivityDetail from "../components/ActivityDetail";
+import WeekStrip from "../components/WeekStrip";
 import { AlertTriangle, Flame, Footprints, Moon } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
 import {
@@ -83,6 +84,8 @@ export default function Home() {
           <MacroTile label="Lipides" value={consumed.lip} target={user.lipides_cible} unit="g" showRemaining />
         </div>
       </Card>
+
+      <WeekStrip />
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Sport">
