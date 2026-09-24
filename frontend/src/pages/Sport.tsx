@@ -3,8 +3,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import listPlugin from "@fullcalendar/list";
+import interactionPlugin, { type DateClickArg } from "@fullcalendar/interaction";
+import { useNavigate } from "react-router-dom";
 import frLocale from "@fullcalendar/core/locales/fr";
-import type { DatesSetArg, EventInput } from "@fullcalendar/core";
+import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import { RefreshCw, Trash2, Unplug, Watch } from "lucide-react";
 import { ApiError, api } from "../api/client";
 import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes } from "../api/queries";
@@ -387,6 +389,11 @@ function SportCalendar() {
     return out;
   }, [acts.data, meals.data, types.byId, ingredients.byId, recipes.byId]);
 
+  const navigate = useNavigate();
+  const openDay = (iso: string) => {
+    if (iso <= today) navigate(`/historique?date=${iso}`);
+  };
+
   function onDatesSet(arg: DatesSetArg) {
     const from = toISODate(arg.start);
     const to = toISODate(addDaysDate(arg.end, -1));
@@ -396,12 +403,16 @@ function SportCalendar() {
   return (
     <Card title="Calendrier">
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600">
+        <span className="text-slate-500">Clique sur un jour pour ouvrir son historique ·</span>
         <Legend color="#059669" label="Repas" />
         <Legend color="#ea580c" label="Activité Garmin" />
         <Legend color="#2563eb" label="Activité manuelle" />
       </div>
       <FullCalendar
-        plugins={[dayGridPlugin, listPlugin]}
+        plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
+        dateClick={(arg: DateClickArg) => openDay(toISODate(arg.date))}
+        eventClick={(arg: EventClickArg) => { if (arg.event.start) openDay(toISODate(arg.event.start)); }}
+        dayCellClassNames={(arg) => (toISODate(arg.date) <= today ? "fc-day-clickable" : "")}
         locale={frLocale}
         initialView={window.innerWidth < 640 ? "listWeek" : "dayGridMonth"}
         headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,listWeek" }}

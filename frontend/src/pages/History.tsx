@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Bar, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -15,7 +16,11 @@ import { MOMENTS, MOMENT_LABELS, describeLog, fmt, logMacros, totalMacros } from
 
 export default function History() {
   const today = todayISO();
-  const [date, setDate] = useState(addDays(today, -1));
+  // La date est dans l'adresse (?date=AAAA-MM-JJ) : lien depuis le calendrier, bouton retour, rechargement
+  const [params, setParams] = useSearchParams();
+  const fromUrl = params.get("date");
+  const date = fromUrl && /^\d{4}-\d{2}-\d{2}$/.test(fromUrl) && fromUrl <= today ? fromUrl : addDays(today, -1);
+  const setDate = (d: string) => setParams({ date: d > today ? today : d }, { replace: true });
 
   return (
     <div className="space-y-4">
