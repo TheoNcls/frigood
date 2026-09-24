@@ -152,7 +152,7 @@ def ingredient_from_barcode(code: str = Query(...)):
 @router.post("/enrich_from_sources", dependencies=[Depends(require_admin)])
 def enrich_from_sources(db: Session = Depends(get_db)):
     """Complète les ingrédients scannés depuis le JSON OpenFoodFacts déjà stocké, sans rien écraser :
-    Nutri-Score, Green-Score, NOVA, régime et nutriments manquants."""
+    Nutri-Score, Green-Score, NOVA, régime, photo et nutriments manquants."""
     nutriments_by_name = {n.nom.lower(): n for n in db.query(Nutriment)}
     ingredients_done = nutriments_added = 0
     sources = (db.query(IngredientSource)
@@ -170,7 +170,7 @@ def enrich_from_sources(db: Session = Depends(get_db)):
         parsed = off.parse(product)
         ing = source.ingredient
         changed = False
-        for field in ("nutriscore", "greenscore", "nova", "regime"):
+        for field in ("nutriscore", "greenscore", "nova", "regime", "image_url"):
             if getattr(ing, field) is None and parsed[field] is not None:
                 setattr(ing, field, parsed[field])
                 changed = True

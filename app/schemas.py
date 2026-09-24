@@ -60,6 +60,14 @@ class IngredientBase(BaseModel):
     greenscore: str | None = None
     nova: int | None = None
     regime: str | None = None
+    image_url: str | None = None
+
+    @field_validator("image_url")
+    @classmethod
+    def _check_image_url(cls, v: str | None) -> str | None:
+        # Uniquement des liens https : un lien "javascript:" ou "data:" ne doit jamais atteindre une balise <img>
+        v = (v or "").strip()
+        return v if v.startswith("https://") and len(v) <= 2000 else None
 
     @field_validator("greenscore")
     @classmethod

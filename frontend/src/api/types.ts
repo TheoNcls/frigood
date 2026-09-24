@@ -45,6 +45,7 @@ export interface Ingredient {
   greenscore: GreenScore | null;
   nova: Nova | null;
   regime: Regime | null;
+  image_url: string | null;
   nutriments: IngredientNutriment[];
   sources: IngredientSource[];
 }
@@ -78,6 +79,7 @@ export interface IngredientInput {
   greenscore: GreenScore | null;
   nova: Nova | null;
   regime: Regime | null;
+  image_url: string | null;
 }
 
 export interface NutrimentSuggestion {

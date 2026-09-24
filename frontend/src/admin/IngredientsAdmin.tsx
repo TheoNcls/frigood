@@ -5,6 +5,7 @@ import { ApiError, api } from "../api/client";
 import { useIngredients, useNutriments } from "../api/queries";
 import type { Ingredient, IngredientInput, IngredientSuggestion, NutrimentSuggestion } from "../api/types";
 import { FoodBadges } from "../components/FoodBadges";
+import FoodThumb from "../components/FoodThumb";
 import Modal from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { Card, ConfirmButton, Empty, ErrorMessage, Field, Segmented, Spinner } from "../components/ui";
@@ -62,11 +63,16 @@ export default function IngredientsAdmin() {
               {rows.map((i) => (
                 <tr key={i.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setEditingId(i.id)}>
                   <td className="px-4 py-2.5">
-                    <div className="font-medium text-slate-900">{i.nom}</div>
-                    <div className="text-xs text-slate-500">
-                      {[i.categorie, i.nutriments.length ? `${i.nutriments.length} nutriment(s)` : null].filter(Boolean).join(" · ")}
+                    <div className="flex items-center gap-3">
+                      <FoodThumb nom={i.nom} categorie={i.categorie} imageUrl={i.image_url} />
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900">{i.nom}</div>
+                        <div className="text-xs text-slate-500">
+                          {[i.categorie, i.nutriments.length ? `${i.nutriments.length} nutriment(s)` : null].filter(Boolean).join(" · ")}
+                        </div>
+                        <div className="mt-1"><FoodBadges item={i} compact /></div>
+                      </div>
                     </div>
-                    <div className="mt-1"><FoodBadges item={i} compact /></div>
                   </td>
                   <td className="px-3 py-2.5 text-right">{i.calories !== null ? fmt(i.calories) : "—"}</td>
                   <td className="px-3 py-2.5 text-right">{i.proteines !== null ? fmt(i.proteines, 1) : "—"}</td>
@@ -224,11 +230,14 @@ function BarcodeLookup({ onFound, onExisting }: {
   if (existing) {
     return (
       <div className="space-y-3">
-        <div className="rounded-xl bg-sky-50 px-3 py-3 text-sm text-sky-900">
-          <div className="font-medium">Déjà dans le catalogue : {existing.nom}</div>
-          <div className="mt-0.5 text-xs text-sky-800">
-            Code {code}
-            {existing.calories !== null ? ` · ${fmt(existing.calories)} kcal / 100 ${existing.unite === "ml" ? "ml" : "g"}` : ""}
+        <div className="flex items-center gap-3 rounded-xl bg-sky-50 px-3 py-3 text-sm text-sky-900">
+          <FoodThumb nom={existing.nom} categorie={existing.categorie} imageUrl={existing.image_url} size="md" />
+          <div>
+            <div className="font-medium">Déjà dans le catalogue : {existing.nom}</div>
+            <div className="mt-0.5 text-xs text-sky-800">
+              Code {code}
+              {existing.calories !== null ? ` · ${fmt(existing.calories)} kcal / 100 ${existing.unite === "ml" ? "ml" : "g"}` : ""}
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -302,6 +311,7 @@ function EditIngredient({ ingredient, onDeleted }: { ingredient: Ingredient; onD
           greenscore: ingredient.greenscore,
           nova: ingredient.nova,
           regime: ingredient.regime,
+          image_url: ingredient.image_url,
         }}
         currentId={ingredient.id}
         submitLabel="Enregistrer"

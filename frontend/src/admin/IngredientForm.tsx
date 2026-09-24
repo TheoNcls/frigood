@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { useIngredients } from "../api/queries";
 import type { GreenScore, IngredientInput, IngredientSuggestion, Nova, NutriScore, NutrimentSuggestion, Regime } from "../api/types";
 import { GREENSCORE_LABELS, REGIME_INFO } from "../components/FoodBadges";
+import FoodThumb from "../components/FoodThumb";
 import { Field } from "../components/ui";
 import { parseNum } from "./catalog";
 
@@ -33,6 +34,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
     greenscore: initial.greenscore ?? "",
     nova: str(initial.nova),
     regime: initial.regime ?? "",
+    image_url: initial.image_url ?? "",
   });
   const suggested = initial.nutriments ?? [];
   const [nuts, setNuts] = useState(suggested.map((n) => ({ ...n, valeurStr: String(n.valeur), checked: true })));
@@ -69,6 +71,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         greenscore: (f.greenscore || null) as GreenScore | null,
         nova: f.nova ? (Number(f.nova) as Nova) : null,
         regime: (f.regime || null) as Regime | null,
+        image_url: f.image_url.trim() || null,
       },
       nuts
         .filter((n) => n.checked && parseNum(n.valeurStr) !== null)
@@ -104,6 +107,20 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
           </div>
         </div>
       )}
+      <div className="flex items-start gap-4">
+        <FoodThumb key={f.image_url} nom={f.nom} categorie={f.categorie} imageUrl={f.image_url.trim() || null} size="lg" />
+        <div className="min-w-0 flex-1">
+          <Field label="Photo" hint={f.image_url ? "Lien de l'image (https). Vide pour afficher l'emoji de la catégorie." : "Aucune photo : l'emoji de la catégorie est affiché."}>
+            <div className="flex gap-2">
+              <input className="input text-xs" placeholder="https://…" value={f.image_url} onChange={set("image_url")} spellCheck={false} />
+              {f.image_url && (
+                <button type="button" className="btn-secondary shrink-0" onClick={() => setF({ ...f, image_url: "" })}>Retirer</button>
+              )}
+            </div>
+          </Field>
+        </div>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Nom">
           <input className="input" required value={f.nom} onChange={set("nom")} />

@@ -23,6 +23,7 @@ class Ingredient(Base):
     greenscore = Column(String(6), nullable=True)   # a-plus, a à f (impact environnemental)
     nova = Column(Integer, nullable=True)           # 1 (brut) à 4 (ultra-transformé)
     regime = Column(String(20), nullable=True)      # vegan, vegetarien, non_vegetarien, incertain
+    image_url = Column(String, nullable=True)       # vignette (lien OpenFoodFacts, non copiée chez nous)
 
     recettes = relationship("RecipeIngredient", back_populates="ingredient")
     nutriments = relationship("IngredientNutriment", back_populates="ingredient", cascade="all, delete-orphan")

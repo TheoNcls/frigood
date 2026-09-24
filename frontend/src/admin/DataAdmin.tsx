@@ -241,7 +241,7 @@ function EnrichCard() {
     <Card title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4" /> Compléter depuis OpenFoodFacts</span>}>
       <p className="mb-3 text-sm text-slate-500">
         Relit les données OpenFoodFacts déjà enregistrées pour les ingrédients scannés, sans rien rescanner :
-        ajoute le Nutri-Score, le Green-Score, le NOVA, le régime et les nutriments manquants (B12, zinc, iode…). Rien n'est écrasé.
+        ajoute la photo, le Nutri-Score, le Green-Score, le NOVA, le régime et les nutriments manquants (B12, zinc, iode…). Rien n'est écrasé.
       </p>
       <button className="btn-secondary" disabled={enrich.isPending} onClick={() => enrich.mutate()}>
         {enrich.isPending ? "Complétion…" : "Compléter les ingrédients scannés"}

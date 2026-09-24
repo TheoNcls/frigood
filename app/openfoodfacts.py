@@ -120,6 +120,15 @@ def greenscore(product: dict) -> str | None:
     return grade if grade in ("a-plus", "a", "b", "c", "d", "e", "f") else None
 
 
+def image(product: dict) -> str | None:
+    """Photo de face en 200 px : suffisant pour une vignette, et léger à charger."""
+    for key in ("image_front_small_url", "image_small_url", "image_front_url", "image_url"):
+        url = (product.get(key) or "").strip()
+        if url.startswith("https://"):
+            return url
+    return None
+
+
 def nova(product: dict) -> int | None:
     try:
         n = int(product.get("nova_group"))
@@ -170,6 +179,7 @@ def parse(product: dict) -> dict:
         "nutriscore": nutriscore(product),
         "greenscore": greenscore(product),
         "nova": nova(product),
+        "image_url": image(product),
         "regime": diet,
         "regime_causes": causes,
         "nutriments": nutriments(product),

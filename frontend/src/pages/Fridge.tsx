@@ -6,6 +6,7 @@ import { useFridge, useFridgeHistory, useIngredients, useRecipes } from "../api/
 import type { FridgeItem, TypeMesure } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { FoodBadges } from "../components/FoodBadges";
+import FoodThumb from "../components/FoodThumb";
 import FoodPicker from "../components/FoodPicker";
 import { useToast } from "../components/Toast";
 import { Card, Empty, ErrorMessage, Field, PageHeader, Segmented, Spinner } from "../components/ui";
@@ -84,9 +85,16 @@ function Contents({ onAdd }: { onAdd: () => void }) {
           return (
             <li key={item.id} className="card">
               <div className="flex items-start gap-3">
+                <FoodThumb
+                  nom={fridgeItemName(item, ingredients.byId, recipes.byId)}
+                  categorie={ing?.categorie}
+                  imageUrl={ing?.image_url}
+                  recipe={!!item.recipe_id}
+                  size="md"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-slate-900">
-                    {item.recipe_id ? "🍽️ " : ""}{fridgeItemName(item, ingredients.byId, recipes.byId)}
+                    {fridgeItemName(item, ingredients.byId, recipes.byId)}
                   </div>
                   <div className="text-sm text-slate-500">{fridgeItemQty(item, ingredients.byId)}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">

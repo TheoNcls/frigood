@@ -6,6 +6,7 @@ import { useFridge, useIngredients, useMealLogs, useRecipes } from "../api/queri
 import type { MealLog, MealLogCreate, Moment, TypeMesure } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import FoodPicker from "../components/FoodPicker";
+import FoodThumb from "../components/FoodThumb";
 import { useToast } from "../components/Toast";
 import { Card, Empty, ErrorMessage, Field, MacroTile, PageHeader, Segmented, Spinner } from "../components/ui";
 import { formatLong, todayISO } from "../lib/dates";
@@ -195,12 +196,19 @@ export default function Meals() {
             <ul className="divide-y divide-slate-100">
               {logs.map((log) => {
                 const m = logMacros(log, ingredients.byId, recipes.byId);
+                const ing = log.ingredient_id ? ingredients.byId.get(log.ingredient_id) : undefined;
                 return (
                   <li key={log.id} className="flex items-start gap-3 py-3">
-                    <span className="badge mt-0.5 bg-slate-100 text-slate-600">{MOMENT_LABELS[log.moment] ?? log.moment}</span>
+                    <FoodThumb
+                      nom={ing?.nom ?? recipes.byId.get(log.recipe_id ?? -1)?.nom ?? ""}
+                      categorie={ing?.categorie}
+                      imageUrl={ing?.image_url}
+                      recipe={!!log.recipe_id}
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-slate-900">
-                        {log.recipe_id ? "🍽️ " : "🥗 "}{describeLog(log, ingredients.byId, recipes.byId)}
+                        {describeLog(log, ingredients.byId, recipes.byId)}
+                        <span className="badge ml-2 bg-slate-100 align-middle text-slate-600">{MOMENT_LABELS[log.moment] ?? log.moment}</span>
                       </div>
                       <div className="text-xs text-slate-500">
                         {fmt(m.cal)} kcal · P {fmt(m.prot, 1)} g · G {fmt(m.gluc, 1)} g · L {fmt(m.lip, 1)} g
