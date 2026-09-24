@@ -140,6 +140,7 @@ export interface ActivityType {
   nom: string;
   description: string | null;
   met_value: number | null;
+  garmin_type_key: string | null;
 }
 
 export interface Activity {

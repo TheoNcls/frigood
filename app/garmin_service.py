@@ -1,6 +1,7 @@
 import json
 from datetime import date, datetime, timedelta, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Activity, ActivityType, DailyStat
@@ -77,7 +78,8 @@ def _apply_sleep(stat: DailyStat, sleep: dict):
     stat.sommeil_eveil_h = _hours(dto.get("awakeSleepSeconds"))
     scores = dto.get("sleepScores") or {}
     stat.sommeil_score = (
-        _value(scores.get("overallScore"))
+        _value(scores.get("overall"))
+        or _value(scores.get("overallScore"))
         or _value(scores.get("totalSleep"))
         or _int(dto.get("sleepScore") or sleep.get("sleepScore"))
     )
@@ -193,20 +195,97 @@ def sync_days(api, db: Session, user_id: int, days: list[date]) -> int:
     return synced
 
 
+# Noms français des types Garmin les plus courants ; les autres sont dérivés de la clé ("paddle_board" → "Paddle board")
+GARMIN_TYPE_LABELS = {
+    "running": "Course à pied",
+    "trail_running": "Trail",
+    "treadmill_running": "Course sur tapis",
+    "track_running": "Course sur piste",
+    "indoor_running": "Course en salle",
+    "cycling": "Vélo",
+    "road_biking": "Vélo de route",
+    "mountain_biking": "VTT",
+    "gravel_cycling": "Gravel",
+    "indoor_cycling": "Vélo d'intérieur",
+    "virtual_ride": "Vélo virtuel",
+    "e_bike_fitness": "Vélo électrique",
+    "walking": "Marche",
+    "casual_walking": "Marche",
+    "speed_walking": "Marche rapide",
+    "hiking": "Randonnée",
+    "swimming": "Natation",
+    "lap_swimming": "Natation en piscine",
+    "open_water_swimming": "Natation en eau libre",
+    "strength_training": "Renforcement musculaire",
+    "cardio": "Cardio",
+    "indoor_cardio": "Cardio",
+    "hiit": "HIIT",
+    "yoga": "Yoga",
+    "pilates": "Pilates",
+    "breathwork": "Respiration",
+    "elliptical": "Elliptique",
+    "stair_climbing": "Escaliers",
+    "indoor_rowing": "Rameur",
+    "rowing": "Aviron",
+    "tennis": "Tennis",
+    "padel": "Padel",
+    "badminton": "Badminton",
+    "soccer": "Football",
+    "basketball": "Basket",
+    "golf": "Golf",
+    "rock_climbing": "Escalade",
+    "indoor_climbing": "Escalade en salle",
+    "bouldering": "Bloc",
+    "resort_skiing_snowboarding_ws": "Ski alpin",
+    "cross_country_skiing_ws": "Ski de fond",
+    "backcountry_skiing": "Ski de randonnée",
+    "kayaking": "Kayak",
+    "stand_up_paddleboarding": "Paddle",
+    "surfing": "Surf",
+    "fitness_equipment": "Fitness",
+    "multi_sport": "Multisport",
+    "triathlon": "Triathlon",
+    "other": "Autre",
+}
+
+
+class TypeResolver:
+    """Trouve (ou crée) le type d'activité correspondant à une clé Garmin, avec un cache par synchronisation."""
+
+    def __init__(self, db: Session):
+        self.db = db
+        self.cache: dict[str, int] = {}
+
+    def __call__(self, type_key: str | None) -> int | None:
+        key = (type_key or "").strip().lower()
+        if not key:
+            return None
+        if key in self.cache:
+            return self.cache[key]
+        at = self.db.query(ActivityType).filter(ActivityType.garmin_type_key == key).first()
+        if not at:
+            label = GARMIN_TYPE_LABELS.get(key) or key.replace("_", " ").capitalize()
+            # Un type du même nom existe déjà (créé à la main) : on le rattache plutôt que de dupliquer
+            at = self.db.query(ActivityType).filter(func.lower(ActivityType.nom) == label.lower()).first()
+            if at is None:
+                at = ActivityType(nom=label, garmin_type_key=key)
+                self.db.add(at)
+            elif at.garmin_type_key is None:
+                at.garmin_type_key = key
+            self.db.flush()
+        self.cache[key] = at.id
+        return at.id
+
+
+def _type_key(a: dict) -> str | None:
+    return (a.get("activityType") or {}).get("typeKey")
+
+
 def sync_activities(db: Session, user_id: int, raw_activities: list[dict]) -> tuple[int, int]:
-    types = db.query(ActivityType).all()
-
-    def match_type(type_key: str) -> int | None:
-        key = type_key.lower().replace("_", " ")
-        for at in types:
-            name = at.nom.lower()
-            if key in name or name in key:
-                return at.id
-        return None
-
+    resolve = TypeResolver(db)
     existing = {
-        gid: has_raw
-        for gid, has_raw in db.query(Activity.garmin_activity_id, Activity.raw_data.isnot(None))
+        gid: (has_raw, type_id)
+        for gid, has_raw, type_id in db.query(Activity.garmin_activity_id, Activity.raw_data.isnot(None), Activity.activity_type_id)
         .filter(Activity.user_id == user_id, Activity.garmin_activity_id.isnot(None))
     }
     imported = skipped = 0
@@ -216,21 +295,27 @@ def sync_activities(db: Session, user_id: int, raw_activities: list[dict]) -> tu
             continue
         raw_json = json.dumps(a, ensure_ascii=False, default=str)
         if garmin_id in existing:
-            if not existing[garmin_id]:
-                db.query(Activity).filter_by(garmin_activity_id=garmin_id).update({Activity.raw_data: raw_json})
+            # Déjà importée : on complète seulement ce qui manque (JSON brut, type)
+            has_raw, type_id = existing[garmin_id]
+            updates = {}
+            if not has_raw:
+                updates[Activity.raw_data] = raw_json
+            if type_id is None and (new_type := resolve(_type_key(a))):
+                updates[Activity.activity_type_id] = new_type
+            if updates:
+                db.query(Activity).filter_by(garmin_activity_id=garmin_id).update(updates)
             skipped += 1
             continue
         try:
             activity_date = datetime.strptime((a.get("startTimeLocal") or "")[:10], "%Y-%m-%d").date()
         except ValueError:
             continue
-        type_key = (a.get("activityType") or {}).get("typeKey") or ""
         duration_s = a.get("duration") or 0
         distance_m = a.get("distance") or 0
         db.add(Activity(
             user_id=user_id,
             date=activity_date,
-            activity_type_id=match_type(type_key) if type_key else None,
+            activity_type_id=resolve(_type_key(a)),
             source="garmin",
             garmin_activity_id=garmin_id,
             duree_min=int(duration_s / 60) if duration_s else None,
@@ -240,20 +325,35 @@ def sync_activities(db: Session, user_id: int, raw_activities: list[dict]) -> tu
             notes=a.get("activityName"),
             raw_data=raw_json,
         ))
-        existing[garmin_id] = True
+        existing[garmin_id] = (True, 1)
         imported += 1
     db.commit()
     return imported, skipped
 
 
-def recompute_days(db: Session, user_id: int) -> int:
-    """Réapplique l'extraction sur tous les JSON bruts stockés, sans appeler Garmin."""
-    count = 0
+def recompute_days(db: Session, user_id: int) -> tuple[int, int]:
+    """Réapplique l'extraction sur tous les JSON bruts stockés, sans appeler Garmin.
+    Retourne (jours recalculés, activités auxquelles un type a été attribué)."""
+    days = 0
     for stat in db.query(DailyStat).filter(DailyStat.user_id == user_id, DailyStat.raw_data.isnot(None)):
         try:
             apply_day(stat, json.loads(stat.raw_data))
-            count += 1
+            days += 1
         except (ValueError, TypeError):
             continue
+
+    resolve = TypeResolver(db)
+    typed = 0
+    untyped = db.query(Activity).filter(
+        Activity.user_id == user_id, Activity.activity_type_id.is_(None), Activity.raw_data.isnot(None),
+    )
+    for activity in untyped:
+        try:
+            type_id = resolve(_type_key(json.loads(activity.raw_data)))
+        except (ValueError, TypeError):
+            continue
+        if type_id:
+            activity.activity_type_id = type_id
+            typed += 1
     db.commit()
-    return count
+    return days, typed

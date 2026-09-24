@@ -81,6 +81,8 @@ class ActivityType(Base):
     nom = Column(String, nullable=False, unique=True)
     description = Column(String, nullable=True)
     met_value = Column(Float, nullable=True)
+    # Clé Garmin ("running", "cycling"…) pour rattacher automatiquement les activités synchronisées
+    garmin_type_key = Column(String(80), nullable=True, unique=True)
 
     activities = relationship("Activity", back_populates="activity_type")
 

@@ -35,6 +35,7 @@ function useInvalidateSport() {
   return () => {
     queryClient.invalidateQueries({ queryKey: ["activities"] });
     queryClient.invalidateQueries({ queryKey: ["daily_stats"] });
+    queryClient.invalidateQueries({ queryKey: ["activity_types"] });
   };
 }
 
@@ -203,6 +204,7 @@ function GarminMoreOptions() {
   const { refreshUser } = useAuth();
   const toast = useToast();
   const invalidate = useInvalidateSport();
+  const queryClient = useQueryClient();
   const [days, setDays] = useState(90);
   const [progress, setProgress] = useState<{ done: number; remaining: number | null } | null>(null);
 
@@ -247,8 +249,15 @@ function GarminMoreOptions() {
   });
 
   const recompute = useMutation({
-    mutationFn: () => api<{ stats_days: number }>(`/users/${user.id}/garmin_recompute`, { method: "POST" }),
-    onSuccess: (r) => { invalidate(); toast(`${r.stats_days} jour(s) recalculé(s) depuis les données brutes`); },
+    mutationFn: () => api<{ stats_days: number; activities_typed: number }>(`/users/${user.id}/garmin_recompute`, { method: "POST" }),
+    onSuccess: (r) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["activity_types"] });
+      toast(
+        `${r.stats_days} jour(s) recalculé(s) depuis les données brutes` +
+        (r.activities_typed ? `, ${r.activities_typed} activité(s) rattachée(s) à un type` : ""),
+      );
+    },
     onError: (e) => toast(e.message, "error"),
   });
 

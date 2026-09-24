@@ -22,7 +22,7 @@ def create_activity_type(data: ActivityTypeCreate, db: Session = Depends(get_db)
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"Le type « {data.nom} » existe déjà")
+        raise HTTPException(status_code=400, detail=f"Un type nommé « {data.nom} » ou avec la clé Garmin « {data.garmin_type_key} » existe déjà")
     db.refresh(at)
     return at
 
@@ -38,7 +38,7 @@ def update_activity_type(id: int, data: ActivityTypeCreate, db: Session = Depend
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"Le type « {data.nom} » existe déjà")
+        raise HTTPException(status_code=400, detail=f"Un type nommé « {data.nom} » ou avec la clé Garmin « {data.garmin_type_key} » existe déjà")
     db.refresh(at)
     return at
 

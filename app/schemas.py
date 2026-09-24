@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import date as date_type, datetime as datetime_type
 
 
@@ -104,6 +104,13 @@ class ActivityTypeCreate(BaseModel):
     nom: str
     description: str | None = None
     met_value: float | None = None
+    garmin_type_key: str | None = None
+
+    @field_validator("garmin_type_key")
+    @classmethod
+    def _normalize_key(cls, v: str | None) -> str | None:
+        v = (v or "").strip().lower()
+        return v or None
 
 class ActivityTypeRead(ActivityTypeCreate):
     id: int

@@ -105,6 +105,17 @@ def ingredient_from_claude(nom: str = Query(...)):
         raise HTTPException(status_code=500, detail=f"Erreur Claude API : {str(e)}")
 
 
+def _name_with_brand(name: str, brands: str) -> str:
+    """« Steak » + « Planted » → « Steak (Planted) » : première marque seulement, sauf si déjà dans le nom."""
+    name = name.strip()
+    brand = (brands or "").split(",")[0].strip()
+    if brand.isupper() and len(brand) > 3:
+        brand = brand.title()  # "DANONE" → "Danone"
+    if not brand or brand.lower() in name.lower():
+        return name
+    return f"{name} ({brand})" if name else brand
+
+
 def _serving_grams(product: dict) -> float | None:
     """Portion conseillée en g (ml assimilés à des g), depuis serving_quantity ou le texte serving_size."""
     unit = (product.get("serving_quantity_unit") or "g").strip().lower()
@@ -205,7 +216,7 @@ def ingredient_from_barcode(code: str = Query(...)):
     description = " — ".join(parts)
 
     return {
-        "nom": product.get("product_name_fr") or product.get("product_name") or "",
+        "nom": _name_with_brand(product.get("product_name_fr") or product.get("product_name") or "", brand),
         "description": description,
         "categorie": categorie,
         "categories": list(reversed(categories)),

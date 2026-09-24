@@ -48,14 +48,11 @@ export default function FoodPicker<T extends Item>({ label, items, counts, inFri
         onChange={(e) => onChange(Number(e.target.value))}
       >
         {!selectedVisible && <option value="" disabled>{options.length ? "Choisir…" : "Aucun résultat"}</option>}
-        {options.map((o) => {
-          const n = counts.get(o.id);
-          return (
-            <option key={o.id} value={o.id}>
-              {inFridge?.has(o.id) ? "🧊 " : ""}{o.nom}{n ? ` (${n}×)` : ""}
-            </option>
-          );
-        })}
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {inFridge?.has(o.id) ? "🧊 " : ""}{o.nom}
+          </option>
+        ))}
       </select>
     </div>
   );

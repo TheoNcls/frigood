@@ -169,7 +169,8 @@ def garmin_import_tokens(user_id: int, data: GarminTokens, principal: Principal 
 def garmin_recompute(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     """Recalcule les données santé depuis les JSON Garmin déjà stockés, sans appeler Garmin."""
     check_user_access(principal, user_id)
-    return {"stats_days": recompute_days(db, user_id)}
+    days, typed = recompute_days(db, user_id)
+    return {"stats_days": days, "activities_typed": typed}
 
 
 def _garmin_login(user: User, credentials: GarminCredentials, db: Session):

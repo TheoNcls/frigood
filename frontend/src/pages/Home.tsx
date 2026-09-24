@@ -123,7 +123,7 @@ export default function Home() {
                 {sleepRows.map((r) => (
                   <div key={r.date} className="rounded-xl bg-slate-50 p-2">
                     <div className="font-medium">{formatShort(r.date)}</div>
-                    <div className="text-slate-500">Score : {r.sommeil_score ?? "—"}</div>
+                    {r.sommeil_score !== null && <div className="text-slate-500">Score : {r.sommeil_score}</div>}
                     <div className="text-slate-500">{r.sommeil_total_h ? `${fmt(r.sommeil_total_h, 1)} h` : "—"}</div>
                   </div>
                 ))}

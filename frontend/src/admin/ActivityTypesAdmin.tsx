@@ -13,6 +13,7 @@ interface TypeInput {
   nom: string;
   description: string | null;
   met_value: number | null;
+  garmin_type_key: string | null;
 }
 
 function TypeForm({ initial, submitLabel, pending, onSubmit }: {
@@ -24,6 +25,7 @@ function TypeForm({ initial, submitLabel, pending, onSubmit }: {
   const [nom, setNom] = useState(initial?.nom ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [met, setMet] = useState(initial?.met_value ? String(initial.met_value) : "");
+  const [garminKey, setGarminKey] = useState(initial?.garmin_type_key ?? "");
 
   return (
     <form
@@ -31,7 +33,12 @@ function TypeForm({ initial, submitLabel, pending, onSubmit }: {
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
         const m = parseNum(met);
-        onSubmit({ nom: nom.trim(), description: description.trim() || null, met_value: m && m > 0 ? m : null });
+        onSubmit({
+          nom: nom.trim(),
+          description: description.trim() || null,
+          met_value: m && m > 0 ? m : null,
+          garmin_type_key: garminKey.trim().toLowerCase() || null,
+        });
       }}
     >
       <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
@@ -40,7 +47,12 @@ function TypeForm({ initial, submitLabel, pending, onSubmit }: {
           <input className="input" type="number" min={0} step="any" value={met} onChange={(e) => setMet(e.target.value)} />
         </Field>
       </div>
-      <Field label="Description"><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+      <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+        <Field label="Description"><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+        <Field label="Clé Garmin" hint="ex. running, cycling, yoga">
+          <input className="input font-mono" value={garminKey} onChange={(e) => setGarminKey(e.target.value)} spellCheck={false} />
+        </Field>
+      </div>
       <div className="flex justify-end">
         <button type="submit" className="btn-primary" disabled={pending}>{submitLabel}</button>
       </div>
@@ -74,7 +86,8 @@ export default function ActivityTypesAdmin() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-500">
-        Types proposés dans le formulaire d'activité. Les activités Garmin sont rattachées automatiquement quand leur nom correspond.
+        Types proposés dans le formulaire d'activité. Les activités Garmin sont rattachées par leur clé Garmin ;
+        un type inconnu est créé automatiquement à la synchronisation, avec un nom en français que tu peux modifier ici.
         Supprimer un type conserve les activités déjà enregistrées, sans type.
       </p>
       <Card title="Nouveau type d'activité">
@@ -86,7 +99,10 @@ export default function ActivityTypesAdmin() {
             {types.list.map((t) => (
               <li key={t.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium text-slate-900">{t.nom}</div>
+                  <div className="font-medium text-slate-900">
+                    {t.nom}
+                    {t.garmin_type_key && <span className="badge ml-2 bg-orange-50 font-mono text-orange-700">⌚ {t.garmin_type_key}</span>}
+                  </div>
                   {t.description && <div className="truncate text-xs text-slate-500">{t.description}</div>}
                 </div>
                 <span className="w-16 text-right text-xs text-slate-500">{t.met_value ? `MET ${t.met_value}` : ""}</span>
