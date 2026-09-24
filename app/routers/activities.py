@@ -118,11 +118,14 @@ def garmin_sync(
             raw_activities = api.get_activities_by_date(start.isoformat(), today.isoformat())
         else:
             raw_activities = api.get_activities(0, 50)
+        if isinstance(raw_activities, dict):
+            raw_activities = raw_activities.get("activities") or raw_activities.get("activityList") or []
         imported, skipped = sync_activities(db, user_id, raw_activities or [])
 
         todo = days_to_sync(db, user_id, today, history_days)
         batch = todo[:BATCH_DAYS]
         stats_days = sync_days(api, db, user_id, batch)
+        _save_tokens(user, api, db)
     except HTTPException:
         raise
     except Exception as e:
@@ -155,9 +158,9 @@ def _garmin_login(user: User, credentials: GarminCredentials, db: Session):
 
     if user.garmin_tokens and not credentials.email:
         try:
+            # Les tokens doivent être passés à login() : chargés à part, login() redemanderait email et mot de passe
             api = Garmin()
-            api.garth.loads(user.garmin_tokens)
-            api.login()
+            api.login(tokenstore=user.garmin_tokens)
             return api
         except Exception:
             user.garmin_tokens = None
@@ -173,9 +176,13 @@ def _garmin_login(user: User, credentials: GarminCredentials, db: Session):
         if mfa_prompted and not credentials.mfa_code:
             raise HTTPException(status_code=422, detail="CODE_MFA_REQUIS")
         raise HTTPException(status_code=400, detail=f"Erreur Garmin : {str(e)}")
-    try:
-        user.garmin_tokens = api.garth.dumps()
-        db.commit()
-    except AttributeError:
-        pass
+    _save_tokens(user, api, db)
     return api
+
+
+def _save_tokens(user: User, api, db: Session):
+    """Enregistre la session Garmin (JSON), y compris après un rafraîchissement automatique du token."""
+    tokens = api.client.dumps()
+    if tokens != user.garmin_tokens:
+        user.garmin_tokens = tokens
+        db.commit()
