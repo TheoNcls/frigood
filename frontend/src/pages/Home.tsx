@@ -1,5 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import type { Activity } from "../api/types";
+import ActivityDetail from "../components/ActivityDetail";
 import { AlertTriangle, Flame, Footprints, Moon } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
 import {
@@ -23,6 +25,7 @@ export default function Home() {
   const statToday = useDailyStat(today);
   const sleep = useDailyStatsRange(addDays(today, -3), addDays(today, -1));
   const fridge = useFridge();
+  const [opened, setOpened] = useState<Activity | null>(null);
 
   const consumed = totalMacros(meals.data ?? [], ingredients.byId, recipes.byId);
 
@@ -54,6 +57,7 @@ export default function Home() {
 
   return (
     <div className="space-y-4">
+      {opened && <ActivityDetail activity={opened} onClose={() => setOpened(null)} />}
       <header>
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Bonjour, {user.nom} 👋</h1>
         <p className="mt-1 text-sm text-slate-500">{formatLong(today)}</p>
@@ -86,8 +90,11 @@ export default function Home() {
             <ul className="mb-4 space-y-1 text-sm">
               {actsToday.map((a) => (
                 <li key={a.id}>
-                  ✅ <span className="font-medium">{activityLabel(a, types.byId)}</span>
-                  {activityDetails(a, { hr: false }) && <span className="text-slate-500"> — {activityDetails(a, { hr: false })}</span>}
+                  <button type="button" className="-mx-2 rounded-xl px-2 py-0.5 text-left hover:bg-slate-50" onClick={() => setOpened(a)}>
+                    ✅ <span className="font-medium">{activityLabel(a, types.byId)}</span>
+                    {activityDetails(a, { hr: false }) && <span className="text-slate-500"> — {activityDetails(a, { hr: false })}</span>}
+                    <span className="ml-1 text-brand-700">›</span>
+                  </button>
                 </li>
               ))}
             </ul>

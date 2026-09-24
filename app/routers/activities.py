@@ -7,7 +7,7 @@ from app.models import Activity, User, DailyStat
 from app.schemas import ActivityCreate, ActivityRead, GarminCredentials, GarminTokens, DailyStatRead
 from app.auth import Principal, get_principal, check_user_access
 from app.garmin_service import (
-    BATCH_DAYS, MAX_HISTORY_DAYS, days_to_sync, recompute_days, sync_activities, sync_days,
+    BATCH_DAYS, MAX_HISTORY_DAYS, activity_details, days_to_sync, recompute_days, sync_activities, sync_days,
 )
 
 router = APIRouter(tags=["activities"], dependencies=[Depends(get_principal)])
@@ -55,6 +55,22 @@ def delete_activity(id: int, principal: Principal = Depends(get_principal), db: 
     db.delete(activity)
     db.commit()
     return {"message": "Activité supprimée"}
+
+
+@router.get("/activities/{id}/details")
+def activity_detail(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Détails lus dans le JSON Garmin déjà enregistré : aucun appel à Garmin."""
+    activity = db.get(Activity, id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activité introuvable")
+    check_user_access(principal, activity.user_id)
+    if not activity.raw_data:
+        return {"disponible": False}
+    try:
+        raw = json.loads(activity.raw_data)
+    except ValueError:
+        return {"disponible": False}
+    return {"disponible": True, **activity_details(raw)}
 
 
 @router.get("/users/{user_id}/daily_stats/", response_model=DailyStatRead | None)

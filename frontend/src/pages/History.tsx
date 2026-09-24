@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -7,7 +7,8 @@ import {
 import {
   useActivities, useActivityTypes, useDailyStat, useDailyStatsRange, useIngredients, useMealLogs, useRecipes,
 } from "../api/queries";
-import type { DailyStat } from "../api/types";
+import type { Activity, DailyStat } from "../api/types";
+import ActivityDetail from "../components/ActivityDetail";
 import { useCurrentUser } from "../auth/AuthContext";
 import { Card, Empty, PageHeader, Spinner, Stat } from "../components/ui";
 import { activityDetails, activityLabel } from "../lib/activity";
@@ -98,15 +99,20 @@ function DayActivities({ date }: { date: string }) {
   const types = useActivityTypes();
   const list = acts.data ?? [];
   const totalCal = list.reduce((s, a) => s + (a.calories ?? 0), 0);
+  const [opened, setOpened] = useState<Activity | null>(null);
 
   return (
     <Card title="Activités sportives" action={totalCal > 0 && <span className="text-sm text-slate-500">{fmt(totalCal)} kcal brûlées</span>}>
+      {opened && <ActivityDetail activity={opened} onClose={() => setOpened(null)} />}
       {acts.isLoading ? <Spinner /> : !list.length ? <Empty>Aucune activité enregistrée.</Empty> : (
-        <ul className="space-y-1.5 text-sm">
+        <ul className="space-y-1 text-sm">
           {list.map((a) => (
             <li key={a.id}>
-              {a.source === "garmin" ? "⌚" : "✏️"} <span className="font-medium">{activityLabel(a, types.byId)}</span>
-              <span className="text-slate-500"> — {activityDetails(a) || "—"}</span>
+              <button type="button" className="-mx-2 w-full rounded-xl px-2 py-1 text-left hover:bg-slate-50" onClick={() => setOpened(a)}>
+                {a.source === "garmin" ? "⌚" : "✏️"} <span className="font-medium">{activityLabel(a, types.byId)}</span>
+                <span className="text-slate-500"> — {activityDetails(a) || "—"}</span>
+                <span className="ml-1 text-brand-700">›</span>
+              </button>
             </li>
           ))}
         </ul>

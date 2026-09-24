@@ -331,6 +331,99 @@ def sync_activities(db: Session, user_id: int, raw_activities: list[dict]) -> tu
     return imported, skipped
 
 
+# ── Fiche d'une activité : lecture du résumé Garmin déjà stocké (aucun appel réseau) ───────
+
+TRAINING_EFFECT_LABELS = {
+    "RECOVERY": "Récupération",
+    "BASE": "Endurance de base",
+    "TEMPO": "Tempo",
+    "THRESHOLD": "Seuil",
+    "LACTATE_THRESHOLD": "Seuil lactique",
+    "VO2MAX": "VO2 max",
+    "ANAEROBIC_CAPACITY": "Capacité anaérobie",
+    "SPEED": "Vitesse",
+    "NO_BENEFIT": "Aucun bénéfice",
+}
+
+PACE_SPORTS = ("running", "walking", "hiking", "trail", "treadmill", "track")
+
+
+def _num(v, decimals=1):
+    try:
+        return round(float(v), decimals) if v is not None else None
+    except (ValueError, TypeError):
+        return None
+
+
+def activity_details(a: dict) -> dict:
+    """Champs utiles d'un résumé d'activité Garmin ; chaque valeur vaut None si la montre ne la fournit pas."""
+    type_key = ((a.get("activityType") or {}).get("typeKey") or "").lower()
+    speed = _num(a.get("averageSpeed"), 3)      # m/s
+    max_speed = _num(a.get("maxSpeed"), 3)
+    distance_m = _num(a.get("distance"), 0)
+    is_swim = "swim" in type_key
+
+    zones = []
+    for z in range(1, 6):
+        seconds = _num(a.get(f"hrTimeInZone_{z}"), 0)
+        if seconds:
+            zones.append({"zone": z, "secondes": int(seconds)})
+
+    pool = _num(a.get("poolLength"), 1)
+    pool_unit = ((a.get("unitOfPoolLength") or {}).get("unitKey") or "meter").lower()
+    if pool and pool_unit.startswith("yard"):
+        pool = round(pool * 0.9144, 1)
+
+    label = (a.get("trainingEffectLabel") or "").upper()
+    return {
+        "type_key": type_key or None,
+        "nom": a.get("activityName"),
+        "description": a.get("description"),
+        "lieu": a.get("locationName"),
+        "debut": (a.get("startTimeLocal") or "")[:16] or None,
+        "duree_s": _num(a.get("duration"), 0),
+        "duree_mouvement_s": _num(a.get("movingDuration"), 0),
+        "duree_totale_s": _num(a.get("elapsedDuration"), 0),
+        "distance_km": round(distance_m / 1000, 2) if distance_m else None,
+        "vitesse_moy_kmh": round(speed * 3.6, 1) if speed else None,
+        "vitesse_max_kmh": round(max_speed * 3.6, 1) if max_speed else None,
+        # Allure en secondes par km (course, marche) ou par 100 m (natation)
+        "allure_s_km": round(1000 / speed) if speed and any(s in type_key for s in PACE_SPORTS) else None,
+        "allure_s_100m": round(100 / speed) if speed and is_swim else None,
+        "denivele_pos_m": _num(a.get("elevationGain"), 0),
+        "denivele_neg_m": _num(a.get("elevationLoss"), 0),
+        "altitude_min_m": _num(a.get("minElevation"), 0),
+        "altitude_max_m": _num(a.get("maxElevation"), 0),
+        "calories": _num(a.get("calories"), 0),
+        "fc_moy": _num(a.get("averageHR"), 0),
+        "fc_max": _num(a.get("maxHR"), 0),
+        "zones_fc": zones,
+        "effet_aerobie": _num(a.get("aerobicTrainingEffect")),
+        "effet_anaerobie": _num(a.get("anaerobicTrainingEffect")),
+        "effet_libelle": TRAINING_EFFECT_LABELS.get(label, label.replace("_", " ").capitalize() or None),
+        "charge": _num(a.get("activityTrainingLoad"), 0),
+        "vo2max": _num(a.get("vO2MaxValue"), 0),
+        "cadence_course": _num(a.get("averageRunningCadenceInStepsPerMinute"), 0),
+        "cadence_velo": _num(a.get("averageBikingCadenceInRevPerMinute"), 0),
+        "foulee_m": round(v / 100, 2) if (v := _num(a.get("avgStrideLength"))) else None,
+        "pas": _num(a.get("steps"), 0),
+        "puissance_moy_w": _num(a.get("avgPower"), 0),
+        "puissance_norm_w": _num(a.get("normPower"), 0),
+        "puissance_max_w": _num(a.get("maxPower"), 0),
+        "longueurs": _num(a.get("activeLengths") or a.get("numberOfActiveLengths"), 0),
+        "mouvements": _num(a.get("strokes") or a.get("totalNumberOfStrokes"), 0),
+        "piscine_m": pool,
+        "swolf": _num(a.get("averageSwolf"), 0),
+        "tours": _num(a.get("lapCount"), 0),
+        "temperature_min": _num(a.get("minTemperature"), 0),
+        "temperature_max": _num(a.get("maxTemperature"), 0),
+        "minutes_moderees": _num(a.get("moderateIntensityMinutes"), 0),
+        "minutes_intenses": _num(a.get("vigorousIntensityMinutes"), 0),
+        "sueur_ml": _num(a.get("waterEstimated"), 0),
+        "body_battery": _num(a.get("differenceBodyBattery"), 0),
+    }
+
+
 def recompute_days(db: Session, user_id: int) -> tuple[int, int]:
     """Réapplique l'extraction sur tous les JSON bruts stockés, sans appeler Garmin.
     Retourne (jours recalculés, activités auxquelles un type a été attribué)."""

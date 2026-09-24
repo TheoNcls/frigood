@@ -10,8 +10,9 @@ import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core"
 import { RefreshCw, Trash2, Unplug, Watch } from "lucide-react";
 import { ApiError, api } from "../api/client";
 import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes } from "../api/queries";
-import type { GarminSyncResult } from "../api/types";
+import type { Activity, GarminSyncResult } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
+import ActivityDetail from "../components/ActivityDetail";
 import { useToast } from "../components/Toast";
 import { Card, Empty, Field, PageHeader } from "../components/ui";
 import { addDays, formatFull, toISODate, todayISO } from "../lib/dates";
@@ -454,24 +455,32 @@ function RecentActivities() {
   });
 
   const list = (acts.data ?? []).slice(0, 10);
+  const [opened, setOpened] = useState<Activity | null>(null);
 
   return (
     <Card title="Activités récentes">
+      {opened && <ActivityDetail activity={opened} onClose={() => setOpened(null)} />}
       {!list.length ? <Empty>Aucune activité sur les 60 derniers jours.</Empty> : (
         <ul className="divide-y divide-slate-100">
           {list.map((a) => {
             const label = activityLabel(a, types.byId);
             return (
-              <li key={a.id} className="flex items-center gap-3 py-2.5">
-                <span className="w-24 shrink-0 text-sm text-slate-500">{formatFull(a.date)}</span>
-                <span title={a.source === "garmin" ? "Garmin" : "Manuel"}>{a.source === "garmin" ? "⌚" : "✏️"}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{label}</div>
-                  <div className="truncate text-xs text-slate-500">
-                    {activityDetails(a) || "—"}
-                    {a.notes && a.notes !== label ? ` · ${a.notes}` : ""}
+              <li key={a.id} className="flex items-center gap-3 py-1.5">
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left hover:bg-slate-50"
+                  onClick={() => setOpened(a)}
+                >
+                  <span className="w-24 shrink-0 text-sm text-slate-500">{formatFull(a.date)}</span>
+                  <span title={a.source === "garmin" ? "Garmin" : "Manuel"}>{a.source === "garmin" ? "⌚" : "✏️"}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{label}</div>
+                    <div className="truncate text-xs text-slate-500">
+                      {activityDetails(a) || "—"}
+                      {a.notes && a.notes !== label ? ` · ${a.notes}` : ""}
+                    </div>
                   </div>
-                </div>
+                </button>
                 <button className="btn-ghost" aria-label="Supprimer" disabled={remove.isPending} onClick={() => remove.mutate(a.id)}>
                   <Trash2 className="h-4 w-4" />
                 </button>
