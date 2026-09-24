@@ -169,6 +169,10 @@ class GarminCredentials(BaseModel):
     mfa_code: str | None = None
 
 
+class GarminTokens(BaseModel):
+    tokens: str
+
+
 # --- User ---
 
 class UserCreate(BaseModel):

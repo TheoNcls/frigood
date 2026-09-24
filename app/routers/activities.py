@@ -1,9 +1,10 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date as date_type, datetime, timedelta
 from app.database import get_db
 from app.models import Activity, User, DailyStat
-from app.schemas import ActivityCreate, ActivityRead, GarminCredentials, DailyStatRead
+from app.schemas import ActivityCreate, ActivityRead, GarminCredentials, GarminTokens, DailyStatRead
 from app.auth import Principal, get_principal, check_user_access
 from app.garmin_service import (
     BATCH_DAYS, MAX_HISTORY_DAYS, days_to_sync, recompute_days, sync_activities, sync_days,
@@ -139,6 +140,31 @@ def garmin_sync(
     }
 
 
+@router.post("/users/{user_id}/garmin_tokens")
+def garmin_import_tokens(user_id: int, data: GarminTokens, principal: Principal = Depends(get_principal),
+                         db: Session = Depends(get_db)):
+    """Session Garmin obtenue depuis un autre appareil (scripts/garmin_login.py), quand Garmin bloque Railway."""
+    check_user_access(principal, user_id)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    raw = data.tokens.strip()
+    try:
+        if not json.loads(raw).get("di_refresh_token"):
+            raise ValueError
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Session invalide : colle tout le texte affiché par le script, accolades comprises")
+
+    from garminconnect import Garmin
+    api = Garmin()
+    try:
+        api.login(tokenstore=raw)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Garmin refuse cette session : {str(e)}")
+    _save_tokens(user, api, db)
+    return {"message": "Session Garmin importée"}
+
+
 @router.post("/users/{user_id}/garmin_recompute")
 def garmin_recompute(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     """Recalcule les données santé depuis les JSON Garmin déjà stockés, sans appeler Garmin."""
@@ -175,7 +201,11 @@ def _garmin_login(user: User, credentials: GarminCredentials, db: Session):
     except Exception as e:
         if mfa_prompted and not credentials.mfa_code:
             raise HTTPException(status_code=422, detail="CODE_MFA_REQUIS")
-        raise HTTPException(status_code=400, detail=f"Erreur Garmin : {str(e)}")
+        message = str(e)
+        # Cloudflare filtre souvent les connexions par mot de passe venant de serveurs (Railway)
+        if any(k in message for k in ("429", "Cloudflare", "403", "TooManyRequests")):
+            raise HTTPException(status_code=429, detail="GARMIN_BLOQUE")
+        raise HTTPException(status_code=400, detail=f"Erreur Garmin : {message}")
     _save_tokens(user, api, db)
     return api
 

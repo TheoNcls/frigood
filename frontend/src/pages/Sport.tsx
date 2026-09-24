@@ -47,6 +47,7 @@ function GarminCard() {
   const [password, setPassword] = useState("");
   const [mfa, setMfa] = useState("");
   const [needsMfa, setNeedsMfa] = useState(false);
+  const [blocked, setBlocked] = useState(false);
 
   const sync = useMutation({
     mutationFn: (credentials: { email?: string; password?: string; mfa_code?: string }) =>
@@ -70,6 +71,11 @@ function GarminCard() {
       if (e instanceof ApiError && e.message === "SESSION_GARMIN_EXPIREE") {
         toast("Session Garmin expirée, reconnecte-toi", "error");
         await refreshUser();
+        return;
+      }
+      if (e instanceof ApiError && e.message === "GARMIN_BLOQUE") {
+        setNeedsMfa(false);
+        setBlocked(true);
         return;
       }
       toast(e.message, "error");
@@ -102,6 +108,13 @@ function GarminCard() {
           <GarminMoreOptions />
         </div>
       ) : (
+        <div className="space-y-3">
+        {blocked && (
+          <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+            Garmin bloque les connexions par mot de passe venant du serveur de Frigood. Réessayer maintenant prolongerait le blocage :
+            connecte-toi plutôt depuis ton PC et importe la session ci-dessous.
+          </p>
+        )}
         <form
           className="space-y-3"
           onSubmit={(e: FormEvent) => {
@@ -130,8 +143,56 @@ function GarminCard() {
           </button>
           <p className="text-xs text-slate-500">Ton mot de passe Garmin n'est pas enregistré : seule la session l'est.</p>
         </form>
+        <GarminImportSession open={blocked} onImported={() => setBlocked(false)} />
+        </div>
       )}
     </Card>
+  );
+}
+
+function GarminImportSession({ open, onImported }: { open: boolean; onImported: () => void }) {
+  const user = useCurrentUser();
+  const { refreshUser } = useAuth();
+  const toast = useToast();
+  const [tokens, setTokens] = useState("");
+
+  const save = useMutation({
+    mutationFn: () => api(`/users/${user.id}/garmin_tokens`, { method: "POST", body: { tokens: tokens.trim() } }),
+    onSuccess: async () => {
+      setTokens("");
+      toast("Session Garmin importée : tu peux synchroniser");
+      onImported();
+      await refreshUser();
+    },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  return (
+    <details open={open || undefined} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+      <summary className="cursor-pointer font-medium text-slate-600">Connexion bloquée ? Importer une session depuis ton PC</summary>
+      <div className="mt-3 space-y-3">
+        <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-600">
+          <li>Sur ton PC, dans le dossier du projet :
+            <code className="mt-1 block overflow-x-auto whitespace-pre rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] text-slate-800">
+              {"venv\\Scripts\\python.exe -m pip install garminconnect==0.3.16\nvenv\\Scripts\\python.exe scripts\\garmin_login.py"}
+            </code>
+          </li>
+          <li>Saisis ton email, ton mot de passe Garmin et le code reçu par mail.</li>
+          <li>Copie le texte affiché (il commence par <code>{"{"}</code>) et colle-le ici.</li>
+        </ol>
+        <textarea
+          className="input min-h-[5rem] font-mono text-xs"
+          placeholder='{"di_token": "…", "di_refresh_token": "…", "di_client_id": "…"}'
+          value={tokens}
+          onChange={(e) => setTokens(e.target.value)}
+          spellCheck={false}
+        />
+        <button className="btn-primary" disabled={save.isPending || !tokens.trim()} onClick={() => save.mutate()}>
+          {save.isPending ? "Import…" : "Importer la session"}
+        </button>
+        <p className="text-xs text-slate-500">Ce texte donne accès à ton compte Garmin : ne le partage avec personne d'autre.</p>
+      </div>
+    </details>
   );
 }
 
