@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Activity } from "../api/types";
 import ActivityDetail from "../components/ActivityDetail";
+import { OverdueTasks } from "../components/Tasks";
 import WeekStrip from "../components/WeekStrip";
 import { AlertTriangle, Flame, Footprints, Moon } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
@@ -75,6 +76,8 @@ export default function Home() {
           </div>
         </Link>
       )}
+
+      <OverdueTasks />
 
       <Card title="Nutrition du jour" action={<Link to="/repas" className="text-sm font-medium text-brand-700">Ajouter un repas →</Link>}>
         <div className="grid grid-cols-2 gap-5 md:grid-cols-4">

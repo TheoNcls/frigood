@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Repeat } from "lucide-react";
+import { AlarmClock, ArrowRight, Check, Repeat } from "lucide-react";
 import { api } from "../api/client";
 import type { Recurrence, TaskInput, TaskOccurrence } from "../api/types";
+import { useTasks } from "../api/queries";
 import { useCurrentUser } from "../auth/AuthContext";
-import { formatFull, formatLong } from "../lib/dates";
+import { addDays, daysBetween, formatFull, formatLong, formatShort, parseISODate, todayISO } from "../lib/dates";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
 import { ConfirmButton, Field } from "./ui";
@@ -179,5 +180,120 @@ export function TaskForm({ date, task, onClose }: { date?: string; task?: TaskOc
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Jours regardés en arrière : une tâche ponctuelle reste « en retard » longtemps, une occurrence récurrente une semaine. */
+const OVERDUE_DAYS = 30;
+const OVERDUE_RECURRING_DAYS = 7;
+
+function taskInput(t: TaskOccurrence, changes: Partial<TaskInput> = {}): TaskInput {
+  return {
+    titre: t.titre, notes: t.notes, date: t.serie_debut, heure: t.heure,
+    recurrence: t.recurrence, recurrence_fin: t.recurrence_fin, ...changes,
+  };
+}
+
+function ago(iso: string): string {
+  const n = daysBetween(iso, todayISO());
+  const day = parseDay(iso);
+  return n === 1 ? `Hier (${day})` : `Il y a ${n} j (${day})`;
+}
+
+function parseDay(iso: string): string {
+  return `${parseISODate(iso).toLocaleDateString("fr-FR", { weekday: "short" })} ${formatShort(iso)}`;
+}
+
+/**
+ * Tâches passées non cochées : oubli de cocher (on coche, la tâche est faite à sa date)
+ * ou vrai retard (on la reporte à aujourd'hui pour une tâche ponctuelle).
+ */
+export function OverdueTasks() {
+  const today = todayISO();
+  const tasks = useTasks(addDays(today, -OVERDUE_DAYS), addDays(today, -1));
+  const invalidate = useInvalidateTasks();
+  const toast = useToast();
+  const [editing, setEditing] = useState<TaskOccurrence | null>(null);
+
+  const postpone = useMutation({
+    mutationFn: (t: TaskOccurrence) => api(`/tasks/${t.task_id}`, { method: "PUT", body: taskInput(t, { date: today }) }),
+    onSuccess: () => { invalidate(); toast("Tâche reportée à aujourd'hui"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  const recurringFrom = addDays(today, -OVERDUE_RECURRING_DAYS);
+  const late = (tasks.data ?? [])
+    .filter((t) => !t.fait && (!t.recurrence || t.date >= recurringFrom))
+    .sort((a, b) => b.date.localeCompare(a.date) || (a.heure ?? "").localeCompare(b.heure ?? ""));
+
+  if (!late.length) return null;
+
+  // Une ligne par tâche récurrente (occurrence la plus récente), les autres jours manqués en pastilles
+  const groups: { main: TaskOccurrence; others: TaskOccurrence[] }[] = [];
+  const byTask = new Map<number, { main: TaskOccurrence; others: TaskOccurrence[] }>();
+  for (const t of late) {
+    const g = t.recurrence ? byTask.get(t.task_id) : undefined;
+    if (g) g.others.push(t);
+    else {
+      const ng = { main: t, others: [] };
+      groups.push(ng);
+      if (t.recurrence) byTask.set(t.task_id, ng);
+    }
+  }
+
+  return (
+    <section className="card border-violet-200 bg-violet-50/40">
+      {editing && <TaskForm task={editing} onClose={() => setEditing(null)} />}
+      <div className="mb-1 flex items-center gap-2">
+        <AlarmClock className="h-5 w-5 text-violet-700" />
+        <h2 className="card-title mb-0">En retard ({late.length})</h2>
+      </div>
+      <p className="mb-3 text-xs text-slate-500">
+        Coche ce qui a été fait (oubli de cocher) ; reporte ce qui reste à faire.
+      </p>
+      <div className="space-y-2">
+        {groups.map(({ main: t, others }) => (
+          <div key={`${t.task_id}-${t.date}`} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 px-1 text-[11px] font-medium text-violet-700">
+              <span>{ago(t.date)}</span>
+              {!t.recurrence && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-violet-100"
+                  disabled={postpone.isPending}
+                  onClick={() => postpone.mutate(t)}
+                >
+                  Reporter à aujourd'hui <ArrowRight className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            <ul><TaskRow task={t} onEdit={setEditing} /></ul>
+            {others.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 px-1 pt-0.5 text-[11px] text-slate-500">
+                <span>Aussi non cochée :</span>
+                {others.map((o) => <MissedChip key={o.date} task={o} />)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Autre jour manqué d'une tâche récurrente : un clic le marque comme fait. */
+function MissedChip({ task }: { task: TaskOccurrence }) {
+  const toggle = useToggleTask();
+  return (
+    <button
+      type="button"
+      title="Marquer comme faite ce jour-là"
+      aria-label={`Marquer « ${task.titre} » du ${parseDay(task.date)} comme faite`}
+      disabled={toggle.isPending}
+      onClick={() => toggle.mutate(task)}
+      className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white px-2 py-0.5 text-violet-800 hover:border-violet-400 hover:bg-violet-50"
+    >
+      <Check className="h-3 w-3" /> {parseDay(task.date)}
+    </button>
   );
 }
