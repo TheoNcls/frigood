@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, Text, UniqueConstraint
+from sqlalchemy import false, Boolean, Column, Integer, String, Float, ForeignKey, Date, DateTime, Text, UniqueConstraint
 from sqlalchemy.orm import deferred, relationship
 from app.database import Base
 
@@ -112,6 +112,7 @@ class User(Base):
     fridge_items = relationship("FridgeItem", cascade="all, delete-orphan")
     fridge_history = relationship("FridgeHistory", cascade="all, delete-orphan")
     tasks = relationship("Task", cascade="all, delete-orphan")
+    push_subscriptions = relationship("PushSubscription", cascade="all, delete-orphan")
 
     @property
     def garmin_connected(self) -> bool:
@@ -271,19 +272,48 @@ class Task(Base):
     heure = Column(String(5), nullable=True)            # "HH:MM", facultative
     recurrence = Column(String(10), nullable=True)      # None, daily, weekly, monthly
     recurrence_fin = Column(Date, nullable=True)        # dernière occurrence possible, facultative
+    # Importante : reste plus longtemps « en retard » sur l'accueil et envoie des rappels
+    important = Column(Boolean, nullable=False, default=False, server_default=false())
     created_at = Column(DateTime, default=datetime.utcnow)
 
     completions = relationship("TaskCompletion", cascade="all, delete-orphan", back_populates="task")
+    reminders = relationship("TaskReminder", cascade="all, delete-orphan")
 
 
 class TaskCompletion(Base):
-    """Une occurrence cochée : sert aussi d'historique (quand la tâche a été faite)."""
+    """Une occurrence tranchée (faite ou pas faite) : sert aussi d'historique. Sans ligne : à faire."""
     __tablename__ = "task_completions"
     __table_args__ = (UniqueConstraint("task_id", "date", name="uq_task_completion_day"),)
 
     id = Column(Integer, primary_key=True)
     task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     date = Column(Date, nullable=False)
+    statut = Column(String(10), nullable=False, default="fait", server_default="fait")  # fait, pas_fait
     done_at = Column(DateTime, default=datetime.utcnow)
 
     task = relationship("Task", back_populates="completions")
+
+
+class TaskReminder(Base):
+    """Rappel déjà envoyé pour une occurrence (j3, j1, j0) : jamais deux fois le même."""
+    __tablename__ = "task_reminders"
+    __table_args__ = (UniqueConstraint("task_id", "date", "kind", name="uq_task_reminder"),)
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    kind = Column(String(4), nullable=False)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PushSubscription(Base):
+    """Un appareil (navigateur / app de l'écran d'accueil) qui accepte les notifications."""
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    endpoint = Column(Text, nullable=False, unique=True)
+    p256dh = Column(String(200), nullable=False)
+    auth = Column(String(100), nullable=False)
+    user_agent = Column(String(300), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

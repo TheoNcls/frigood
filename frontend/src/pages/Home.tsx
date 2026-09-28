@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { Activity } from "../api/types";
 import ActivityDetail from "../components/ActivityDetail";
-import { OverdueTasks } from "../components/Tasks";
+import { OverdueTasks, UpcomingImportant } from "../components/Tasks";
+import DaySummary from "../components/DaySummary";
 import WeekStrip from "../components/WeekStrip";
 import { AlertTriangle, Flame, Footprints, Moon } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
@@ -28,6 +29,9 @@ export default function Home() {
   const sleep = useDailyStatsRange(addDays(today, -3), addDays(today, -1));
   const fridge = useFridge();
   const [opened, setOpened] = useState<Activity | null>(null);
+  // Clic sur une notification de rappel : /?jour=AAAA-MM-JJ ouvre le résumé de ce jour
+  const [params, setParams] = useSearchParams();
+  const openedDay = /^\d{4}-\d{2}-\d{2}$/.test(params.get("jour") ?? "") ? params.get("jour") : null;
 
   const consumed = totalMacros(meals.data ?? [], ingredients.byId, recipes.byId);
 
@@ -60,6 +64,7 @@ export default function Home() {
   return (
     <div className="space-y-4">
       {opened && <ActivityDetail activity={opened} onClose={() => setOpened(null)} />}
+      {openedDay && <DaySummary date={openedDay} onClose={() => setParams({}, { replace: true })} />}
       <header>
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Bonjour, {user.nom} 👋</h1>
         <p className="mt-1 text-sm text-slate-500">{formatLong(today)}</p>
@@ -77,6 +82,7 @@ export default function Home() {
         </Link>
       )}
 
+      <UpcomingImportant />
       <OverdueTasks />
 
       <Card title="Nutrition du jour" action={<Link to="/repas" className="text-sm font-medium text-brand-700">Ajouter un repas →</Link>}>

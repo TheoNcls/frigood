@@ -5,8 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./auth/AuthContext";
 import { ToastProvider } from "./components/Toast";
 import { PreferencesProvider } from "./lib/preferences";
+import { registerServiceWorker } from "./lib/push";
 import App from "./App";
 import "./index.css";
+
+registerServiceWorker();
 
 const queryClient = new QueryClient({
   defaultOptions: {

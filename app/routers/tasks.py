@@ -1,5 +1,5 @@
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -50,6 +50,12 @@ def occurrences(task: Task, start: date, end: date) -> list[date]:
         months += 1
 
 
+def _statut(c: TaskCompletion | None) -> dict:
+    if c is None:
+        return {"statut": None, "fait": False, "done_at": None}
+    return {"statut": c.statut, "fait": c.statut == "fait", "done_at": c.done_at}
+
+
 def _own_task(db: Session, id: int, principal: Principal) -> Task:
     task = db.get(Task, id)
     if not task:
@@ -74,7 +80,7 @@ def list_occurrences(
 
     tasks = db.query(Task).filter(Task.user_id == user_id, Task.date <= date_to).all()
     done = {
-        (c.task_id, c.date): c.done_at
+        (c.task_id, c.date): c
         for c in db.query(TaskCompletion).join(Task).filter(
             Task.user_id == user_id, TaskCompletion.date >= date_from, TaskCompletion.date <= date_to,
         )
@@ -84,8 +90,8 @@ def list_occurrences(
         for d in occurrences(t, date_from, date_to):
             result.append(TaskOccurrence(
                 task_id=t.id, date=d, titre=t.titre, notes=t.notes, heure=t.heure, recurrence=t.recurrence,
-                recurrence_fin=t.recurrence_fin, serie_debut=t.date,
-                fait=(t.id, d) in done, done_at=done.get((t.id, d)),
+                recurrence_fin=t.recurrence_fin, serie_debut=t.date, important=bool(t.important),
+                **_statut(done.get((t.id, d))),
             ))
     # Par jour, les tâches sans heure d'abord, puis par heure
     result.sort(key=lambda o: (o.date, o.heure or "", o.titre.lower()))
@@ -133,13 +139,19 @@ def set_done(id: int, data: TaskDone, principal: Principal = Depends(get_princip
     if data.date not in occurrences(task, data.date, data.date):
         raise HTTPException(status_code=400, detail="Cette tâche n'a pas lieu ce jour-là")
     existing = db.query(TaskCompletion).filter_by(task_id=task.id, date=data.date).first()
-    if data.fait and not existing:
-        db.add(TaskCompletion(task_id=task.id, date=data.date))
+    if data.statut is None:
+        if existing:
+            db.delete(existing)
+            db.commit()
+    elif existing:
+        if existing.statut != data.statut:
+            existing.statut = data.statut
+            existing.done_at = datetime.utcnow()
+            db.commit()
+    else:
+        db.add(TaskCompletion(task_id=task.id, date=data.date, statut=data.statut))
         try:
             db.commit()
         except IntegrityError:
-            db.rollback()  # double clic : déjà cochée
-    elif not data.fait and existing:
-        db.delete(existing)
-        db.commit()
-    return {"task_id": task.id, "date": data.date, "fait": data.fait}
+            db.rollback()  # double clic : déjà enregistrée
+    return {"task_id": task.id, "date": data.date, "statut": data.statut, "fait": data.statut == "fait"}

@@ -91,6 +91,14 @@ body::before {
 .fc .fc-task-done .fc-list-event-title {
   text-decoration: line-through;
 }
+/* Tâche pas faite : rose */
+.fc .fc-daygrid-event.fc-task-missed {
+  background-color: #f43f5e !important;
+  border-color: #f43f5e !important;
+}
+.fc .fc-list-event.fc-task-missed .fc-list-event-dot {
+  border-color: #f43f5e !important;
+}
 @media (max-width: 640px) {
   .fc .fc-toolbar {
     flex-wrap: wrap;

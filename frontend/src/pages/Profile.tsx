@@ -1,5 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Bell, BellOff, Send } from "lucide-react";
+import { currentSubscription, disablePush, enablePush, isIOS, isStandalone, pushSupported } from "../lib/push";
 import { api } from "../api/client";
 import type { User } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
@@ -18,6 +20,7 @@ export default function Profile() {
       <PageHeader title="Profil" />
       <ProfileForm />
       <PreferencesCard />
+      <NotificationsCard />
       <PasswordForm />
     </div>
   );
@@ -99,6 +102,71 @@ function PreferencesCard() {
           <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
         </span>
       </label>
+    </Card>
+  );
+}
+
+function NotificationsCard() {
+  const user = useCurrentUser();
+  const toast = useToast();
+  const [active, setActive] = useState<boolean | null>(null);
+  const supported = pushSupported();
+  const needsHomeScreen = isIOS() && !isStandalone();
+
+  useEffect(() => {
+    currentSubscription().then((s) => setActive(!!s)).catch(() => setActive(false));
+  }, []);
+
+  const toggle = useMutation({
+    mutationFn: async (on: boolean) => {
+      if (on) await enablePush(user.id);
+      else await disablePush(user.id);
+      return on;
+    },
+    onSuccess: (on) => {
+      setActive(on);
+      toast(on ? "Notifications activées sur cet appareil" : "Notifications désactivées sur cet appareil");
+    },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  const test = useMutation({
+    mutationFn: () => api(`/users/${user.id}/push/test`, { method: "POST" }),
+    onSuccess: () => toast("Notification de test envoyée"),
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  return (
+    <Card title="Notifications">
+      <p className="mb-3 text-sm text-slate-600">
+        Rappels des tâches <span className="font-medium">importantes</span> : 3 jours avant, la veille (9 h) et le jour même
+        (8 h, ou 1 h avant l'heure prévue). Réglage propre à cet appareil.
+      </p>
+      {needsHomeScreen ? (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Sur iPhone, ouvre Frigood depuis l'icône de l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications.
+        </p>
+      ) : !supported ? (
+        <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">Ce navigateur ne gère pas les notifications.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          {active ? (
+            <>
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700"><Bell className="h-4 w-4" /> Activées</span>
+              <button type="button" className="btn-secondary" disabled={test.isPending} onClick={() => test.mutate()}>
+                <Send className="h-4 w-4" /> Envoyer un test
+              </button>
+              <button type="button" className="btn-ghost" disabled={toggle.isPending} onClick={() => toggle.mutate(false)}>
+                <BellOff className="h-4 w-4" /> Désactiver
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn-primary" disabled={toggle.isPending || active === null} onClick={() => toggle.mutate(true)}>
+              <Bell className="h-4 w-4" /> Activer sur cet appareil
+            </button>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

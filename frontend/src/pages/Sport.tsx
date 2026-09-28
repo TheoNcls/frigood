@@ -394,13 +394,13 @@ function SportCalendar() {
     for (const t of tasks.data ?? []) {
       out.push({
         id: `t${t.task_id}_${t.date}`,
-        title: `${t.fait ? "✓" : "☐"} ${t.titre}`,
+        title: `${t.statut === "fait" ? "✓" : t.statut === "pas_fait" ? "✗" : "☐"} ${t.important ? "⭐ " : ""}${t.titre}`,
         // Avec une heure : événement horaire (heure affichée par le calendrier, tri chronologique)
         start: t.heure ? `${t.date}T${t.heure}` : t.date,
         allDay: !t.heure,
         color: TASK_COLOR,
         textColor: "#fff",
-        classNames: t.fait ? ["fc-task-done"] : [],
+        classNames: t.statut === "fait" ? ["fc-task-done"] : t.statut === "pas_fait" ? ["fc-task-done", "fc-task-missed"] : [],
       });
     }
     return out;

@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel, field_validator, model_validator
 from datetime import date as date_type, datetime as datetime_type
 
@@ -348,6 +349,7 @@ class TaskBase(BaseModel):
     heure: str | None = None
     recurrence: str | None = None
     recurrence_fin: date_type | None = None
+    important: bool = False
 
     @field_validator("titre")
     @classmethod
@@ -400,10 +402,32 @@ class TaskOccurrence(BaseModel):
     recurrence: str | None = None
     recurrence_fin: date_type | None = None
     serie_debut: date_type
+    important: bool = False
+    statut: Literal["fait", "pas_fait"] | None = None
     fait: bool
     done_at: datetime_type | None = None
 
 
 class TaskDone(BaseModel):
+    """statut : "fait", "pas_fait", ou null pour remettre « à faire ». `fait` (booléen) reste accepté."""
     date: date_type
-    fait: bool = True
+    statut: Literal["fait", "pas_fait"] | None = "fait"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_fait(cls, data):
+        if isinstance(data, dict) and "statut" not in data and "fait" in data:
+            return {**data, "statut": "fait" if data["fait"] else None}
+        return data
+
+
+# --- Notifications ---
+
+class PushKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionIn(BaseModel):
+    endpoint: str
+    keys: PushKeys

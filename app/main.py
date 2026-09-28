@@ -1,9 +1,21 @@
+import logging
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from app import push_service
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import ingredients, recipes, nutriments, users, meal_logs, activity_types, activities, fridge, tasks
+from app.routers import ingredients, recipes, nutriments, users, meal_logs, activity_types, activities, fridge, tasks, push
 
-app = FastAPI(title="Frigood", version="0.1")
+logging.basicConfig(level=logging.INFO)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    push_service.start_scheduler()  # rappels des tâches importantes
+    yield
+
+
+app = FastAPI(title="Frigood", version="0.1", lifespan=lifespan)
 
 def _normalize_origin(raw: str) -> str:
     origin = raw.strip().strip("\"'").rstrip("/")
@@ -30,6 +42,7 @@ app.include_router(activity_types.router)
 app.include_router(activities.router)
 app.include_router(fridge.router)
 app.include_router(tasks.router)
+app.include_router(push.router)
 
 @app.get("/")
 def root():

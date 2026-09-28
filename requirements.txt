@@ -11,3 +11,5 @@ bcrypt==4.2.1
 PyJWT==2.10.1
 anthropic
 garminconnect==0.3.16
+pywebpush==2.5.0
+tzdata

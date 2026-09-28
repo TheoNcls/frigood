@@ -238,6 +238,8 @@ export interface GarminSyncResult {
 }
 
 export type Recurrence = "daily" | "weekly" | "monthly";
+/** Occurrence tranchée ; null = encore à faire. */
+export type TaskStatut = "fait" | "pas_fait";
 
 export interface TaskInput {
   titre: string;
@@ -246,6 +248,7 @@ export interface TaskInput {
   heure: string | null;
   recurrence: Recurrence | null;
   recurrence_fin: string | null;
+  important: boolean;
 }
 
 /** Une tâche à une date donnée (les tâches récurrentes ont une occurrence par jour concerné). */
@@ -258,6 +261,9 @@ export interface TaskOccurrence {
   recurrence: Recurrence | null;
   recurrence_fin: string | null;
   serie_debut: string;
+  important: boolean;
+  statut: TaskStatut | null;
+  /** statut === "fait" */
   fait: boolean;
   done_at: string | null;
 }
