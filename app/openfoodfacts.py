@@ -146,6 +146,14 @@ def categories(product: dict) -> list[str]:
     return list(reversed(cats))
 
 
+def composition(product: dict) -> str | None:
+    """Liste des ingrédients en français (sinon dans la langue du produit), sans le balisage des allergènes (_lait_)."""
+    text = product.get("ingredients_text_fr") or product.get("ingredients_text") or ""
+    text = re.sub(r"_([^_]+)_", r"\1", text).replace("_", "")
+    text = re.sub(r"\s+", " ", text).strip().rstrip(".")
+    return text[:5000] or None
+
+
 def parse(product: dict) -> dict:
     values = product.get("nutriments") or {}
     calories = values.get("energy-kcal_100g")
@@ -180,6 +188,7 @@ def parse(product: dict) -> dict:
         "greenscore": greenscore(product),
         "nova": nova(product),
         "image_url": image(product),
+        "composition": composition(product),
         "regime": diet,
         "regime_causes": causes,
         "nutriments": nutriments(product),

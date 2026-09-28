@@ -62,6 +62,13 @@ class IngredientBase(BaseModel):
     nova: int | None = None
     regime: str | None = None
     image_url: str | None = None
+    composition: str | None = None
+
+    @field_validator("composition")
+    @classmethod
+    def _check_composition(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        return v[:5000] or None
 
     @field_validator("image_url")
     @classmethod

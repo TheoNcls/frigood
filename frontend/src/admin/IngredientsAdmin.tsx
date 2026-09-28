@@ -312,6 +312,7 @@ function EditIngredient({ ingredient, onDeleted }: { ingredient: Ingredient; onD
           nova: ingredient.nova,
           regime: ingredient.regime,
           image_url: ingredient.image_url,
+          composition: ingredient.composition,
         }}
         currentId={ingredient.id}
         submitLabel="Enregistrer"

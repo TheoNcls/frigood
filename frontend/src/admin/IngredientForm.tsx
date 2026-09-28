@@ -35,6 +35,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
     nova: str(initial.nova),
     regime: initial.regime ?? "",
     image_url: initial.image_url ?? "",
+    composition: initial.composition ?? "",
   });
   const suggested = initial.nutriments ?? [];
   const [nuts, setNuts] = useState(suggested.map((n) => ({ ...n, valeurStr: String(n.valeur), checked: true })));
@@ -72,6 +73,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         nova: f.nova ? (Number(f.nova) as Nova) : null,
         regime: (f.regime || null) as Regime | null,
         image_url: f.image_url.trim() || null,
+        composition: f.composition.trim() || null,
       },
       nuts
         .filter((n) => n.checked && parseNum(n.valeurStr) !== null)
@@ -139,6 +141,14 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
       )}
       <Field label="Description">
         <textarea className="input min-h-[4rem]" value={f.description} onChange={set("description")} />
+      </Field>
+      <Field label="Composition (liste des ingrédients)" hint="Pour les produits transformés ; remplie automatiquement au scan quand OpenFoodFacts la connaît.">
+        <textarea
+          className="input min-h-[4rem]"
+          value={f.composition}
+          onChange={set("composition")}
+          placeholder="ex. Eau, protéines de pois 20 %, huile de colza, sel…"
+        />
       </Field>
 
       <div>

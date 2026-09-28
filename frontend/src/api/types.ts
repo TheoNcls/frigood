@@ -46,6 +46,8 @@ export interface Ingredient {
   nova: Nova | null;
   regime: Regime | null;
   image_url: string | null;
+  /** Liste des ingrédients d'un produit transformé */
+  composition: string | null;
   nutriments: IngredientNutriment[];
   sources: IngredientSource[];
 }
@@ -80,6 +82,7 @@ export interface IngredientInput {
   nova: Nova | null;
   regime: Regime | null;
   image_url: string | null;
+  composition: string | null;
 }
 
 export interface NutrimentSuggestion {

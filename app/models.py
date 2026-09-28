@@ -24,6 +24,7 @@ class Ingredient(Base):
     nova = Column(Integer, nullable=True)           # 1 (brut) à 4 (ultra-transformé)
     regime = Column(String(20), nullable=True)      # vegan, vegetarien, non_vegetarien, incertain
     image_url = Column(String, nullable=True)       # vignette (lien OpenFoodFacts, non copiée chez nous)
+    composition = Column(Text, nullable=True)       # liste des ingrédients d'un produit transformé
 
     recettes = relationship("RecipeIngredient", back_populates="ingredient")
     nutriments = relationship("IngredientNutriment", back_populates="ingredient", cascade="all, delete-orphan")
