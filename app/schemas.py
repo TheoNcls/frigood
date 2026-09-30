@@ -270,6 +270,10 @@ class UserRead(BaseModel):
     garmin_auto_heure: str = "07:00"
     garmin_auto_status: str | None = None
     garmin_auto_last_at: datetime_type | None = None
+    garmin_last_sync_at: datetime_type | None = None
+    garmin_last_sync_auto: bool | None = None
+    garmin_last_sync_activities: int | None = None
+    garmin_last_sync_days: int | None = None
     is_admin: bool = False
 
     model_config = {"from_attributes": True}

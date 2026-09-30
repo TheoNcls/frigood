@@ -12,6 +12,11 @@ export interface User {
   garmin_auto_heure: string;
   garmin_auto_status: string | null;
   garmin_auto_last_at: string | null;
+  /** Dernière synchro réussie (manuelle ou automatique), en UTC */
+  garmin_last_sync_at: string | null;
+  garmin_last_sync_auto: boolean | null;
+  garmin_last_sync_activities: number | null;
+  garmin_last_sync_days: number | null;
   is_admin: boolean;
 }
 

@@ -114,6 +114,11 @@ class User(Base):
     garmin_auto_next_at = Column(DateTime, nullable=True)   # prochain essai après un échec (heure locale)
     garmin_auto_status = Column(String(300), nullable=True)
     garmin_auto_last_at = Column(DateTime, nullable=True)   # dernière synchro automatique réussie (UTC)
+    # Dernière synchro réussie, manuelle ou automatique : ce qu'elle a rapporté
+    garmin_last_sync_at = Column(DateTime, nullable=True)   # UTC
+    garmin_last_sync_auto = Column(Boolean, nullable=True)
+    garmin_last_sync_activities = Column(Integer, nullable=True)
+    garmin_last_sync_days = Column(Integer, nullable=True)
 
     meal_logs = relationship("MealLog", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")

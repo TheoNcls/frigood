@@ -80,7 +80,7 @@ def run_once(db: Session, now: datetime | None = None) -> int | None:
 
     try:
         api = login_with_tokens(user, db)
-        res = run_sync(api, db, user, today)
+        res = run_sync(api, db, user, today, auto=True)
     except GarminSessionExpired:
         _done(db, user, today, "Session Garmin expirée : reconnecte-toi depuis la page Sport")
         return user.id

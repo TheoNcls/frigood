@@ -481,7 +481,7 @@ def save_tokens(user, api, db: Session):
         db.commit()
 
 
-def run_sync(api, db: Session, user, today: date, history_days: int | None = None) -> dict:
+def run_sync(api, db: Session, user, today: date, history_days: int | None = None, auto: bool = False) -> dict:
     if history_days:
         start = today - timedelta(days=history_days - 1)
         raw_activities = api.get_activities_by_date(start.isoformat(), today.isoformat())
@@ -494,4 +494,9 @@ def run_sync(api, db: Session, user, today: date, history_days: int | None = Non
     todo = days_to_sync(db, user.id, today, history_days)
     stats_days = sync_days(api, db, user.id, todo[:BATCH_DAYS])
     save_tokens(user, api, db)
+    user.garmin_last_sync_at = datetime.utcnow()
+    user.garmin_last_sync_auto = auto
+    user.garmin_last_sync_activities = imported
+    user.garmin_last_sync_days = stats_days
+    db.commit()
     return {"imported": imported, "skipped": skipped, "stats_days": stats_days, "remaining_days": len(todo) - stats_days}

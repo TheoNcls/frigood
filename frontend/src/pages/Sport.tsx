@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import listPlugin from "@fullcalendar/list";
@@ -8,7 +9,7 @@ import frLocale from "@fullcalendar/core/locales/fr";
 import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import { RefreshCw, Trash2, Unplug, Watch } from "lucide-react";
 import { ApiError, api } from "../api/client";
-import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
+import { useActivities, useActivityTypes, useDailyStatsRange, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
 import type { Activity, GarminSyncResult, TaskOccurrence } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import ActivityDetail from "../components/ActivityDetail";
@@ -16,7 +17,7 @@ import DaySummary from "../components/DaySummary";
 import { IMPORTANT_COLOR, TASK_COLOR, TaskForm } from "../components/Tasks";
 import { useToast } from "../components/Toast";
 import { Card, Empty, Field, PageHeader } from "../components/ui";
-import { addDays, formatFull, toISODate, todayISO } from "../lib/dates";
+import { addDays, formatFull, formatShort, toISODate, todayISO } from "../lib/dates";
 import { activityDetails, activityLabel } from "../lib/activity";
 import { fmt, logMacros } from "../lib/nutrition";
 
@@ -41,6 +42,98 @@ function useInvalidateSport() {
     queryClient.invalidateQueries({ queryKey: ["daily_stats"] });
     queryClient.invalidateQueries({ queryKey: ["activity_types"] });
   };
+}
+
+/** Date UTC de l'API (sans fuseau) → Date locale. */
+function fromUtc(s: string): Date {
+  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s}Z`);
+}
+
+function whenLabel(d: Date): string {
+  const day = toISODate(d);
+  const today = todayISO();
+  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  if (day === today) return `aujourd'hui à ${time}`;
+  if (day === addDays(today, -1)) return `hier à ${time}`;
+  return `le ${formatShort(day)} à ${time}`;
+}
+
+function dayLabel(iso: string): string {
+  const today = todayISO();
+  if (iso === today) return "aujourd'hui";
+  if (iso === addDays(today, -1)) return "hier";
+  return `le ${formatShort(iso)}`;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
+
+/** Dernière mise à jour Garmin (bouton ou synchro du matin) et ce qu'elle a rapporté. */
+function GarminLastSync() {
+  const user = useCurrentUser();
+  const today = todayISO();
+  const acts = useActivities({ date_from: addDays(today, -60), date_to: today });
+  const types = useActivityTypes();
+  const stats = useDailyStatsRange(addDays(today, -7), today);
+
+  const lastActivity = (acts.data ?? [])
+    .filter((a) => a.source === "garmin")
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)[0];
+  const lastNight = (stats.data ?? [])
+    .filter((s) => s.sommeil_total_h)
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+
+  const at = user.garmin_last_sync_at ? fromUtc(user.garmin_last_sync_at) : null;
+  const nActs = user.garmin_last_sync_activities;
+  const nDays = user.garmin_last_sync_days;
+  const autoError = user.garmin_auto_sync && user.garmin_auto_status && /Erreur|bloque|expirée/.test(user.garmin_auto_status);
+
+  let result: string | null = null;
+  if (nActs !== null || nDays !== null) {
+    const parts = [];
+    if (nActs) parts.push(plural(nActs, "nouvelle activité", "nouvelles activités"));
+    if (nDays) parts.push(plural(nDays, "jour de données santé", "jours de données santé"));
+    result = parts.length ? parts.join(" · ") : "rien de nouveau";
+  }
+
+  return (
+    <div className="space-y-1.5 rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+        <span className="font-medium text-slate-800">
+          {at ? <>Dernière mise à jour {whenLabel(at)}</> : "Pas encore synchronisé"}
+        </span>
+        {at && user.garmin_last_sync_auto !== null && (
+          <span className={`badge ${user.garmin_last_sync_auto ? "bg-violet-100 text-violet-700" : "bg-slate-200 text-slate-600"}`}>
+            {user.garmin_last_sync_auto ? "automatique" : "manuelle"}
+          </span>
+        )}
+      </div>
+      {result && <div className="text-slate-600">{result.charAt(0).toUpperCase() + result.slice(1)}</div>}
+      <ul className="space-y-0.5 text-xs text-slate-500">
+        <li>
+          Dernière activité :{" "}
+          {lastActivity
+            ? <span className="text-slate-700">{activityLabel(lastActivity, types.byId)} · {dayLabel(lastActivity.date)}</span>
+            : "aucune sur 60 jours"}
+        </li>
+        <li>
+          Dernière nuit :{" "}
+          {lastNight
+            ? <span className="text-slate-700">{lastNight.date === today ? "cette nuit" : `réveil ${dayLabel(lastNight.date)}`} · {fmt(lastNight.sommeil_total_h ?? 0, 1)} h{lastNight.sommeil_score !== null ? ` · ${lastNight.sommeil_score}/100` : ""}</span>
+            : "aucune sur 7 jours"}
+        </li>
+        <li>
+          Synchro auto :{" "}
+          {user.garmin_auto_sync
+            ? <span className="text-slate-700">chaque jour vers {user.garmin_auto_heure}</span>
+            : "désactivée"}
+          {" · "}<Link to="/profil" className="font-medium text-brand-700 underline">régler</Link>
+        </li>
+      </ul>
+      {autoError && (
+        <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">Synchro auto : {user.garmin_auto_status}</p>
+      )}
+    </div>
+  );
 }
 
 function GarminCard() {
@@ -98,6 +191,7 @@ function GarminCard() {
       {user.garmin_connected ? (
         <div className="space-y-3">
           <p className="text-sm text-emerald-700">✅ Connecté à Garmin Connect</p>
+          <GarminLastSync />
           <div className="flex flex-wrap gap-2">
             <button className="btn-primary" disabled={sync.isPending} onClick={() => sync.mutate({})}>
               <RefreshCw className={`h-4 w-4 ${sync.isPending ? "animate-spin" : ""}`} />
