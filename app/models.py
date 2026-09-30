@@ -106,6 +106,14 @@ class User(Base):
     lipides_cible = Column(Float, nullable=True)
 
     garmin_tokens = Column(String, nullable=True)
+    # Synchro automatique du matin (opt-in) : heure locale, et suivi du jour en cours
+    garmin_auto_sync = Column(Boolean, nullable=False, default=False, server_default=false())
+    garmin_auto_heure = Column(String(5), nullable=False, default="07:00", server_default="07:00")
+    garmin_auto_date = Column(Date, nullable=True)          # dernier jour traité (réussi ou abandonné)
+    garmin_auto_tries = Column(Integer, nullable=False, default=0, server_default="0")
+    garmin_auto_next_at = Column(DateTime, nullable=True)   # prochain essai après un échec (heure locale)
+    garmin_auto_status = Column(String(300), nullable=True)
+    garmin_auto_last_at = Column(DateTime, nullable=True)   # dernière synchro automatique réussie (UTC)
 
     meal_logs = relationship("MealLog", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")

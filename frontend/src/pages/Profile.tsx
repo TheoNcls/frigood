@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Bell, BellOff, Send } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Bell, BellOff, Send, Watch } from "lucide-react";
 import { currentSubscription, disablePush, enablePush, isIOS, isStandalone, pushSupported } from "../lib/push";
 import { api } from "../api/client";
 import type { User } from "../api/types";
@@ -80,6 +81,8 @@ function PreferencesCard() {
   const { showPhotos, setPreference } = usePreferences();
   return (
     <Card title="Préférences">
+      <GarminAutoSetting />
+      <div className="my-4 border-t border-slate-100" />
       <label className="flex cursor-pointer items-start justify-between gap-4">
         <span>
           <span className="block text-sm font-medium text-slate-800">Photos des produits</span>
@@ -103,6 +106,94 @@ function PreferencesCard() {
         </span>
       </label>
     </Card>
+  );
+}
+
+function Switch({ checked, disabled, onChange, label }: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void; label: string }) {
+  // <label> : un appui sur l'interrupteur visible bascule la case cachée
+  return (
+    <label className="relative mt-0.5 inline-flex shrink-0 cursor-pointer">
+      <input
+        type="checkbox"
+        role="switch"
+        aria-label={label}
+        className="peer sr-only"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-brand-600 peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-100" />
+      <span className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+    </label>
+  );
+}
+
+/** Synchro Garmin du matin : réglage du compte (vaut pour tous les appareils). */
+function GarminAutoSetting() {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const [heure, setHeure] = useState(user.garmin_auto_heure || "07:00");
+
+  const save = useMutation({
+    mutationFn: (body: { enabled: boolean; heure: string }) => api<User>(`/users/${user.id}/garmin_auto`, { method: "PUT", body }),
+    onSuccess: (u) => {
+      setUser(u);
+      toast(u.garmin_auto_sync ? `Synchro automatique chaque jour vers ${u.garmin_auto_heure}` : "Synchro automatique désactivée");
+    },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  const on = user.garmin_auto_sync;
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-4">
+        <span>
+          <span className="flex items-center gap-1.5 text-sm font-medium text-slate-800"><Watch className="h-4 w-4" /> Synchro Garmin automatique</span>
+          <span className="block text-xs text-slate-500">
+            Chaque matin, le serveur récupère tes nuits, tes pas et tes activités, sans que tu ouvres l'app. Réglage de ton compte.
+          </span>
+        </span>
+        <Switch
+          label="Synchro Garmin automatique"
+          checked={on}
+          disabled={save.isPending || (!user.garmin_connected && !on)}
+          onChange={(enabled) => save.mutate({ enabled, heure })}
+        />
+      </div>
+      {!user.garmin_connected ? (
+        <p className="mt-2 text-xs text-amber-700">
+          Connecte d'abord ton compte Garmin depuis la page <Link to="/sport" className="font-medium underline">Sport</Link>.
+        </p>
+      ) : on ? (
+        <div className="mt-3 space-y-2">
+          <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+            Vers
+            <input
+              type="time"
+              className="input w-32"
+              value={heure}
+              onChange={(e) => setHeure(e.target.value)}
+            />
+            {heure && heure !== user.garmin_auto_heure ? (
+              <button type="button" className="btn-primary py-1.5" disabled={save.isPending} onClick={() => save.mutate({ enabled: true, heure })}>
+                Enregistrer
+              </button>
+            ) : (
+              <span className="text-xs text-slate-500">(à quelques minutes près)</span>
+            )}
+          </label>
+          <p className="text-xs text-slate-500">
+            Conseil : une heure après ton réveil habituel, le temps que la montre envoie la nuit à Garmin.
+          </p>
+          {user.garmin_auto_status && (
+            <p className={`rounded-lg px-2.5 py-1.5 text-xs ${/Erreur|bloque|expirée/.test(user.garmin_auto_status) ? "bg-amber-50 text-amber-800" : "bg-slate-50 text-slate-600"}`}>
+              Dernier passage : {user.garmin_auto_status}
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -450,3 +450,48 @@ def recompute_days(db: Session, user_id: int) -> tuple[int, int]:
             typed += 1
     db.commit()
     return days, typed
+
+
+# --- Synchronisation complète (bouton « Synchroniser » et synchro automatique du matin) ---
+
+class GarminSessionExpired(Exception):
+    """La session enregistrée ne passe plus : il faut se reconnecter (mot de passe)."""
+
+
+def login_with_tokens(user, db: Session):
+    """Connexion avec la session enregistrée, sans mot de passe (seul mode utilisé par la synchro automatique)."""
+    from garminconnect import Garmin
+
+    try:
+        # Les tokens doivent être passés à login() : chargés à part, login() redemanderait email et mot de passe
+        api = Garmin()
+        api.login(tokenstore=user.garmin_tokens)
+        return api
+    except Exception as e:
+        user.garmin_tokens = None
+        db.commit()
+        raise GarminSessionExpired(str(e)) from e
+
+
+def save_tokens(user, api, db: Session):
+    """Enregistre la session Garmin (JSON), y compris après un rafraîchissement automatique du token."""
+    tokens = api.client.dumps()
+    if tokens != user.garmin_tokens:
+        user.garmin_tokens = tokens
+        db.commit()
+
+
+def run_sync(api, db: Session, user, today: date, history_days: int | None = None) -> dict:
+    if history_days:
+        start = today - timedelta(days=history_days - 1)
+        raw_activities = api.get_activities_by_date(start.isoformat(), today.isoformat())
+    else:
+        raw_activities = api.get_activities(0, 50)
+    if isinstance(raw_activities, dict):
+        raw_activities = raw_activities.get("activities") or raw_activities.get("activityList") or []
+    imported, skipped = sync_activities(db, user.id, raw_activities or [])
+
+    todo = days_to_sync(db, user.id, today, history_days)
+    stats_days = sync_days(api, db, user.id, todo[:BATCH_DAYS])
+    save_tokens(user, api, db)
+    return {"imported": imported, "skipped": skipped, "stats_days": stats_days, "remaining_days": len(todo) - stats_days}

@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from datetime import date as date_type, datetime, timedelta
 from app.database import get_db
 from app.models import Activity, User, DailyStat
-from app.schemas import ActivityCreate, ActivityRead, GarminCredentials, GarminTokens, DailyStatRead
+from app.schemas import ActivityCreate, ActivityRead, GarminAutoSettings, GarminCredentials, GarminTokens, DailyStatRead, UserRead
 from app.auth import Principal, get_principal, check_user_access
 from app.garmin_service import (
-    BATCH_DAYS, MAX_HISTORY_DAYS, activity_details, days_to_sync, recompute_days, sync_activities, sync_days,
+    MAX_HISTORY_DAYS, GarminSessionExpired, activity_details, login_with_tokens, recompute_days, run_sync, save_tokens,
 )
 
 router = APIRouter(tags=["activities"], dependencies=[Depends(get_principal)])
@@ -111,6 +111,27 @@ def garmin_disconnect(user_id: int, principal: Principal = Depends(get_principal
     return {"message": "Garmin déconnecté"}
 
 
+@router.put("/users/{user_id}/garmin_auto", response_model=UserRead)
+def garmin_auto_settings(user_id: int, data: GarminAutoSettings, principal: Principal = Depends(get_principal),
+                         db: Session = Depends(get_db)):
+    """Active / règle la synchro automatique du matin pour ce compte."""
+    check_user_access(principal, user_id)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    if data.heure != user.garmin_auto_heure or data.enabled != user.garmin_auto_sync:
+        # Nouveau réglage : on repart de zéro (une nouvelle heure plus tard dans la journée compte dès aujourd'hui)
+        user.garmin_auto_date = None
+        user.garmin_auto_tries = 0
+        user.garmin_auto_next_at = None
+        user.garmin_auto_status = None
+    user.garmin_auto_sync = data.enabled
+    user.garmin_auto_heure = data.heure
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @router.post("/users/{user_id}/garmin_sync")
 def garmin_sync(
     user_id: int,
@@ -130,30 +151,9 @@ def garmin_sync(
     today = datetime.now().date()
 
     try:
-        if history_days:
-            start = today - timedelta(days=history_days - 1)
-            raw_activities = api.get_activities_by_date(start.isoformat(), today.isoformat())
-        else:
-            raw_activities = api.get_activities(0, 50)
-        if isinstance(raw_activities, dict):
-            raw_activities = raw_activities.get("activities") or raw_activities.get("activityList") or []
-        imported, skipped = sync_activities(db, user_id, raw_activities or [])
-
-        todo = days_to_sync(db, user_id, today, history_days)
-        batch = todo[:BATCH_DAYS]
-        stats_days = sync_days(api, db, user_id, batch)
-        _save_tokens(user, api, db)
-    except HTTPException:
-        raise
+        return run_sync(api, db, user, today, history_days)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erreur Garmin : {str(e)}")
-
-    return {
-        "imported": imported,
-        "skipped": skipped,
-        "stats_days": stats_days,
-        "remaining_days": len(todo) - stats_days,
-    }
 
 
 @router.post("/users/{user_id}/garmin_tokens")
@@ -177,7 +177,7 @@ def garmin_import_tokens(user_id: int, data: GarminTokens, principal: Principal 
         api.login(tokenstore=raw)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Garmin refuse cette session : {str(e)}")
-    _save_tokens(user, api, db)
+    save_tokens(user, api, db)
     return {"message": "Session Garmin importée"}
 
 
@@ -201,13 +201,8 @@ def _garmin_login(user: User, credentials: GarminCredentials, db: Session):
 
     if user.garmin_tokens and not credentials.email:
         try:
-            # Les tokens doivent être passés à login() : chargés à part, login() redemanderait email et mot de passe
-            api = Garmin()
-            api.login(tokenstore=user.garmin_tokens)
-            return api
-        except Exception:
-            user.garmin_tokens = None
-            db.commit()
+            return login_with_tokens(user, db)
+        except GarminSessionExpired:
             raise HTTPException(status_code=401, detail="SESSION_GARMIN_EXPIREE")
 
     if not credentials.email or not credentials.password:
@@ -223,13 +218,5 @@ def _garmin_login(user: User, credentials: GarminCredentials, db: Session):
         if any(k in message for k in ("429", "Cloudflare", "403", "TooManyRequests")):
             raise HTTPException(status_code=429, detail="GARMIN_BLOQUE")
         raise HTTPException(status_code=400, detail=f"Erreur Garmin : {message}")
-    _save_tokens(user, api, db)
+    save_tokens(user, api, db)
     return api
-
-
-def _save_tokens(user: User, api, db: Session):
-    """Enregistre la session Garmin (JSON), y compris après un rafraîchissement automatique du token."""
-    tokens = api.client.dumps()
-    if tokens != user.garmin_tokens:
-        user.garmin_tokens = tokens
-        db.commit()

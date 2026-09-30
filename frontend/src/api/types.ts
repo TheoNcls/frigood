@@ -7,6 +7,11 @@ export interface User {
   glucides_cible: number | null;
   lipides_cible: number | null;
   garmin_connected: boolean;
+  /** Synchro Garmin automatique du matin (réglage du compte) */
+  garmin_auto_sync: boolean;
+  garmin_auto_heure: string;
+  garmin_auto_status: string | null;
+  garmin_auto_last_at: string | null;
   is_admin: boolean;
 }
 
