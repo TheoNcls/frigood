@@ -26,7 +26,8 @@ export default function Home() {
   const meals = useMealLogs({ date: today });
   const acts = useActivities({ date_from: addDays(today, -90), date_to: today });
   const statToday = useDailyStat(today);
-  const sleep = useDailyStatsRange(addDays(today, -3), addDays(today, -1));
+  // Garmin rattache une nuit au jour du réveil : la ligne d'aujourd'hui = la nuit dernière
+  const sleep = useDailyStatsRange(addDays(today, -3), today);
   const fridge = useFridge();
   const [opened, setOpened] = useState<Activity | null>(null);
   // Clic sur une notification de rappel : /?jour=AAAA-MM-JJ ouvre le résumé de ce jour
@@ -54,7 +55,11 @@ export default function Home() {
     return { actsToday: list.filter((a) => a.date === today), activeDays: active, streak: s };
   }, [acts.data, today]);
 
-  const sleepRows = [...(sleep.data ?? [])].sort((a, b) => b.date.localeCompare(a.date));
+  const sleepRows = [...(sleep.data ?? [])]
+    .filter((r) => r.sommeil_total_h || r.sommeil_score !== null)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3);
+  const lastNight = sleepRows[0]?.date === today ? sleepRows[0] : null;
   const scores = sleepRows.map((r) => r.sommeil_score).filter((s): s is number => s !== null);
   const avgScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 
@@ -129,10 +134,28 @@ export default function Home() {
           </div>
         </Card>
 
-        <Card title={<span className="inline-flex items-center gap-1.5"><Moon className="h-4 w-4" /> Sommeil — 3 derniers jours</span>}>
+        <Card title={<span className="inline-flex items-center gap-1.5"><Moon className="h-4 w-4" /> Sommeil — 3 dernières nuits</span>}>
           {sleepRows.length ? (
             <>
-              {avgScore !== null && (
+              {lastNight ? (
+                <div className="mb-3">
+                  <span className="text-sm text-slate-500">Cette nuit : </span>
+                  {lastNight.sommeil_score !== null && (
+                    <>
+                      <span className="text-3xl font-bold text-slate-900">{lastNight.sommeil_score}</span>
+                      <span className="text-sm text-slate-500"> /100</span>
+                    </>
+                  )}
+                  {lastNight.sommeil_total_h ? (
+                    <span className={lastNight.sommeil_score !== null ? "text-sm text-slate-500" : "text-3xl font-bold text-slate-900"}>
+                      {lastNight.sommeil_score !== null ? " · " : ""}{fmt(lastNight.sommeil_total_h, 1)} h
+                    </span>
+                  ) : null}
+                  {avgScore !== null && sleepRows.length > 1 && (
+                    <div className="text-xs text-slate-500">Moyenne {sleepRows.length} nuits : {fmt(avgScore)}/100</div>
+                  )}
+                </div>
+              ) : avgScore !== null && (
                 <div className="mb-3">
                   <span className="text-3xl font-bold text-slate-900">{fmt(avgScore)}</span>
                   <span className="text-sm text-slate-500"> /100 en moyenne</span>
@@ -141,7 +164,7 @@ export default function Home() {
               <div className="grid grid-cols-3 gap-3 text-sm">
                 {sleepRows.map((r) => (
                   <div key={r.date} className="rounded-xl bg-slate-50 p-2">
-                    <div className="font-medium">{formatShort(r.date)}</div>
+                    <div className="font-medium">{r.date === today ? "Cette nuit" : formatShort(r.date)}</div>
                     {r.sommeil_score !== null && <div className="text-slate-500">Score : {r.sommeil_score}</div>}
                     <div className="text-slate-500">{r.sommeil_total_h ? `${fmt(r.sommeil_total_h, 1)} h` : "—"}</div>
                   </div>

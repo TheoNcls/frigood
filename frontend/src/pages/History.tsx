@@ -20,7 +20,7 @@ export default function History() {
   // La date est dans l'adresse (?date=AAAA-MM-JJ) : lien depuis le calendrier, bouton retour, rechargement
   const [params, setParams] = useSearchParams();
   const fromUrl = params.get("date");
-  const date = fromUrl && /^\d{4}-\d{2}-\d{2}$/.test(fromUrl) && fromUrl <= today ? fromUrl : addDays(today, -1);
+  const date = fromUrl && /^\d{4}-\d{2}-\d{2}$/.test(fromUrl) && fromUrl <= today ? fromUrl : today;
   const setDate = (d: string) => setParams({ date: d > today ? today : d }, { replace: true });
 
   return (
