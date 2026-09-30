@@ -21,6 +21,7 @@ interface DayInfo {
   meals: number;
   sport: number;
   tasksTodo: number;
+  importantTodo: number;
   tasksDone: number;
   tasksMissed: number;
 }
@@ -41,7 +42,7 @@ export default function WeekStrip() {
 
   const byDay = useMemo(() => {
     const map = new Map<string, DayInfo>();
-    const get = (d: string) => map.get(d) ?? map.set(d, { kcal: 0, meals: 0, sport: 0, tasksTodo: 0, tasksDone: 0, tasksMissed: 0 }).get(d)!;
+    const get = (d: string) => map.get(d) ?? map.set(d, { kcal: 0, meals: 0, sport: 0, tasksTodo: 0, importantTodo: 0, tasksDone: 0, tasksMissed: 0 }).get(d)!;
     for (const log of meals.data ?? []) {
       const e = get(log.date);
       e.meals++;
@@ -52,6 +53,7 @@ export default function WeekStrip() {
       const e = get(t.date);
       if (t.statut === "fait") e.tasksDone++;
       else if (t.statut === "pas_fait") e.tasksMissed++;
+      else if (t.important) e.importantTodo++;
       else e.tasksTodo++;
     }
     return map;
@@ -93,6 +95,9 @@ export default function WeekStrip() {
                     {Array.from({ length: Math.min(info?.sport ?? 0, 2) }, (_, k) => (
                       <span key={`s${k}`} className="h-1.5 w-1.5 rounded-full bg-orange-500 ring-1 ring-white/60" />
                     ))}
+                    {Array.from({ length: Math.min(info?.importantTodo ?? 0, 2) }, (_, k) => (
+                      <span key={`i${k}`} className="h-1.5 w-1.5 rounded-full bg-amber-500 ring-1 ring-white/60" />
+                    ))}
                     {Array.from({ length: Math.min(info?.tasksTodo ?? 0, 3) }, (_, k) => (
                       <span key={`t${k}`} className="h-1.5 w-1.5 rounded-full bg-violet-600 ring-1 ring-white/60" />
                     ))}
@@ -118,6 +123,7 @@ export default function WeekStrip() {
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Repas</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-orange-500" /> Sport</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-600" /> Tâche</span>
+        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Importante</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-300" /> Faite</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Pas faite</span>
         <span>· kcal mangées · clic sur un jour pour son résumé et ses tâches</span>

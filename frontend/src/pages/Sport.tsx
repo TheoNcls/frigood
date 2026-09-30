@@ -13,7 +13,7 @@ import type { Activity, GarminSyncResult, TaskOccurrence } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import ActivityDetail from "../components/ActivityDetail";
 import DaySummary from "../components/DaySummary";
-import { TASK_COLOR, TaskForm } from "../components/Tasks";
+import { IMPORTANT_COLOR, TASK_COLOR, TaskForm } from "../components/Tasks";
 import { useToast } from "../components/Toast";
 import { Card, Empty, Field, PageHeader } from "../components/ui";
 import { addDays, formatFull, toISODate, todayISO } from "../lib/dates";
@@ -398,12 +398,15 @@ function SportCalendar() {
         // Avec une heure : événement horaire (heure affichée par le calendrier, tri chronologique)
         start: t.heure ? `${t.date}T${t.heure}` : t.date,
         allDay: !t.heure,
-        color: TASK_COLOR,
+        color: t.important ? IMPORTANT_COLOR : TASK_COLOR,
         textColor: "#fff",
         classNames: t.statut === "fait" ? ["fc-task-done"] : t.statut === "pas_fait" ? ["fc-task-done", "fc-task-missed"] : [],
+        // Importante encore à faire : en tête du jour, jamais cachée dans « +N en plus »
+        extendedProps: { rank: t.important && !t.statut ? 0 : 1 },
       });
     }
-    return out;
+    // Rang par défaut (repas, sport, tâches normales) : les importantes à faire passent devant
+    return out.map((e) => ({ ...e, extendedProps: { rank: 1, ...e.extendedProps } }));
   }, [acts.data, meals.data, tasks.data, types.byId, ingredients.byId, recipes.byId]);
 
   const [openedDay, setOpenedDay] = useState<string | null>(null);
@@ -442,6 +445,7 @@ function SportCalendar() {
         <Legend color="#059669" label="Repas" />
         <Legend color={SPORT_COLOR} label="Sport" />
         <Legend color={TASK_COLOR} label="Tâche" />
+        <Legend color={IMPORTANT_COLOR} label="Importante" />
       </div>
       <FullCalendar
         plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
@@ -456,6 +460,7 @@ function SportCalendar() {
         height="auto"
         eventDisplay="block"
         dayMaxEvents={3}
+        eventOrder="rank,start,-duration,allDay,title"
         eventTimeFormat={{ hour: "2-digit", minute: "2-digit" }}
       />
     </Card>

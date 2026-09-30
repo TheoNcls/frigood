@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlarmClock, ArrowRight, Bell, Check, Repeat, Star, X } from "lucide-react";
+import { AlarmClock, ArrowRight, Bell, Check, ListTodo, Plus, Repeat, Star, X } from "lucide-react";
 import { api } from "../api/client";
 import type { Recurrence, TaskInput, TaskOccurrence, TaskStatut } from "../api/types";
 import { useTasks } from "../api/queries";
@@ -11,6 +11,8 @@ import { useToast } from "./Toast";
 import { ConfirmButton, Field, Segmented } from "./ui";
 
 export const TASK_COLOR = "#7c3aed";
+/** Tâches importantes : ambre, la couleur de l'étoile */
+export const IMPORTANT_COLOR = "#d97706";
 
 export const RECURRENCE_LABELS: Record<Recurrence, string> = {
   daily: "Tous les jours",
@@ -59,7 +61,9 @@ export function TaskRow({ task, onEdit }: { task: TaskOccurrence; onEdit: (t: Ta
   const toggle = useToggleTask();
   const missed = task.statut === "pas_fait";
   return (
-    <li className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${missed ? "bg-rose-50/70" : "bg-violet-50/60"}`}>
+    <li className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${
+      missed ? "bg-rose-50/70" : task.important ? "border-l-4 border-amber-400 bg-amber-50 pl-2" : "bg-violet-50/60"
+    }`}>
       <button
         type="button"
         role="checkbox"
@@ -72,7 +76,9 @@ export function TaskRow({ task, onEdit }: { task: TaskOccurrence; onEdit: (t: Ta
             ? "border-violet-600 bg-violet-600 text-white"
             : missed
               ? "border-rose-300 bg-white text-rose-500 hover:border-violet-500"
-              : "border-violet-300 bg-white hover:border-violet-500"
+              : task.important
+                ? "border-amber-400 bg-white hover:border-amber-600"
+                : "border-violet-300 bg-white hover:border-violet-500"
         }`}
       >
         {task.fait && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
@@ -81,7 +87,7 @@ export function TaskRow({ task, onEdit }: { task: TaskOccurrence; onEdit: (t: Ta
       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onEdit(task)}>
         <span className={`block truncate font-medium ${task.fait ? "text-slate-400 line-through" : missed ? "text-rose-400 line-through" : "text-slate-900"}`}>
           {task.important && <Star className="mr-1 inline h-3.5 w-3.5 -translate-y-px fill-amber-400 text-amber-500" aria-label="Importante" />}
-          {task.heure && <span className="mr-1.5 text-violet-700">{task.heure}</span>}
+          {task.heure && <span className={`mr-1.5 ${task.important ? "text-amber-700" : "text-violet-700"}`}>{task.heure}</span>}
           {task.titre}
         </span>
         {(task.recurrence || task.notes || missed) && (
@@ -379,10 +385,10 @@ function MissedChip({ task }: { task: TaskOccurrence }) {
   );
 }
 
-/** Tâches importantes d'aujourd'hui aux 3 prochains jours, encore à faire. */
+/** Tâches importantes des 3 prochains jours (aujourd'hui est dans la carte du jour), encore à faire. */
 export function UpcomingImportant() {
   const today = todayISO();
-  const tasks = useTasks(today, addDays(today, 3));
+  const tasks = useTasks(addDays(today, 1), addDays(today, 3));
   const [editing, setEditing] = useState<TaskOccurrence | null>(null);
   const upcoming = (tasks.data ?? []).filter((t) => t.important && !t.statut);
   if (!upcoming.length) return null;
@@ -402,6 +408,39 @@ export function UpcomingImportant() {
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+/** Tâches du jour : importantes d'abord, puis par heure ; les tâches tranchées restent visibles (barrées). */
+export function TodayTasks() {
+  const today = todayISO();
+  const tasks = useTasks(today, today);
+  const [editing, setEditing] = useState<TaskOccurrence | null>(null);
+  const [adding, setAdding] = useState(false);
+  const list = [...(tasks.data ?? [])].sort(
+    (a, b) => Number(!!a.statut) - Number(!!b.statut) || Number(b.important) - Number(a.important) || (a.heure ?? "99").localeCompare(b.heure ?? "99"),
+  );
+  if (!list.length) return null;
+  const done = list.filter((t) => t.statut === "fait").length;
+
+  return (
+    <section className="card border-violet-200">
+      {editing && <TaskForm task={editing} onClose={() => setEditing(null)} />}
+      {adding && <TaskForm date={today} onClose={() => setAdding(false)} />}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ListTodo className="h-5 w-5 text-violet-700" />
+          <h2 className="card-title mb-0">Aujourd'hui</h2>
+          <span className="text-xs font-medium text-slate-500">{done}/{list.length} faite{done > 1 ? "s" : ""}</span>
+        </div>
+        <button type="button" className="btn-ghost py-1 text-violet-700" onClick={() => setAdding(true)}>
+          <Plus className="h-4 w-4" /> Ajouter
+        </button>
+      </div>
+      <ul className="space-y-1.5">
+        {list.map((t) => <TaskRow key={`${t.task_id}-${t.date}`} task={t} onEdit={setEditing} />)}
+      </ul>
     </section>
   );
 }
