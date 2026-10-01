@@ -1,12 +1,13 @@
 import { lazy, Suspense, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { Repeat2, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import { useFridge, useIngredients, useMealLogs, useRecipes } from "../api/queries";
 import type { MealLog, MealLogCreate, Moment, TypeMesure } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import FoodPicker from "../components/FoodPicker";
 import FoodThumb from "../components/FoodThumb";
+import QuickMeals, { copyOf, useAddMeals } from "../components/QuickMeals";
 import { useToast } from "../components/Toast";
 import { Card, Empty, ErrorMessage, Field, MacroTile, PageHeader, Segmented, Spinner } from "../components/ui";
 import { formatLong, todayISO } from "../lib/dates";
@@ -80,6 +81,8 @@ export default function Meals() {
     onError: (e) => toast(e.message, "error"),
   });
 
+  const addAgain = useAddMeals();
+
   const deleteMeal = useMutation({
     mutationFn: (id: number) => api(`/meal_logs/${id}`, { method: "DELETE" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meal_logs"] }),
@@ -131,6 +134,8 @@ export default function Meals() {
           <MacroTile label="Lipides" value={total.lip} target={user.lipides_cible} unit="g" />
         </div>
       </Card>
+
+      <QuickMeals date={date} moment={moment} />
 
       <div className="grid gap-4 lg:grid-cols-5">
         <Card title="Ajouter un repas" className="lg:col-span-2">
@@ -234,7 +239,16 @@ export default function Meals() {
                       {log.notes && <div className="mt-0.5 text-xs italic text-slate-500">{log.notes}</div>}
                     </div>
                     <button
-                      className="btn-ghost"
+                      className="btn-ghost px-2 text-brand-700"
+                      aria-label={`Refaire ce repas (${MOMENT_LABELS[moment]})`}
+                      title={`Refaire (${MOMENT_LABELS[moment]})`}
+                      disabled={addAgain.isPending}
+                      onClick={() => addAgain.mutate([copyOf(log, date, moment)])}
+                    >
+                      <Repeat2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      className="btn-ghost px-2"
                       aria-label="Supprimer"
                       disabled={deleteMeal.isPending}
                       onClick={() => deleteMeal.mutate(log.id)}
