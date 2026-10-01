@@ -7,6 +7,7 @@ import { useCurrentUser } from "../auth/AuthContext";
 import { activityDetails, activityLabel } from "../lib/activity";
 import { formatLong, todayISO } from "../lib/dates";
 import { TaskForm, TaskRow } from "./Tasks";
+import AddEntryModal, { type EntryTab } from "./AddEntry";
 import { MOMENTS, MOMENT_LABELS, describeLog, fmt, logMacros, totalMacros } from "../lib/nutrition";
 import ActivityDetail from "./ActivityDetail";
 import FoodThumb from "./FoodThumb";
@@ -48,14 +49,14 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
   const tasks = useTasks(date, date);
   const [openedActivity, setOpenedActivity] = useState<Activity | null>(null);
   const [editingTask, setEditingTask] = useState<TaskOccurrence | null>(null);
-  const [addingTask, setAddingTask] = useState(false);
+  const [adding, setAdding] = useState<EntryTab | null>(null);
 
   // Une seule fenêtre à la fois : fiche d'activité ou tâche remplacent le résumé, qui revient à leur fermeture
   if (openedActivity) {
     return <ActivityDetail activity={openedActivity} onClose={() => setOpenedActivity(null)} />;
   }
   if (editingTask) return <TaskForm task={editingTask} onClose={() => setEditingTask(null)} />;
-  if (addingTask) return <TaskForm date={date} onClose={() => setAddingTask(false)} />;
+  if (adding) return <AddEntryModal date={date} initialTab={adding} onClose={() => setAdding(null)} />;
 
   const isFuture = date > todayISO();
   const logs = [...(meals.data ?? [])].sort((a, b) => MOMENTS.indexOf(a.moment) - MOMENTS.indexOf(b.moment));
@@ -69,8 +70,8 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
     <Section
       title="Tâches"
       action={
-        <button type="button" className="btn-ghost py-1 text-violet-700" onClick={() => setAddingTask(true)}>
-          <Plus className="h-4 w-4" /> Ajouter une tâche
+        <button type="button" className="btn-ghost py-1 text-violet-700" onClick={() => setAdding("tache")}>
+          <Plus className="h-4 w-4" /> Tâche
         </button>
       }
     >
@@ -139,7 +140,14 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
             )}
           </Section>
 
-          <Section title="Activités">
+          <Section
+            title="Activités"
+            action={
+              <button type="button" className="btn-ghost py-1 text-orange-700" onClick={() => setAdding("activite")}>
+                <Plus className="h-4 w-4" /> Activité
+              </button>
+            }
+          >
             {!activities.length ? <Empty>Aucune activité.</Empty> : (
               <ul className="space-y-1">
                 {activities.map((a) => (

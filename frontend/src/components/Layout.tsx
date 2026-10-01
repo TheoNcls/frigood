@@ -1,12 +1,12 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, CalendarDays, Home, LogOut, Refrigerator, ShieldCheck, User, UtensilsCrossed } from "lucide-react";
+import { CalendarDays, CalendarRange, Home, LogOut, Refrigerator, ShieldCheck, User, UtensilsCrossed } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
 const BASE_NAV = [
   { to: "/", label: "Accueil", icon: Home, end: true },
   { to: "/repas", label: "Repas", icon: UtensilsCrossed },
   { to: "/frigo", label: "Frigo", icon: Refrigerator },
-  { to: "/sport", label: "Sport", icon: Activity },
+  { to: "/agenda", label: "Agenda", icon: CalendarRange },
   { to: "/historique", label: "Historique", icon: CalendarDays },
   { to: "/profil", label: "Profil", icon: User },
 ];

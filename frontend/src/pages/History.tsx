@@ -147,7 +147,7 @@ function DayHealth({ date }: { date: string }) {
   return (
     <Card title="Santé Garmin">
       {stat.isLoading ? <Spinner /> : !ds ? (
-        <Empty>Pas de données Garmin pour cette date. Synchronise depuis la page Sport.</Empty>
+        <Empty>Pas de données Garmin pour cette date. Synchronise-le depuis le Profil.</Empty>
       ) : (
         <div className="grid gap-6 md:grid-cols-3">
           <div className="space-y-1.5">

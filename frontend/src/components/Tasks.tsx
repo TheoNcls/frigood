@@ -104,8 +104,17 @@ export function TaskRow({ task, onEdit }: { task: TaskOccurrence; onEdit: (t: Ta
   );
 }
 
-/** Création (date donnée) ou modification (occurrence donnée) d'une tâche. */
+/** Création (date donnée) ou modification (occurrence donnée) d'une tâche, dans sa fenêtre. */
 export function TaskForm({ date, task, onClose }: { date?: string; task?: TaskOccurrence; onClose: () => void }) {
+  return (
+    <Modal title={task ? "Tâche" : "Nouvelle tâche"} onClose={onClose}>
+      <TaskFormBody date={date} task={task} onClose={onClose} />
+    </Modal>
+  );
+}
+
+/** Formulaire de tâche seul : aussi utilisé dans l'onglet « Tâche » de la fenêtre d'ajout. */
+export function TaskFormBody({ date, task, onClose }: { date?: string; task?: TaskOccurrence; onClose: () => void }) {
   const user = useCurrentUser();
   const invalidate = useInvalidateTasks();
   const toast = useToast();
@@ -150,7 +159,7 @@ export function TaskForm({ date, task, onClose }: { date?: string; task?: TaskOc
   const reminders = f.recurrence === "daily" ? "le jour même" : f.recurrence === "weekly" ? "la veille et le jour même" : "3 jours avant, la veille et le jour même";
 
   return (
-    <Modal title={editing ? "Tâche" : "Nouvelle tâche"} onClose={onClose}>
+    <>
       {editing && (
         <div className="mb-4 space-y-2 rounded-xl bg-violet-50 px-3 py-2.5 text-sm">
           <div className="text-violet-900">
@@ -240,7 +249,7 @@ export function TaskForm({ date, task, onClose }: { date?: string; task?: TaskOc
           </div>
         </div>
       </form>
-    </Modal>
+    </>
   );
 }
 

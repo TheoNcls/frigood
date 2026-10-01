@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { RefreshCw, Settings, Unplug, Watch } from "lucide-react";
+import { RefreshCw, Unplug, Watch } from "lucide-react";
 import { ApiError, api } from "../api/client";
 import { useActivities, useActivityTypes, useDailyStatsRange } from "../api/queries";
 import type { GarminSyncResult, User } from "../api/types";
@@ -12,7 +11,7 @@ import { addDays, formatShort, toISODate, todayISO } from "../lib/dates";
 import { activityLabel } from "../lib/activity";
 import { fmt } from "../lib/nutrition";
 
-/** Tout ce qui concerne Garmin : carte de réglages (Profil) et bandeau de synchro (Sport). */
+/** Tout ce qui concerne Garmin : carte de réglages du Profil. */
 
 export function useInvalidateSport() {
   const queryClient = useQueryClient();
@@ -451,75 +450,5 @@ function GarminAutoSetting() {
         </div>
       ) : null}
     </div>
-  );
-}
-
-
-/** Bandeau de la page Sport : état de la dernière synchro, synchro rapide et lien vers les réglages. */
-export function GarminStatusBar() {
-  const user = useCurrentUser();
-  const { refreshUser } = useAuth();
-  const toast = useToast();
-  const invalidate = useInvalidateSport();
-
-  const sync = useMutation({
-    mutationFn: () => api<GarminSyncResult>(`/users/${user.id}/garmin_sync`, { method: "POST", body: {} }),
-    onSuccess: async (res) => {
-      toast(
-        `${res.imported} activité(s) importée(s), ${res.stats_days} jour(s) de données santé synchronisé(s)` +
-        (res.remaining_days > 0 ? ` — ${res.remaining_days} jour(s) restant(s) : « Récupérer l'historique » dans le Profil` : ""),
-      );
-      invalidate();
-      await refreshUser();
-    },
-    onError: async (e) => {
-      if (e instanceof ApiError && e.message === "SESSION_GARMIN_EXPIREE") {
-        toast("Session Garmin expirée : reconnecte-toi depuis le Profil", "error");
-        await refreshUser();
-        return;
-      }
-      toast(e instanceof ApiError && e.message === "GARMIN_BLOQUE" ? "Garmin bloque les appels du serveur, réessaie plus tard" : e.message, "error");
-    },
-  });
-
-  if (!user.garmin_connected) {
-    return (
-      <Card className="py-3 sm:py-3">
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <span className="inline-flex items-center gap-2 text-slate-600"><Watch className="h-4 w-4" /> Garmin n'est pas connecté</span>
-          <Link to="/profil#garmin" className="btn-secondary shrink-0">Connecter</Link>
-        </div>
-      </Card>
-    );
-  }
-
-  const { at, result } = lastSyncSummary(user);
-  const autoError = isAutoError(user);
-  return (
-    <Card className="py-3 sm:py-3">
-      <div className="flex items-center gap-3">
-        <Watch className="h-5 w-5 shrink-0 text-slate-500" />
-        <div className="min-w-0 flex-1 text-sm">
-          <div className="font-medium text-slate-800">
-            {at ? <>Garmin mis à jour {whenLabel(at)}</> : "Garmin pas encore synchronisé"}
-            {at && user.garmin_last_sync_auto !== null && (
-              <span className="ml-1.5 text-xs font-normal text-slate-500">({user.garmin_last_sync_auto ? "auto" : "manuelle"})</span>
-            )}
-          </div>
-          {(result || autoError) && (
-            <div className={`text-xs ${autoError ? "text-amber-700" : "text-slate-500"}`}>
-              {autoError ? `Synchro auto : ${user.garmin_auto_status}` : result}
-            </div>
-          )}
-        </div>
-        <button className="btn-primary shrink-0 px-3" disabled={sync.isPending} onClick={() => sync.mutate()} aria-label="Synchroniser Garmin">
-          <RefreshCw className={`h-4 w-4 ${sync.isPending ? "animate-spin" : ""}`} />
-          <span className="hidden sm:inline">{sync.isPending ? "Synchronisation…" : "Synchroniser"}</span>
-        </button>
-        <Link to="/profil#garmin" className="btn-ghost shrink-0 px-2" aria-label="Réglages Garmin" title="Réglages Garmin">
-          <Settings className="h-4 w-4" />
-        </Link>
-      </div>
-    </Card>
   );
 }

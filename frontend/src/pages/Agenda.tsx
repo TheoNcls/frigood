@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -6,97 +6,41 @@ import listPlugin from "@fullcalendar/list";
 import interactionPlugin, { type DateClickArg } from "@fullcalendar/interaction";
 import frLocale from "@fullcalendar/core/locales/fr";
 import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
 import type { Activity, TaskOccurrence } from "../api/types";
-import { useCurrentUser } from "../auth/AuthContext";
 import ActivityDetail from "../components/ActivityDetail";
 import DaySummary from "../components/DaySummary";
-import { GarminStatusBar, useInvalidateSport } from "../components/Garmin";
+import { useInvalidateSport } from "../components/Garmin";
+import AddEntryModal from "../components/AddEntry";
 import { IMPORTANT_COLOR, TASK_COLOR, TaskForm } from "../components/Tasks";
 import { useToast } from "../components/Toast";
-import { Card, Empty, Field, PageHeader } from "../components/ui";
+import { Card, Empty, PageHeader } from "../components/ui";
 import { addDays, formatFull, toISODate, todayISO } from "../lib/dates";
 import { activityDetails, activityLabel } from "../lib/activity";
 import { fmt, logMacros } from "../lib/nutrition";
 
-export default function Sport() {
+export default function Agenda() {
+  const [adding, setAdding] = useState(false);
   return (
     <div className="space-y-4">
-      <PageHeader title="Sport & activités" />
-      <GarminStatusBar />
-      <ManualActivityForm />
-      <SportCalendar />
+      {adding && <AddEntryModal date={todayISO()} onClose={() => setAdding(false)} />}
+      <PageHeader
+        title="Agenda"
+        subtitle="Tâches, sport et repas au fil des jours"
+        action={<button className="btn-primary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Ajouter</button>}
+      />
+      <AgendaCalendar />
       <RecentActivities />
     </div>
   );
 }
 
 
-function ManualActivityForm() {
-  const user = useCurrentUser();
-  const types = useActivityTypes();
-  const toast = useToast();
-  const invalidate = useInvalidateSport();
-  const empty = { date: todayISO(), type: "", duree: "30", calories: "", distance: "", fc: "", notes: "" };
-  const [f, setF] = useState(empty);
-
-  const add = useMutation({
-    mutationFn: () => {
-      const num = (v: string) => (v && parseFloat(v) > 0 ? parseFloat(v) : null);
-      return api(`/users/${user.id}/activities/`, {
-        method: "POST",
-        body: {
-          date: f.date,
-          activity_type_id: f.type ? Number(f.type) : null,
-          source: "manual",
-          duree_min: num(f.duree) && Math.round(num(f.duree)!),
-          calories: num(f.calories),
-          distance_km: num(f.distance),
-          freq_cardiaque_moy: num(f.fc) && Math.round(num(f.fc)!),
-          notes: f.notes.trim() || null,
-        },
-      });
-    },
-    onSuccess: () => {
-      invalidate();
-      toast("Activité ajoutée !");
-      setF({ ...empty, date: f.date, type: f.type });
-    },
-    onError: (e) => toast(e.message, "error"),
-  });
-
-  const set = (key: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [key]: e.target.value });
-
-  return (
-    <Card title="Ajouter une activité">
-      <form className="grid grid-cols-2 gap-3" onSubmit={(e: FormEvent) => { e.preventDefault(); add.mutate(); }}>
-        <Field label="Date">
-          <input className="input" type="date" required max={todayISO()} value={f.date} onChange={set("date")} />
-        </Field>
-        <Field label="Type">
-          <select className="input" value={f.type} onChange={set("type")}>
-            <option value="">(non défini)</option>
-            {types.list.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
-          </select>
-        </Field>
-        <Field label="Durée (min)"><input className="input" type="number" min={0} value={f.duree} onChange={set("duree")} /></Field>
-        <Field label="Calories brûlées"><input className="input" type="number" min={0} value={f.calories} onChange={set("calories")} /></Field>
-        <Field label="Distance (km)"><input className="input" type="number" min={0} step="any" value={f.distance} onChange={set("distance")} /></Field>
-        <Field label="FC moyenne (bpm)"><input className="input" type="number" min={0} value={f.fc} onChange={set("fc")} /></Field>
-        <div className="col-span-2">
-          <Field label="Notes"><input className="input" value={f.notes} onChange={set("notes")} /></Field>
-        </div>
-        <button type="submit" className="btn-primary col-span-2" disabled={add.isPending}>Ajouter</button>
-      </form>
-    </Card>
-  );
-}
-
 const SPORT_COLOR = "#ea580c";
 
-function SportCalendar() {
+function AgendaCalendar() {
   const today = todayISO();
   const [range, setRange] = useState({ from: addDays(today, -40), to: addDays(today, 40) });
   const types = useActivityTypes();
@@ -177,7 +121,7 @@ function SportCalendar() {
       {openedTask && <TaskForm task={openedTask} onClose={() => setOpenedTask(null)} />}
       {openedDay && <DaySummary date={openedDay} onClose={() => setOpenedDay(null)} />}
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600">
-        <span className="text-slate-500">Clique sur un événement pour son détail, sur un jour pour son résumé ou ajouter une tâche ·</span>
+        <span className="text-slate-500">Clique sur un événement pour son détail, sur un jour pour son résumé ou ajouter une activité / une tâche ·</span>
         <Legend color="#059669" label="Repas" />
         <Legend color={SPORT_COLOR} label="Sport" />
         <Legend color={TASK_COLOR} label="Tâche" />

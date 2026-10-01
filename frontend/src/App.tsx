@@ -10,7 +10,7 @@ import Fridge from "./pages/Fridge";
 import Profile from "./pages/Profile";
 
 // Pages lourdes (calendrier, graphiques) chargées à la demande
-const Sport = lazy(() => import("./pages/Sport"));
+const Agenda = lazy(() => import("./pages/Agenda"));
 const History = lazy(() => import("./pages/History"));
 const Admin = lazy(() => import("./admin"));
 
@@ -33,7 +33,8 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="repas" element={<Meals />} />
         <Route path="frigo" element={<Fridge />} />
-        <Route path="sport" element={<Suspense fallback={<Spinner />}><Sport /></Suspense>} />
+        <Route path="agenda" element={<Suspense fallback={<Spinner />}><Agenda /></Suspense>} />
+        <Route path="sport" element={<Navigate to="/agenda" replace />} />
         <Route path="historique" element={<Suspense fallback={<Spinner />}><History /></Suspense>} />
         <Route path="profil" element={<Profile />} />
         {user.is_admin && <Route path="admin/*" element={<Suspense fallback={<Spinner />}><Admin /></Suspense>} />}

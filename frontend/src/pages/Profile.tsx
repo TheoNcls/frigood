@@ -17,7 +17,7 @@ function numOrNull(v: string): number | null {
 }
 
 export default function Profile() {
-  // Lien « Réglages Garmin » depuis Sport (/profil#garmin) : défiler jusqu'à la carte
+  // Lien vers /profil#garmin : défiler jusqu'à la carte Garmin
   const { hash } = useLocation();
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" });

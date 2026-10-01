@@ -173,7 +173,7 @@ export default function Home() {
               </div>
             </>
           ) : (
-            <Empty>Pas encore de données sommeil. Synchronise Garmin depuis la page Sport.</Empty>
+            <Empty>Pas encore de données sommeil. Synchronise Garmin depuis le Profil.</Empty>
           )}
         </Card>
       </div>
