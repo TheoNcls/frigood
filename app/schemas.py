@@ -576,3 +576,14 @@ class FitnessMetricRead(BaseModel):
     synced_at: datetime_type | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CoachReportRead(BaseModel):
+    id: int
+    created_at: datetime_type
+    texte: str
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+    model_config = {"from_attributes": True}

@@ -9,6 +9,7 @@ import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipe
 import type { Activity, TaskOccurrence } from "../api/types";
 import ActivityDetail from "../components/ActivityDetail";
 import DaySummary from "../components/DaySummary";
+import { CoachCard } from "../components/Coach";
 import { IMPORTANT_COLOR, TASK_COLOR, TaskForm } from "../components/Tasks";
 import { Card, PageHeader } from "../components/ui";
 import { addDays, toISODate, todayISO } from "../lib/dates";
@@ -20,6 +21,7 @@ export default function Agenda() {
     <div className="space-y-4">
       <PageHeader title="Agenda" subtitle="Tâches, sport et repas au fil des jours" />
       <AgendaCalendar />
+      <CoachCard />
     </div>
   );
 }

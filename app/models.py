@@ -151,6 +151,7 @@ class User(Base):
     body_compositions = relationship("BodyComposition", cascade="all, delete-orphan")
     fitness_metrics = relationship("FitnessMetric", cascade="all, delete-orphan")
     garmin_ignored = relationship("GarminIgnoredActivity", cascade="all, delete-orphan")
+    coach_reports = relationship("CoachReport", cascade="all, delete-orphan")
 
     @property
     def garmin_connected(self) -> bool:
@@ -421,3 +422,17 @@ class GarminIgnoredActivity(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     garmin_activity_id = Column(String, nullable=False)
     deleted_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CoachReport(Base):
+    """Bilan du coach Claude : gardé pour être relu (et, plus tard, pour suivre l'évolution)."""
+    __tablename__ = "coach_reports"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    texte = Column(Text, nullable=False)
+    model = Column(String(60), nullable=True)
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+    contexte = deferred(Column(Text, nullable=True))   # données envoyées (JSON), pour comprendre un bilan après coup
