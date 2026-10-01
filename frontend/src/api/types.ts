@@ -140,6 +140,9 @@ export interface Recipe {
   categorie: string | null;
   portions: number | null;
   temps_preparation: number | null;
+  /** Utilisateur qui l'a ajoutée au catalogue (0 = inconnu) */
+  created_by: number;
+  created_by_nom: string | null;
   ingredients: RecipeIngredient[];
 }
 

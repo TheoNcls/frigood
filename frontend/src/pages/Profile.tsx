@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
-import { Bell, BellOff, Send } from "lucide-react";
+import { Bell, BellOff, LogOut, Send } from "lucide-react";
 import { currentSubscription, disablePush, enablePush, isIOS, isStandalone, pushSupported } from "../lib/push";
 import { api } from "../api/client";
 import type { User } from "../api/types";
@@ -31,7 +31,26 @@ export default function Profile() {
       <PreferencesCard />
       <NotificationsCard />
       <PasswordForm />
+      <LogoutCard />
     </div>
+  );
+}
+
+/** Déconnexion : sur téléphone, le menu du bas n'a pas de bouton pour ça. */
+function LogoutCard() {
+  const user = useCurrentUser();
+  const { logout } = useAuth();
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-600">
+          Connecté en tant que <span className="font-medium text-slate-800">{user.email}</span>
+        </div>
+        <button type="button" className="btn-secondary text-red-600" onClick={logout}>
+          <LogOut className="h-4 w-4" /> Se déconnecter
+        </button>
+      </div>
+    </Card>
   );
 }
 

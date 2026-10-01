@@ -71,8 +71,16 @@ class Recipe(Base):
     categorie = Column(String, nullable=True)
     portions = Column(Integer, nullable=True, default=1)
     temps_preparation = Column(Integer, nullable=True)
+    # Qui l'a ajoutée au catalogue : id de l'utilisateur, 0 = inconnu (avant ce suivi, script, clé API)
+    created_by = Column(Integer, nullable=False, default=0, server_default="0")
 
     ingredients = relationship("RecipeIngredient", back_populates="recette")
+    # Pas de clé étrangère, comme pour les ingrédients
+    creator = relationship("User", primaryjoin="foreign(Recipe.created_by) == User.id", viewonly=True, lazy="joined")
+
+    @property
+    def created_by_nom(self) -> str | None:
+        return self.creator.nom if self.creator else None
 
 
 class RecipeIngredient(Base):

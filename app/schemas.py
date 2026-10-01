@@ -154,6 +154,8 @@ class RecipeCreate(BaseModel):
 
 class RecipeRead(RecipeCreate):
     id: int
+    created_by: int = 0
+    created_by_nom: str | None = None
     ingredients: list[RecipeIngredientRead] = []
 
     model_config = {"from_attributes": True}

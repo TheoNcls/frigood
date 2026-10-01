@@ -42,11 +42,11 @@ async function exportAll() {
   })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Conservation (jours)", "Nutri-Score", "Green-Score", "NOVA", "Régime", "Composition", "Créé par"]);
 
   sheet(recipes.flatMap((r) => {
-    const base = { Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation };
+    const base = { Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation, "Créé par": r.created_by_nom };
     return r.ingredients.length
       ? r.ingredients.map((ri) => ({ ...base, "Ingrédient": ri.ingredient.nom, "Quantité": ri.quantite, "Type mesure": ri.type_mesure, "Unité": ri.ingredient.unite }))
       : [base];
-  }), "Recettes", ["Recette", "Description", "Catégorie", "Portions", "Temps préparation (min)", "Ingrédient", "Quantité", "Type mesure", "Unité"]);
+  }), "Recettes", ["Recette", "Description", "Catégorie", "Portions", "Temps préparation (min)", "Ingrédient", "Quantité", "Type mesure", "Unité", "Créé par"]);
 
   sheet(nutriments.map((x) => ({ Nom: x.nom, "Unité": x.unite })), "Nutriments", ["Nom", "Unité"]);
 

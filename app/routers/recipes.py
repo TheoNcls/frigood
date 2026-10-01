@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models import Recipe, RecipeIngredient
 from app.schemas import RecipeCreate, RecipeRead, RecipeIngredientCreate
-from app.auth import get_principal, require_admin
+from app.auth import Principal, get_principal, require_admin
 
 router = APIRouter(prefix="/recipes", tags=["recipes"], dependencies=[Depends(get_principal)])
 
@@ -23,8 +23,8 @@ def get_recipe(id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=RecipeRead, dependencies=[Depends(require_admin)])
-def create_recipe(data: RecipeCreate, db: Session = Depends(get_db)):
-    recipe = Recipe(**data.model_dump())
+def create_recipe(data: RecipeCreate, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    recipe = Recipe(**data.model_dump(), created_by=principal.user_id or 0)
     db.add(recipe)
     try:
         db.commit()

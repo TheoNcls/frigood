@@ -84,7 +84,6 @@ export default function IngredientsAdmin() {
                     {i.sources.map((s) => (
                       <span key={s.id} className="badge mr-1 bg-slate-100 text-slate-600">{SOURCE_LABELS[s.source_type] ?? s.source_type}</span>
                     ))}
-                    {i.created_by_nom && <div className="mt-0.5 text-xs text-slate-500">par {i.created_by_nom}</div>}
                   </td>
                 </tr>
               ))}

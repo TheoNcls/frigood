@@ -174,6 +174,7 @@ function EditRecipe({ recipe, onDeleted }: { recipe: Recipe; onDeleted: () => vo
         <div className="label">Informations</div>
         <RecipeForm key={recipe.id} initial={recipe} submitLabel="Enregistrer" pending={save.isPending} onSubmit={(v) => save.mutate(v)} />
       </div>
+      {recipe.created_by_nom && <p className="text-xs text-slate-500">Ajoutée par {recipe.created_by_nom}.</p>}
       <div className="border-t border-slate-200 pt-4">
         <ConfirmButton label="Supprimer la recette" disabled={remove.isPending} onConfirm={() => remove.mutate()} />
       </div>
