@@ -119,6 +119,11 @@ export function CoachCard() {
 
   const r = report.data;
   const at = r ? fromUtc(r.created_at) : null;
+  // Un bilan par semaine (du lundi au dimanche)
+  const monday = (d: Date) => { const m = new Date(d); m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m; };
+  const thisMonday = monday(new Date());
+  const doneThisWeek = !!at && at >= thisMonday;
+  const nextMonday = new Date(thisMonday); nextMonday.setDate(nextMonday.getDate() + 7);
 
   return (
     <Card title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-violet-600" /> Coach</span>}>
@@ -133,11 +138,16 @@ export function CoachCard() {
         </p>
       )}
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className="btn-primary" disabled={ask.isPending} onClick={() => ask.mutate()}>
+        <button type="button" className="btn-primary" disabled={ask.isPending || doneThisWeek} onClick={() => ask.mutate()}>
           <Sparkles className="h-4 w-4" />
           {ask.isPending ? "Le coach analyse tes données…" : r ? "Nouveau bilan" : "Demander mon bilan"}
         </button>
         {ask.isPending && <span className="text-xs text-slate-500">Compte jusqu'à une minute.</span>}
+        {doneThisWeek && !ask.isPending && (
+          <span className="text-xs text-slate-500">
+            Bilan de la semaine fait. Prochain possible le lundi {nextMonday.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}.
+          </span>
+        )}
       </div>
 
       {report.isLoading ? <Spinner /> : r && (

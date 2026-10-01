@@ -6,12 +6,11 @@ from app import coach
 from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
 from app.models import ActivityType, CoachReport, Task, User
-from app.push_service import now_local
+from app.push_service import local_date, now_local
 from app.schemas import CoachActivitiesAdd, CoachReportRead
 
 router = APIRouter(tags=["coach"], dependencies=[Depends(get_principal)])
 
-COOLDOWN = timedelta(seconds=60)   # évite les doubles demandes (chaque bilan coûte un appel à Claude)
 
 
 def _user(db: Session, user_id: int, principal: Principal) -> User:
@@ -39,11 +38,17 @@ def preview_context(user_id: int, principal: Principal = Depends(get_principal),
 @router.post("/users/{user_id}/coach/", response_model=CoachReportRead)
 def new_report(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     user = _user(db, user_id, principal)
-    last = (db.query(CoachReport).filter_by(user_id=user_id).order_by(CoachReport.created_at.desc()).first())
-    if last and last.created_at and datetime.utcnow() - last.created_at < COOLDOWN:
-        raise HTTPException(status_code=429, detail="Un bilan vient d'être fait, attends une minute avant d'en redemander un")
-
     today = now_local().date()
+    monday = today - timedelta(days=today.weekday())
+    last = (db.query(CoachReport).filter_by(user_id=user_id).order_by(CoachReport.created_at.desc()).first())
+    if last and last.created_at and local_date(last.created_at) >= monday:
+        # Un bilan par semaine (chaque bilan coûte un appel à Claude)
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tu as déjà fait ton bilan cette semaine (le {local_date(last.created_at):%d/%m}). "
+                   f"Prochain bilan possible à partir du lundi {monday + timedelta(days=7):%d/%m}.",
+        )
+
     context = coach.build_context(db, user, today)
     sports = [t.nom for t in db.query(ActivityType).all()]
     try:

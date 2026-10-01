@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Activity as ActivityIcon, AlarmClock, ArrowRight, Bell, Check, ListTodo, Plus, Repeat, Sparkles, Star, X } from "lucide-react";
+import { Activity as ActivityIcon, AlarmClock, ArrowRight, Check, ListTodo, Plus, Repeat, Sparkles, Star, X } from "lucide-react";
 import { api } from "../api/client";
 import type { Recurrence, TaskInput, TaskOccurrence, TaskStatut } from "../api/types";
 import { useActivityTypes, useTasks } from "../api/queries";
@@ -173,7 +173,6 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
     onError: (e) => toast(e.message, "error"),
   });
 
-  const reminders = f.recurrence === "daily" ? "le jour même" : f.recurrence === "weekly" ? "la veille et le jour même" : "3 jours avant, la veille et le jour même";
 
   return (
     <>
@@ -235,20 +234,15 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
             </Field>
           )}
         </div>
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2">
+        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2">
           <input
             type="checkbox"
-            className="mt-0.5 h-4 w-4 accent-amber-500"
+            className="h-4 w-4 accent-amber-500"
             checked={f.important}
             onChange={(e) => setF({ ...f, important: e.target.checked })}
           />
-          <span className="text-sm">
-            <span className="flex items-center gap-1 font-medium text-slate-800">
-              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" /> Importante
-            </span>
-            <span className="block text-xs text-slate-500">
-              Reste plus longtemps en retard sur l'accueil ; rappel <Bell className="inline h-3 w-3" /> {reminders} si les notifications sont activées.
-            </span>
+          <span className="flex items-center gap-1 text-sm font-medium text-slate-800">
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" /> Importante
           </span>
         </label>
         <Field
@@ -263,7 +257,7 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
           </select>
         </Field>
         <Field label="Notes (facultatif)">
-          <textarea className="input min-h-[3.5rem]" value={f.notes} onChange={set("notes")} />
+          <AutoTextarea value={f.notes} onChange={(v) => setF({ ...f, notes: v })} />
         </Field>
         {editing && task.recurrence && (
           <p className="text-xs text-slate-500">Les modifications s'appliquent à toute la série.</p>
@@ -485,5 +479,25 @@ export function TodayTasks() {
         {list.map((t) => <TaskRow key={`${t.task_id}-${t.date}`} task={t} onEdit={setEditing} />)}
       </ul>
     </section>
+  );
+}
+
+/** Zone de texte qui s'agrandit avec son contenu (jusqu'à la moitié de l'écran, puis défile). */
+function AutoTextarea({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight + 2, window.innerHeight * 0.5)}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      rows={2}
+      className="input resize-none overflow-y-auto"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }

@@ -44,6 +44,11 @@ def now_local() -> datetime:
     return datetime.now(TZ).replace(tzinfo=None)
 
 
+def local_date(dt_utc: datetime) -> date:
+    """Jour (heure de Paris) d'un instant enregistré en UTC."""
+    return _utc_to_local(dt_utc).date()
+
+
 def _utc_to_local(dt: datetime) -> datetime:
     return dt.replace(tzinfo=timezone.utc).astimezone(TZ).replace(tzinfo=None)
 

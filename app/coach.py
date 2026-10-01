@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.fridge_service import to_base_qty
 from app.garmin_service import activity_details
 from app.models import (
-    Activity, BodyComposition, DailyStat, FitnessMetric, FridgeItem, Ingredient, MealLog, Recipe, Task, TaskCompletion, User,
+    Activity, BodyComposition, CoachReport, DailyStat, FitnessMetric, FridgeItem, Ingredient, MealLog, Recipe, Task, TaskCompletion,
+    User,
 )
 
 log = logging.getLogger("frigood.coach")
@@ -50,6 +51,10 @@ Règles :
 - Nutrition végétarienne : surveille protéines, B12, fer, zinc, calcium, iode, oméga-3 ; propose des aliments concrets.
 - Sport : relie charge et récupération ; reste prudent sur l'intensité si la récupération est mauvaise.
 - Markdown simple : listes à puces courtes, gras pour l'essentiel, pas de titres (les sections sont déjà titrées).
+- Si « bilan_precedent » est présent : sers-t'en pour suivre l'évolution (ce qui s'est amélioré ou dégradé depuis),
+  dis ce que sont devenues les séances que tu avais proposées (faites, pas faites, non ajoutées) et adapte la semaine
+  en conséquence ; ne répète pas les mêmes conseils ni les mêmes recettes. Ce sont les données actuelles qui font foi :
+  si ton bilan précédent se trompait, corrige-le simplement.
 - Tu n'es pas médecin : pas de diagnostic ; en cas de signal inquiétant (douleur, perte de poids rapide, fatigue durable),
   conseille d'en parler à un professionnel de santé."""
 
@@ -102,6 +107,60 @@ def _meal_label(log_: MealLog) -> str:
 
 
 # ── Contexte ──────────────────────────────────────────────────────────────────
+
+PREVIOUS_MAX_DAYS = 30
+
+
+def previous_report(db: Session, user: User, today: date) -> dict | None:
+    """Résumé du dernier bilan (moins de 30 jours) et ce que sont devenues les séances proposées."""
+    from app.push_service import local_date
+    from app.routers.tasks import occurrences, sport_activities
+
+    last = (db.query(CoachReport).filter(CoachReport.user_id == user.id)
+            .order_by(CoachReport.created_at.desc(), CoachReport.id.desc()).first())
+    if not last or not last.created_at:
+        return None
+    day = local_date(last.created_at)
+    if (today - day).days > PREVIOUS_MAX_DAYS:
+        return None
+    try:
+        data = json.loads(last.donnees) if last.donnees else None
+    except ValueError:
+        data = None
+    if not data:  # ancien bilan en texte libre
+        return {"date": day.isoformat(), "texte": (last.texte or "")[:3000]}
+
+    seances = []
+    coach_tasks = {(t.date, t.titre): t for t in db.query(Task).filter(Task.user_id == user.id, Task.par_coach.is_(True))}
+    for a in data.get("activites") or []:
+        try:
+            d = date.fromisoformat(a["date"])
+        except (KeyError, ValueError):
+            continue
+        task = coach_tasks.get((d, a.get("titre")))
+        if not last.activites_ajoutees_at:
+            statut = "non ajoutée à l'agenda"
+        elif not task:
+            statut = "non ajoutée ou supprimée de l'agenda"
+        else:
+            completion = db.query(TaskCompletion).filter_by(task_id=task.id, date=d).first()
+            if completion:
+                statut = "faite" if completion.statut == "fait" else "pas faite"
+            elif task.activity_type_id and sport_activities(db, user.id, [task], d, d).get((task.activity_type_id, d)):
+                statut = "faite (activité enregistrée)"
+            else:
+                statut = "à venir" if d >= today else "pas faite (non cochée)"
+        seances.append({"date": a["date"], "titre": a.get("titre"), "sport": a.get("sport"), "statut": statut})
+
+    return {
+        "date": day.isoformat(),
+        "remarques": (data.get("remarques") or "")[:1500],
+        "sante_recuperation": (data.get("sante_recuperation") or "")[:1500],
+        "ameliorations": (data.get("ameliorations") or "")[:1500],
+        "recettes_proposees": [r.get("titre") for r in data.get("recettes") or [] if r.get("titre")],
+        "seances_proposees": seances,
+    }
+
 
 def build_context(db: Session, user: User, today: date) -> dict:
     start = today - timedelta(days=PAST_DAYS - 1)
@@ -225,6 +284,7 @@ def build_context(db: Session, user: User, today: date) -> dict:
         "taches_passees": passees,
         f"taches_et_seances_a_venir_{NEXT_DAYS}_jours": a_venir,
         "frigo": frigo,
+        "bilan_precedent": previous_report(db, user, today),
     })
 
 
