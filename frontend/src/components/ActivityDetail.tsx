@@ -1,13 +1,15 @@
 import type { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useActivityTypes } from "../api/queries";
 import type { Activity } from "../api/types";
 import { activityLabel } from "../lib/activity";
 import { formatLong } from "../lib/dates";
 import { fmt } from "../lib/nutrition";
+import { useInvalidateSport } from "./Garmin";
 import Modal from "./Modal";
-import { Spinner } from "./ui";
+import { useToast } from "./Toast";
+import { ConfirmButton, Spinner } from "./ui";
 
 interface Details {
   disponible: boolean;
@@ -121,6 +123,13 @@ export default function ActivityDetail({ activity, onClose }: { activity: Activi
   const zones = d?.zones_fc ?? [];
   const zonesTotal = zones.reduce((s, z) => s + z.secondes, 0);
   const heure = d?.debut?.slice(11, 16);
+  const toast = useToast();
+  const invalidate = useInvalidateSport();
+  const remove = useMutation({
+    mutationFn: () => api(`/activities/${activity.id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidate(); toast("Activité supprimée"); onClose(); },
+    onError: (e) => toast(e.message, "error"),
+  });
 
   return (
     <Modal title={`${activity.source === "garmin" ? "⌚" : "✏️"} ${activityLabel(activity, types.byId)}`} onClose={onClose} wide>
@@ -223,6 +232,13 @@ export default function ActivityDetail({ activity, onClose }: { activity: Activi
           {d.description && <p className="text-sm text-slate-600">{d.description}</p>}
         </div>
       )}
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4">
+        <span className="text-xs text-slate-500">
+          {activity.source === "garmin" ? "Supprimée ici, elle ne sera plus réimportée (elle reste dans Garmin Connect)." : ""}
+        </span>
+        <ConfirmButton label="Supprimer l'activité" disabled={remove.isPending} onConfirm={() => remove.mutate()} />
+      </div>
     </Modal>
   );
 }

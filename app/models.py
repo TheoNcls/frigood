@@ -147,6 +147,7 @@ class User(Base):
     push_subscriptions = relationship("PushSubscription", cascade="all, delete-orphan")
     body_compositions = relationship("BodyComposition", cascade="all, delete-orphan")
     fitness_metrics = relationship("FitnessMetric", cascade="all, delete-orphan")
+    garmin_ignored = relationship("GarminIgnoredActivity", cascade="all, delete-orphan")
 
     @property
     def garmin_connected(self) -> bool:
@@ -404,3 +405,14 @@ class FitnessMetric(Base):
     age_forme = Column(Float, nullable=True)
     raw_data = deferred(Column(Text, nullable=True))
     synced_at = Column(DateTime, nullable=True)
+
+
+class GarminIgnoredActivity(Base):
+    """Activité Garmin supprimée dans Frigood : la synchro ne la réimporte plus."""
+    __tablename__ = "garmin_ignored_activities"
+    __table_args__ = (UniqueConstraint("user_id", "garmin_activity_id", name="uq_garmin_ignored"),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    garmin_activity_id = Column(String, nullable=False)
+    deleted_at = Column(DateTime, default=datetime.utcnow)

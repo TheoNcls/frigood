@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Activity, ActivityType, DailyStat
+from app.models import Activity, ActivityType, DailyStat, GarminIgnoredActivity
 
 BATCH_DAYS = 30            # jours de santé traités par appel (≈ 6 requêtes Garmin par jour)
 DEFAULT_DAYS = 7           # fenêtre minimale d'une synchronisation normale
@@ -288,10 +288,14 @@ def sync_activities(db: Session, user_id: int, raw_activities: list[dict]) -> tu
         for gid, has_raw, type_id in db.query(Activity.garmin_activity_id, Activity.raw_data.isnot(None), Activity.activity_type_id)
         .filter(Activity.user_id == user_id, Activity.garmin_activity_id.isnot(None))
     }
+    ignored = {gid for (gid,) in db.query(GarminIgnoredActivity.garmin_activity_id).filter_by(user_id=user_id)}
     imported = skipped = 0
     for a in raw_activities:
         garmin_id = str(a.get("activityId") or "")
         if not garmin_id:
+            continue
+        if garmin_id in ignored:  # supprimée dans Frigood
+            skipped += 1
             continue
         raw_json = json.dumps(a, ensure_ascii=False, default=str)
         if garmin_id in existing:

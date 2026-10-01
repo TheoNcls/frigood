@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date as date_type, datetime, timedelta
 from app.database import get_db
-from app.models import Activity, User, DailyStat
+from app.models import Activity, GarminIgnoredActivity, User, DailyStat
 from app.schemas import ActivityCreate, ActivityRead, GarminAutoSettings, GarminCredentials, GarminTokens, DailyStatRead, UserRead
 from app.auth import Principal, get_principal, check_user_access
 from app.garmin_body import recompute_body_fitness
@@ -53,6 +53,12 @@ def delete_activity(id: int, principal: Principal = Depends(get_principal), db: 
     if not activity:
         raise HTTPException(status_code=404, detail="Activité introuvable")
     check_user_access(principal, activity.user_id)
+    if activity.garmin_activity_id:
+        # Sinon la prochaine synchro la réimporterait
+        known = db.query(GarminIgnoredActivity).filter_by(
+            user_id=activity.user_id, garmin_activity_id=activity.garmin_activity_id).first()
+        if not known:
+            db.add(GarminIgnoredActivity(user_id=activity.user_id, garmin_activity_id=activity.garmin_activity_id))
     db.delete(activity)
     db.commit()
     return {"message": "Activité supprimée"}

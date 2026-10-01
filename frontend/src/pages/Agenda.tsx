@@ -1,22 +1,17 @@
 import { useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import listPlugin from "@fullcalendar/list";
 import interactionPlugin, { type DateClickArg } from "@fullcalendar/interaction";
 import frLocale from "@fullcalendar/core/locales/fr";
 import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
-import { Trash2 } from "lucide-react";
-import { api } from "../api/client";
 import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
 import type { Activity, TaskOccurrence } from "../api/types";
 import ActivityDetail from "../components/ActivityDetail";
 import DaySummary from "../components/DaySummary";
-import { useInvalidateSport } from "../components/Garmin";
 import { IMPORTANT_COLOR, TASK_COLOR, TaskForm } from "../components/Tasks";
-import { useToast } from "../components/Toast";
-import { Card, Empty, PageHeader } from "../components/ui";
-import { addDays, formatFull, toISODate, todayISO } from "../lib/dates";
+import { Card, PageHeader } from "../components/ui";
+import { addDays, toISODate, todayISO } from "../lib/dates";
 import { activityDetails, activityLabel } from "../lib/activity";
 import { fmt, logMacros } from "../lib/nutrition";
 
@@ -25,7 +20,6 @@ export default function Agenda() {
     <div className="space-y-4">
       <PageHeader title="Agenda" subtitle="Tâches, sport et repas au fil des jours" />
       <AgendaCalendar />
-      <RecentActivities />
     </div>
   );
 }
@@ -151,57 +145,5 @@ function Legend({ color, label }: { color: string; label: string }) {
     <span className="inline-flex items-center gap-1.5">
       <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} /> {label}
     </span>
-  );
-}
-
-function RecentActivities() {
-  const today = todayISO();
-  const acts = useActivities({ date_from: addDays(today, -60), date_to: today });
-  const types = useActivityTypes();
-  const toast = useToast();
-  const invalidate = useInvalidateSport();
-
-  const remove = useMutation({
-    mutationFn: (id: number) => api(`/activities/${id}`, { method: "DELETE" }),
-    onSuccess: invalidate,
-    onError: (e) => toast(e.message, "error"),
-  });
-
-  const list = (acts.data ?? []).slice(0, 10);
-  const [opened, setOpened] = useState<Activity | null>(null);
-
-  return (
-    <Card title="Activités récentes">
-      {opened && <ActivityDetail activity={opened} onClose={() => setOpened(null)} />}
-      {!list.length ? <Empty>Aucune activité sur les 60 derniers jours.</Empty> : (
-        <ul className="divide-y divide-slate-100">
-          {list.map((a) => {
-            const label = activityLabel(a, types.byId);
-            return (
-              <li key={a.id} className="flex items-center gap-3 py-1.5">
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left hover:bg-slate-50"
-                  onClick={() => setOpened(a)}
-                >
-                  <span className="w-24 shrink-0 text-sm text-slate-500">{formatFull(a.date)}</span>
-                  <span title={a.source === "garmin" ? "Garmin" : "Manuel"}>{a.source === "garmin" ? "⌚" : "✏️"}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{label}</div>
-                    <div className="truncate text-xs text-slate-500">
-                      {activityDetails(a) || "—"}
-                      {a.notes && a.notes !== label ? ` · ${a.notes}` : ""}
-                    </div>
-                  </div>
-                </button>
-                <button className="btn-ghost" aria-label="Supprimer" disabled={remove.isPending} onClick={() => remove.mutate(a.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Card>
   );
 }
