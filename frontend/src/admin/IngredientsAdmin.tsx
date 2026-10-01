@@ -84,6 +84,7 @@ export default function IngredientsAdmin() {
                     {i.sources.map((s) => (
                       <span key={s.id} className="badge mr-1 bg-slate-100 text-slate-600">{SOURCE_LABELS[s.source_type] ?? s.source_type}</span>
                     ))}
+                    {i.created_by_nom && <div className="mt-0.5 text-xs text-slate-500">par {i.created_by_nom}</div>}
                   </td>
                 </tr>
               ))}
@@ -320,9 +321,10 @@ function EditIngredient({ ingredient, onDeleted }: { ingredient: Ingredient; onD
         onSubmit={(values) => save.mutate(values)}
       />
       <IngredientNutriments ingredient={ingredient} />
-      {ingredient.sources.length > 0 && (
+      {(ingredient.sources.length > 0 || ingredient.created_by_nom) && (
         <div className="text-xs text-slate-500">
-          Source :{" "}
+          {ingredient.created_by_nom && <span className="mr-2">Ajouté par {ingredient.created_by_nom}.</span>}
+          {ingredient.sources.length > 0 && "Source : "}
           {ingredient.sources.map((s) => (
             <span key={s.id} className="mr-2">
               {SOURCE_LABELS[s.source_type] ?? s.source_type}

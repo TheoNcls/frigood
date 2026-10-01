@@ -58,6 +58,9 @@ export interface Ingredient {
   image_url: string | null;
   /** Liste des ingrédients d'un produit transformé */
   composition: string | null;
+  /** Utilisateur qui l'a ajouté au catalogue (0 = inconnu) */
+  created_by: number;
+  created_by_nom: string | null;
   nutriments: IngredientNutriment[];
   sources: IngredientSource[];
 }

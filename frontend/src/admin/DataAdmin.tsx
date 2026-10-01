@@ -38,8 +38,8 @@ async function exportAll() {
     Glucides: i.glucides, Lipides: i.lipides, "Unité": i.unite, "Quantité défaut": i.quantite_defaut,
     "Conservation (jours)": i.duree_conservation, "Nutri-Score": i.nutriscore?.toUpperCase() ?? null,
     "Green-Score": i.greenscore ? GREENSCORE_LABELS[i.greenscore] : null, NOVA: i.nova, "Régime": i.regime,
-    Composition: i.composition,
-  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Conservation (jours)", "Nutri-Score", "Green-Score", "NOVA", "Régime", "Composition"]);
+    Composition: i.composition, "Créé par": i.created_by_nom,
+  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Conservation (jours)", "Nutri-Score", "Green-Score", "NOVA", "Régime", "Composition", "Créé par"]);
 
   sheet(recipes.flatMap((r) => {
     const base = { Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation };

@@ -25,10 +25,18 @@ class Ingredient(Base):
     regime = Column(String(20), nullable=True)      # vegan, vegetarien, non_vegetarien, incertain
     image_url = Column(String, nullable=True)       # vignette (lien OpenFoodFacts, non copiée chez nous)
     composition = Column(Text, nullable=True)       # liste des ingrédients d'un produit transformé
+    # Qui l'a ajouté au catalogue : id de l'utilisateur, 0 = inconnu (avant ce suivi, script, clé API)
+    created_by = Column(Integer, nullable=False, default=0, server_default="0")
 
     recettes = relationship("RecipeIngredient", back_populates="ingredient")
     nutriments = relationship("IngredientNutriment", back_populates="ingredient", cascade="all, delete-orphan")
     sources = relationship("IngredientSource", back_populates="ingredient", cascade="all, delete-orphan")
+    # Pas de clé étrangère (0 n'est pas un utilisateur, et un compte supprimé ne doit pas effacer ses ingrédients)
+    creator = relationship("User", primaryjoin="foreign(Ingredient.created_by) == User.id", viewonly=True, lazy="joined")
+
+    @property
+    def created_by_nom(self) -> str | None:
+        return self.creator.nom if self.creator else None
 
 
 class Nutriment(Base):

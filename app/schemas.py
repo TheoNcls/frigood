@@ -121,6 +121,8 @@ class IngredientCreate(IngredientBase):
 
 class IngredientRead(IngredientBase):
     id: int
+    created_by: int = 0
+    created_by_nom: str | None = None
     nutriments: list[IngredientNutrimentRead] = []
     sources: list[IngredientSourceRead] = []
 

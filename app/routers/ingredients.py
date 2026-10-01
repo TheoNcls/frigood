@@ -10,7 +10,7 @@ from app.database import get_db
 from app import openfoodfacts as off
 from app.models import Ingredient, IngredientNutriment, IngredientSource, Nutriment
 from app.schemas import IngredientCreate, IngredientRead
-from app.auth import get_principal, require_admin
+from app.auth import Principal, get_principal, require_admin
 
 router = APIRouter(prefix="/ingredients", tags=["ingredients"], dependencies=[Depends(get_principal)])
 
@@ -201,10 +201,10 @@ def get_ingredient(id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=IngredientRead, dependencies=[Depends(require_admin)])
-def create_ingredient(data: IngredientCreate, db: Session = Depends(get_db)):
+def create_ingredient(data: IngredientCreate, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     source_fields = {"source_type", "source_code_barre", "source_raw_data"}
     ingredient_data = {k: v for k, v in data.model_dump().items() if k not in source_fields}
-    ingredient = Ingredient(**ingredient_data)
+    ingredient = Ingredient(**ingredient_data, created_by=principal.user_id or 0)
     db.add(ingredient)
     try:
         db.commit()
