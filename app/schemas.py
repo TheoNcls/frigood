@@ -254,6 +254,9 @@ class UserCreate(BaseModel):
     glucides_cible: float | None = None
     lipides_cible: float | None = None
 
+PROFIL_COACHING_MAX = 4000
+
+
 class UserUpdate(BaseModel):
     nom: str | None = None
     calories_cible: float | None = None
@@ -262,6 +265,24 @@ class UserUpdate(BaseModel):
     lipides_cible: float | None = None
     # Envoyé à null pour revenir à un objectif fixe en grammes
     proteines_g_kg: float | None = None
+    # Envoyés à null (ou vides) pour effacer
+    date_naissance: date_type | None = None
+    profil_coaching: str | None = None
+
+    @field_validator("date_naissance")
+    @classmethod
+    def _check_naissance(cls, v: date_type | None) -> date_type | None:
+        if v is not None and not (date_type(1900, 1, 1) <= v <= date_type.today()):
+            raise ValueError("Date de naissance invalide")
+        return v
+
+    @field_validator("profil_coaching")
+    @classmethod
+    def _check_coaching(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if len(v) > PROFIL_COACHING_MAX:
+            raise ValueError(f"Texte trop long ({PROFIL_COACHING_MAX} caractères maximum)")
+        return v or None
 
     @field_validator("proteines_g_kg")
     @classmethod
@@ -281,6 +302,8 @@ class UserRead(BaseModel):
     glucides_cible: float | None = None
     lipides_cible: float | None = None
     proteines_g_kg: float | None = None
+    date_naissance: date_type | None = None
+    profil_coaching: str | None = None
     garmin_connected: bool = False
     garmin_auto_sync: bool = False
     garmin_auto_heure: str = "07:00"

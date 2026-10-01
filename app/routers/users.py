@@ -87,10 +87,12 @@ def update_user(id: int, data: UserUpdate, principal: Principal = Depends(get_pr
                 db: Session = Depends(get_db)):
     check_user_access(principal, id)
     user = _get_user(db, id)
-    for key, value in data.model_dump(exclude_none=True, exclude={"proteines_g_kg"}).items():
+    clearable = {"proteines_g_kg", "date_naissance", "profil_coaching"}
+    for key, value in data.model_dump(exclude_none=True, exclude=clearable).items():
         setattr(user, key, value)
-    if "proteines_g_kg" in data.model_fields_set:  # null = retour à un objectif fixe
-        user.proteines_g_kg = data.proteines_g_kg
+    # Champs qu'on peut effacer : envoyés explicitement, même à null (g/kg à null = objectif fixe)
+    for key in clearable & data.model_fields_set:
+        setattr(user, key, getattr(data, key))
     db.commit()
     apply_protein_target(db, user)
     db.refresh(user)

@@ -1,12 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Gauge, Scale, Trash2 } from "lucide-react";
+import { Gauge, Scale } from "lucide-react";
 import { api } from "../api/client";
 import { useBody, useFitness } from "../api/queries";
 import type { BodyComposition, FitnessMetric } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
-import { addDays, formatFull, formatShort, todayISO } from "../lib/dates";
+import { addDays, formatShort, todayISO } from "../lib/dates";
 import { fmt } from "../lib/nutrition";
 import { useToast } from "./Toast";
 import { Card, Empty, Field, Segmented } from "./ui";
@@ -255,11 +255,6 @@ export function WeighInsCard() {
     onSuccess: async () => { setF({ ...f, poids: "", mg: "" }); toast("Pesée enregistrée"); await refresh(); },
     onError: (e) => toast(e.message, "error"),
   });
-  const remove = useMutation({
-    mutationFn: (id: number) => api(`/body/${id}`, { method: "DELETE" }),
-    onSuccess: refresh,
-    onError: (e) => toast(e.message, "error"),
-  });
 
   return (
     <Card title={<span className="inline-flex items-center gap-1.5"><Scale className="h-4 w-4" /> Poids</span>}>
@@ -277,27 +272,6 @@ export function WeighInsCard() {
         <Field label="Masse grasse (%)"><input className="input" inputMode="decimal" placeholder="facultatif" value={f.mg} onChange={(e) => setF({ ...f, mg: e.target.value })} /></Field>
         <button type="submit" className="btn-primary" disabled={add.isPending || !f.poids}>Ajouter</button>
       </form>
-      {rows.length > 0 && (
-        <ul className="mt-4 divide-y divide-slate-100 text-sm">
-          {rows.slice(0, 8).map((r) => (
-            <li key={r.id} className="flex items-center gap-3 py-1.5">
-              <span className="w-24 shrink-0 text-slate-500">{formatFull(r.date)}</span>
-              <span className="flex-1 font-medium text-slate-900">
-                {fmt(r.poids_kg, 1)} kg
-                {r.masse_grasse_pct !== null && <span className="font-normal text-slate-500"> · {fmt(r.masse_grasse_pct, 1)} % MG</span>}
-              </span>
-              <span className={`badge ${r.source === "garmin" ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-600"}`}>
-                {r.source === "garmin" ? "balance" : "manuel"}
-              </span>
-              {r.source === "manuel" ? (
-                <button className="btn-ghost px-2" aria-label="Supprimer la pesée" disabled={remove.isPending} onClick={() => remove.mutate(r.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              ) : <span className="w-8" />}
-            </li>
-          ))}
-        </ul>
-      )}
     </Card>
   );
 }

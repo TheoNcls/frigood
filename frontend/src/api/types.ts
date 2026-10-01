@@ -8,6 +8,9 @@ export interface User {
   lipides_cible: number | null;
   /** Objectif protéines en g/kg : proteines_cible suit alors le dernier poids */
   proteines_g_kg: number | null;
+  date_naissance: string | null;
+  /** Infos et objectifs en texte libre (futur coaching personnalisé) */
+  profil_coaching: string | null;
   garmin_connected: boolean;
   /** Synchro Garmin automatique du matin (réglage du compte) */
   garmin_auto_sync: boolean;

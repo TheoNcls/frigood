@@ -122,6 +122,9 @@ class User(Base):
     lipides_cible = Column(Float, nullable=True)
     # Objectif protéines en g par kg de poids : proteines_cible est recalculé à chaque nouvelle pesée
     proteines_g_kg = Column(Float, nullable=True)
+    date_naissance = Column(Date, nullable=True)
+    # Texte libre : infos et objectifs de la personne, pour un futur coaching personnalisé (Claude)
+    profil_coaching = Column(Text, nullable=True)
 
     garmin_tokens = Column(String, nullable=True)
     # Synchro automatique du matin (opt-in) : heure locale, et suivi du jour en cours

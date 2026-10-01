@@ -9,6 +9,7 @@ import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import { useToast } from "../components/Toast";
 import { usePreferences } from "../lib/preferences";
 import { fmt } from "../lib/nutrition";
+import { todayISO } from "../lib/dates";
 import { GarminSettingsCard } from "../components/Garmin";
 import { WeighInsCard, useLatestWeight } from "../components/Body";
 import { Card, Field, PageHeader } from "../components/ui";
@@ -29,6 +30,7 @@ export default function Profile() {
     <div className="max-w-2xl space-y-4">
       <PageHeader title="Profil" />
       <ProfileForm />
+      <CoachingProfileCard />
       <div id="garmin" className="scroll-mt-4"><GarminSettingsCard /></div>
       <WeighInsCard />
       <PreferencesCard />
@@ -62,6 +64,7 @@ function ProfileForm() {
   const { setUser } = useAuth();
   const toast = useToast();
   const [nom, setNom] = useState(user.nom);
+  const [naissance, setNaissance] = useState(user.date_naissance ?? "");
   const [t, setT] = useState({
     cal: String(user.calories_cible ?? ""),
     prot: String(user.proteines_cible ?? ""),
@@ -80,6 +83,7 @@ function ProfileForm() {
       method: "PUT",
       body: {
         nom: nom.trim(),
+        date_naissance: naissance || null,
         calories_cible: numOrNull(t.cal),
         proteines_cible: parKg ? (protFromKg ?? numOrNull(t.prot)) : numOrNull(t.prot),
         glucides_cible: numOrNull(t.gluc),
@@ -98,6 +102,9 @@ function ProfileForm() {
           <input className="input" required value={nom} onChange={(e) => setNom(e.target.value)} />
         </Field>
         <p className="text-sm text-slate-500">Email : {user.email}</p>
+        <Field label="Date de naissance" hint={naissance ? `${ageFrom(naissance)} ans` : "Facultatif : servira aux calculs adaptés à l'âge."}>
+          <input className="input max-w-[12rem]" type="date" min="1900-01-01" max={todayISO()} value={naissance} onChange={(e) => setNaissance(e.target.value)} />
+        </Field>
         <div>
           <div className="label">Objectifs nutritionnels (par jour)</div>
           <div className="grid grid-cols-2 gap-3">
@@ -134,6 +141,53 @@ function ProfileForm() {
         </div>
         <button type="submit" className="btn-primary" disabled={save.isPending}>Enregistrer</button>
       </form>
+    </Card>
+  );
+}
+
+function ageFrom(iso: string): number {
+  const birth = new Date(`${iso}T12:00`);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+const COACHING_MAX = 4000;
+
+/** Texte libre enregistré sur le compte : infos et objectifs, pour un futur coaching personnalisé. */
+function CoachingProfileCard() {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const [text, setText] = useState(user.profil_coaching ?? "");
+  const changed = text.trim() !== (user.profil_coaching ?? "");
+
+  const save = useMutation({
+    mutationFn: () => api<User>(`/users/${user.id}`, { method: "PUT", body: { profil_coaching: text.trim() || null } }),
+    onSuccess: (u) => { setUser(u); setText(u.profil_coaching ?? ""); toast("Infos & objectifs enregistrés"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  return (
+    <Card title="Mes infos & objectifs">
+      <p className="mb-2 text-sm text-slate-600">
+        Écris librement ce qui compte pour toi : objectifs, contexte, contraintes. Ce texte servira plus tard à des conseils
+        et un coaching personnalisés.
+      </p>
+      <textarea
+        className="input min-h-[10rem]"
+        maxLength={COACHING_MAX}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={"ex. Je prépare un semi-marathon en mars, 3 sorties par semaine.\nObjectif : perdre 2 kg en gardant ma masse musculaire.\nVégétarien, pas de champignons, peu de temps le midi.\nBlessure au genou droit l'an dernier."}
+      />
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-slate-500">{text.length} / {COACHING_MAX}</span>
+        <button type="button" className="btn-primary" disabled={save.isPending || !changed} onClick={() => save.mutate()}>
+          Enregistrer
+        </button>
+      </div>
     </Card>
   );
 }
