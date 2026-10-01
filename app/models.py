@@ -123,6 +123,8 @@ class User(Base):
     # Objectif protéines en g par kg de poids : proteines_cible est recalculé à chaque nouvelle pesée
     proteines_g_kg = Column(Float, nullable=True)
     date_naissance = Column(Date, nullable=True)
+    # Régime alimentaire (transmis au coach) : omnivore, flexitarien, pescetarien, vegetarien, vegan
+    regime_alimentaire = Column(String(20), nullable=False, default="vegetarien", server_default="vegetarien")
     # Texte libre : infos et objectifs de la personne, pour un futur coaching personnalisé (Claude)
     profil_coaching = Column(Text, nullable=True)
 

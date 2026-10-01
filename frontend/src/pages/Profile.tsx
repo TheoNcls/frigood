@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 import { Bell, BellOff, LogOut, Send } from "lucide-react";
 import { currentSubscription, disablePush, enablePush, isIOS, isStandalone, pushSupported } from "../lib/push";
 import { api } from "../api/client";
-import type { User } from "../api/types";
+import type { RegimeAlimentaire, User } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import { useToast } from "../components/Toast";
 import { usePreferences } from "../lib/preferences";
@@ -30,11 +30,10 @@ export default function Profile() {
     <div className="max-w-2xl space-y-4">
       <PageHeader title="Profil" />
       <ProfileForm />
-      <CoachingProfileCard />
       <div id="garmin" className="scroll-mt-4"><GarminSettingsCard /></div>
       <WeighInsCard />
       <PreferencesCard />
-      <NotificationsCard />
+      <CoachingProfileCard />
       <PasswordForm />
       <LogoutCard />
     </div>
@@ -196,6 +195,8 @@ function PreferencesCard() {
   const { showPhotos, setPreference } = usePreferences();
   return (
     <Card title="Préférences">
+      <RegimeSetting />
+      <div className="my-4 border-t border-slate-100" />
       <label className="flex cursor-pointer items-start justify-between gap-4">
         <span>
           <span className="block text-sm font-medium text-slate-800">Photos des produits</span>
@@ -218,11 +219,51 @@ function PreferencesCard() {
           <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
         </span>
       </label>
+      <div className="my-4 border-t border-slate-100" />
+      <NotificationsSetting />
     </Card>
   );
 }
 
-function NotificationsCard() {
+const REGIME_OPTIONS: { value: RegimeAlimentaire; label: string }[] = [
+  { value: "omnivore", label: "Omnivore" },
+  { value: "flexitarien", label: "Flexitarien" },
+  { value: "pescetarien", label: "Pescétarien" },
+  { value: "vegetarien", label: "Végétarien" },
+  { value: "vegan", label: "Végan" },
+];
+
+/** Régime alimentaire : réglage du compte, transmis au coach. */
+function RegimeSetting() {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const save = useMutation({
+    mutationFn: (regime_alimentaire: RegimeAlimentaire) => api<User>(`/users/${user.id}`, { method: "PUT", body: { regime_alimentaire } }),
+    onSuccess: (u) => { setUser(u); toast("Régime alimentaire enregistré"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <span>
+        <span className="block text-sm font-medium text-slate-800">Régime alimentaire</span>
+        <span className="block text-xs text-slate-500">Le coach en tient compte pour ses conseils et ses recettes. Réglage de ton compte.</span>
+      </span>
+      <select
+        className="input w-auto"
+        aria-label="Régime alimentaire"
+        value={user.regime_alimentaire}
+        disabled={save.isPending}
+        onChange={(e) => save.mutate(e.target.value as RegimeAlimentaire)}
+      >
+        {REGIME_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+/** Notifications de cet appareil (rappels des tâches importantes). */
+function NotificationsSetting() {
   const user = useCurrentUser();
   const toast = useToast();
   const [active, setActive] = useState<boolean | null>(null);
@@ -253,10 +294,11 @@ function NotificationsCard() {
   });
 
   return (
-    <Card title="Notifications">
-      <p className="mb-3 text-sm text-slate-600">
-        Rappels des tâches <span className="font-medium">importantes</span> : 3 jours avant, la veille (9 h) et le jour même
-        (8 h, ou 1 h avant l'heure prévue). Réglage propre à cet appareil.
+    <div>
+      <span className="block text-sm font-medium text-slate-800">Notifications</span>
+      <p className="mb-2 text-xs text-slate-500">
+        Rappels des tâches importantes : 3 jours avant, la veille (9 h) et le jour même (8 h, ou 1 h avant l'heure prévue).
+        Réglage propre à cet appareil.
       </p>
       {needsHomeScreen ? (
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -283,7 +325,7 @@ function NotificationsCard() {
           )}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 

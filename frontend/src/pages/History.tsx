@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { BodyTrendCard, FitnessTrendCard } from "../components/Body";
+import { BodyTrendCard, FitnessTodayCard, FitnessTrendCard } from "../components/Body";
 import { useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flame, Moon } from "lucide-react";
 import {
   Bar, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
@@ -11,7 +11,7 @@ import {
 import type { Activity, DailyStat } from "../api/types";
 import ActivityDetail from "../components/ActivityDetail";
 import { useCurrentUser } from "../auth/AuthContext";
-import { Card, Empty, PageHeader, Spinner, Stat } from "../components/ui";
+import { Card, Empty, PageHeader, ProgressBar, Spinner, Stat } from "../components/ui";
 import { activityDetails, activityLabel } from "../lib/activity";
 import { addDays, formatLong, formatShort, todayISO } from "../lib/dates";
 import { MOMENTS, MOMENT_LABELS, describeLog, fmt, logMacros, totalMacros } from "../lib/nutrition";
@@ -41,6 +41,8 @@ export default function History() {
 
       <DayNutrition date={date} />
       <DayActivities date={date} />
+      <FitnessTodayCard date={date} />
+      <SleepCard endDate={date} />
       <DayHealth date={date} />
       <Trend endDate={date} />
       <BodyTrendCard />
@@ -98,9 +100,20 @@ function DayNutrition({ date }: { date: string }) {
 }
 
 function DayActivities({ date }: { date: string }) {
-  const acts = useActivities({ date });
+  const recent = useActivities({ date_from: addDays(date, -90), date_to: date });
   const types = useActivityTypes();
-  const list = acts.data ?? [];
+  const list = (recent.data ?? []).filter((a) => a.date === date);
+  const acts = recent;
+  // Régularité à cette date : jours actifs sur 7 jours et série de jours consécutifs
+  const { activeDays, streak } = useMemo(() => {
+    const dates = new Set((recent.data ?? []).map((a) => a.date));
+    let active = 0;
+    for (let i = 0; i < 7; i++) if (dates.has(addDays(date, -i))) active++;
+    let s = 0;
+    let d = dates.has(date) ? date : addDays(date, -1);
+    while (dates.has(d)) { s++; d = addDays(d, -1); }
+    return { activeDays: active, streak: s };
+  }, [recent.data, date]);
   const totalCal = list.reduce((s, a) => s + (a.calories ?? 0), 0);
   const [opened, setOpened] = useState<Activity | null>(null);
 
@@ -120,6 +133,67 @@ function DayActivities({ date }: { date: string }) {
           ))}
         </ul>
       )}
+      <div className="mt-4 grid grid-cols-2 gap-4 border-t border-slate-100 pt-3">
+        <div className="space-y-1.5">
+          <div className="text-xs text-slate-500">Jours actifs sur 7 jours</div>
+          <div className="text-lg font-semibold">{activeDays}/7</div>
+          <ProgressBar value={activeDays} max={7} />
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-xs text-slate-500">Série</div>
+          <div className="flex items-center gap-1 text-lg font-semibold">
+            {streak} jour{streak > 1 ? "s" : ""}
+            {streak > 0 && <Flame className="h-5 w-5 text-orange-500" />}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/** Les 3 dernières nuits jusqu'à cette date (Garmin rattache une nuit au jour du réveil). */
+function SleepCard({ endDate }: { endDate: string }) {
+  const sleep = useDailyStatsRange(addDays(endDate, -3), endDate);
+  const rows = [...(sleep.data ?? [])]
+    .filter((r) => r.sommeil_total_h || r.sommeil_score !== null)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3);
+  if (!rows.length) return null;
+  const latest = rows[0].date === endDate ? rows[0] : null;
+  const scores = rows.map((r) => r.sommeil_score).filter((s): s is number => s !== null);
+  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+  const nightLabel = (d: string) => (d === endDate ? (endDate === todayISO() ? "Cette nuit" : "Cette nuit-là") : formatShort(d));
+
+  return (
+    <Card title={<span className="inline-flex items-center gap-1.5"><Moon className="h-4 w-4" /> Sommeil — 3 dernières nuits</span>}>
+      {latest ? (
+        <div className="mb-3">
+          <span className="text-sm text-slate-500">{nightLabel(latest.date)} : </span>
+          {latest.sommeil_score !== null && (
+            <><span className="text-3xl font-bold text-slate-900">{latest.sommeil_score}</span><span className="text-sm text-slate-500"> /100</span></>
+          )}
+          {latest.sommeil_total_h ? (
+            <span className={latest.sommeil_score !== null ? "text-sm text-slate-500" : "text-3xl font-bold text-slate-900"}>
+              {latest.sommeil_score !== null ? " · " : ""}{fmt(latest.sommeil_total_h, 1)} h
+            </span>
+          ) : null}
+          {avg !== null && rows.length > 1 && <div className="text-xs text-slate-500">Moyenne {rows.length} nuits : {fmt(avg)}/100</div>}
+        </div>
+      ) : avg !== null && (
+        <div className="mb-3">
+          <span className="text-3xl font-bold text-slate-900">{fmt(avg)}</span>
+          <span className="text-sm text-slate-500"> /100 en moyenne</span>
+        </div>
+      )}
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        {rows.map((r) => (
+          <div key={r.date} className="rounded-xl bg-slate-50 p-2">
+            <div className="font-medium">{nightLabel(r.date)}</div>
+            {r.sommeil_score !== null && <div className="text-slate-500">Score : {r.sommeil_score}</div>}
+            <div className="text-slate-500">{r.sommeil_total_h ? `${fmt(r.sommeil_total_h, 1)} h` : "—"}</div>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

@@ -54,9 +54,9 @@ function weightDelta(rows: BodyComposition[], last: BodyComposition, days: numbe
   return ref ? last.poids_kg - ref.poids_kg : null;
 }
 
-/** Accueil : disposition du jour, statut d'entraînement, VO2max et dernier poids. Masquée sans aucune donnée. */
-export function FitnessTodayCard() {
-  const today = todayISO();
+/** Forme à une date : disposition, statut d'entraînement, VO2max et dernier poids. Masquée sans aucune donnée. */
+export function FitnessTodayCard({ date }: { date?: string }) {
+  const today = date ?? todayISO();
   const fitness = useFitness(addDays(today, -7), today);
   const body = useBody(addDays(today, -60), today);
 
@@ -178,12 +178,12 @@ export function FitnessTrendCard() {
   const useful = rows.filter((r) => r.vo2max !== null || r.readiness_score !== null);
   const last: FitnessMetric | undefined = latest(rows, (r) => r.prediction_5k_s);
   const scores = latest(rows, (r) => r.endurance_score ?? r.hill_score ?? r.age_forme);
-  if (!useful.length && !last && !scores) return null;
-
   const data = useful.map((r) => ({ date: formatShort(r.date), vo2: r.vo2max, dispo: r.readiness_score }));
   const races: [string, number | null, number][] = last
     ? [["5 km", last.prediction_5k_s, 5], ["10 km", last.prediction_10k_s, 10], ["Semi", last.prediction_semi_s, 21.0975], ["Marathon", last.prediction_marathon_s, 42.195]]
     : [];
+  // Rien à montrer (une seule journée : pas de courbe, ni prédictions ni scores) : pas de carte vide
+  if (data.length < 2 && !races.some(([, s]) => s) && !scores) return null;
 
   return (
     <Card title={<span className="inline-flex items-center gap-1.5"><Gauge className="h-4 w-4" /> Forme & entraînement (90 j)</span>}>

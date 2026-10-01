@@ -20,14 +20,16 @@ MODEL = "claude-opus-5-5"
 PAST_DAYS = 14        # repas, activités, santé, tâches passées
 NEXT_DAYS = 14        # tâches à venir
 WEIGHT_DAYS = 90
-# Micronutriments à surveiller en végétarien (noms du catalogue Frigood)
-KEY_NUTRIMENTS = ["Vitamine B12", "Fer", "Zinc", "Calcium", "Iode", "Vitamine D", "Oméga-3", "Fibres", "Sel"]
+REGIME_LABELS = {
+    "omnivore": "omnivore", "flexitarien": "flexitarien", "pescetarien": "pescétarien",
+    "vegetarien": "végétarien", "vegan": "végan",
+}
 
-SYSTEM_PROMPT = """Tu es le coach de Frigood, une application de nutrition végétarienne, de frigo et de sport.
+SYSTEM_PROMPT = """Tu es le coach de Frigood, une application de nutrition, de frigo et de sport.
 Tu écris en français, tu tutoies la personne, sur un ton bienveillant, direct et concret.
 
 On te donne en JSON ses objectifs et contraintes (texte libre qu'elle a écrit), ses objectifs nutritionnels,
-ses repas des derniers jours (totaux journaliers et micronutriments clés calculés par l'app), ses activités,
+son régime alimentaire, ses repas des derniers jours (totaux journaliers calculés par l'app), ses activités,
 ses données Garmin (sommeil, pas, stress, body battery, HRV, disposition à l'entraînement, VO2max, prédictions),
 ses pesées, ses tâches passées et à venir, et le contenu de son frigo.
 
@@ -36,8 +38,8 @@ Tu réponds dans le format JSON demandé :
 - « sante_recuperation » : la récupération est-elle bonne, le sommeil est-il bon, comment va la santé globale
   (sommeil, HRV, fréquence cardiaque au repos, stress, body battery, disposition, charge d'entraînement, poids) — en Markdown.
 - « ameliorations » : conseils concrets pour t'améliorer, en Markdown.
-- « recettes » : 1 ou 2 petites recettes végétariennes simples, adaptées à ses besoins (protéines, micronutriments
-  qui manquent) et, si possible, avec ce qu'il y a dans son frigo (en priorité ce qui périme bientôt).
+- « recettes » : 1 ou 2 petites recettes simples qui respectent son régime alimentaire, adaptées à ses besoins
+  (protéines, objectifs) et, si possible, avec ce qu'il y a dans son frigo (en priorité ce qui périme bientôt).
 - « activites » : les séances de sport que tu conseilles pour la semaine, uniquement entre les dates indiquées
   (au plus une par jour, jours de repos compris dans ton raisonnement). Choisis le sport parmi la liste fournie.
   Tiens compte de la récupération, des séances déjà prévues dans ses tâches (ne les duplique pas) et de ses objectifs.
@@ -48,7 +50,8 @@ Règles :
 - Appuie chaque remarque sur les données (chiffres, dates, tendances) ; ne devine pas ce qui n'y est pas.
 - Si une donnée manque ou semble incomplète (repas non saisis, montre non portée), dis-le simplement sans en tirer de conclusion.
 - Tiens compte de ses objectifs et contraintes écrits ; s'ils sont absents, base-toi sur ses objectifs nutritionnels.
-- Nutrition végétarienne : surveille protéines, B12, fer, zinc, calcium, iode, oméga-3 ; propose des aliments concrets.
+- Nutrition : respecte strictement son régime alimentaire (profil.regime) ; regarde surtout calories et protéines
+  par rapport à ses objectifs, et propose des aliments concrets compatibles avec son régime.
 - Sport : relie charge et récupération ; reste prudent sur l'intensité si la récupération est mauvaise.
 - Markdown simple : listes à puces courtes, gras pour l'essentiel, pas de titres (les sections sont déjà titrées).
 - Si « bilan_precedent » est présent : sers-t'en pour suivre l'évolution (ce qui s'est amélioré ou dégradé depuis),
@@ -80,9 +83,6 @@ def _ingredient_totals(ing: Ingredient, qty_base: float, acc: dict):
     f = qty_base / 100
     for key, attr in (("kcal", "calories"), ("proteines_g", "proteines"), ("glucides_g", "glucides"), ("lipides_g", "lipides")):
         acc[key] += (getattr(ing, attr) or 0) * f
-    for link in ing.nutriments:
-        if link.nutriment and link.nutriment.nom in KEY_NUTRIMENTS:
-            acc[f"{link.nutriment.nom} ({link.nutriment.unite})"] += link.valeur * f
 
 
 def _meal_totals(log_: MealLog, acc: dict):
@@ -274,7 +274,7 @@ def build_context(db: Session, user: User, today: date) -> dict:
             "objectifs_nutritionnels_par_jour": {
                 "kcal": user.calories_cible, "proteines_g": user.proteines_cible, "proteines_g_par_kg": user.proteines_g_kg,
                 "glucides_g": user.glucides_cible, "lipides_g": user.lipides_cible},
-            "regime": "végétarien",
+            "regime": REGIME_LABELS.get(user.regime_alimentaire or "vegetarien", "végétarien"),
         },
         f"repas_{PAST_DAYS}_jours": repas,
         f"activites_{PAST_DAYS}_jours": activites,
@@ -305,7 +305,7 @@ def response_schema(sports: list[str]) -> dict:
             "ameliorations": {**markdown, "description": "Conseils pour s'améliorer"},
             "recettes": {
                 "type": "array",
-                "description": "1 ou 2 petites recettes végétariennes",
+                "description": "1 ou 2 petites recettes qui respectent son régime alimentaire",
                 "items": {
                     "type": "object",
                     "properties": {

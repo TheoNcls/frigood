@@ -256,6 +256,7 @@ class UserCreate(BaseModel):
     lipides_cible: float | None = None
 
 PROFIL_COACHING_MAX = 4000
+REGIMES_ALIMENTAIRES = ("omnivore", "flexitarien", "pescetarien", "vegetarien", "vegan")
 
 
 class UserUpdate(BaseModel):
@@ -269,6 +270,14 @@ class UserUpdate(BaseModel):
     # Envoyés à null (ou vides) pour effacer
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
+    regime_alimentaire: str | None = None
+
+    @field_validator("regime_alimentaire")
+    @classmethod
+    def _check_regime(cls, v: str | None) -> str | None:
+        if v is not None and v not in REGIMES_ALIMENTAIRES:
+            raise ValueError("Régime alimentaire inconnu")
+        return v
 
     @field_validator("date_naissance")
     @classmethod
@@ -305,6 +314,7 @@ class UserRead(BaseModel):
     proteines_g_kg: float | None = None
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
+    regime_alimentaire: str = "vegetarien"
     garmin_connected: bool = False
     garmin_auto_sync: bool = False
     garmin_auto_heure: str = "07:00"

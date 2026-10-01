@@ -1,21 +1,16 @@
-import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { Activity } from "../api/types";
-import ActivityDetail from "../components/ActivityDetail";
 import { OverdueTasks, TodayTasks, UpcomingImportant } from "../components/Tasks";
 import DaySummary from "../components/DaySummary";
 import WeekStrip from "../components/WeekStrip";
-import { FitnessTodayCard } from "../components/Body";
-import { AlertTriangle, Flame, Footprints, Moon } from "lucide-react";
+import { AlertTriangle, Footprints } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
 import {
-  useActivities, useActivityTypes, useDailyStat, useDailyStatsRange, useFridge, useIngredients, useMealLogs, useRecipes,
+  useDailyStat, useFridge, useIngredients, useMealLogs, useRecipes,
 } from "../api/queries";
-import { Card, Empty, MacroTile, ProgressBar } from "../components/ui";
-import { addDays, formatLong, formatShort, todayISO } from "../lib/dates";
+import { Card, MacroTile, ProgressBar } from "../components/ui";
+import { formatLong, todayISO } from "../lib/dates";
 import { expiryInfo, fridgeItemName } from "../lib/fridge";
 import { fmt, totalMacros } from "../lib/nutrition";
-import { activityLabel, activityDetails } from "../lib/activity";
 
 export default function Home() {
   const user = useCurrentUser();
@@ -23,14 +18,9 @@ export default function Home() {
 
   const ingredients = useIngredients();
   const recipes = useRecipes();
-  const types = useActivityTypes();
   const meals = useMealLogs({ date: today });
-  const acts = useActivities({ date_from: addDays(today, -90), date_to: today });
   const statToday = useDailyStat(today);
-  // Garmin rattache une nuit au jour du réveil : la ligne d'aujourd'hui = la nuit dernière
-  const sleep = useDailyStatsRange(addDays(today, -3), today);
   const fridge = useFridge();
-  const [opened, setOpened] = useState<Activity | null>(null);
   // Clic sur une notification de rappel : /?jour=AAAA-MM-JJ ouvre le résumé de ce jour
   const [params, setParams] = useSearchParams();
   const openedDay = /^\d{4}-\d{2}-\d{2}$/.test(params.get("jour") ?? "") ? params.get("jour") : null;
@@ -42,34 +32,11 @@ export default function Home() {
     return days !== null && days <= 2;
   });
 
-  const { actsToday, activeDays, streak } = useMemo(() => {
-    const list = acts.data ?? [];
-    const dates = new Set(list.map((a) => a.date));
-    let active = 0;
-    for (let i = 0; i < 7; i++) if (dates.has(addDays(today, -i))) active++;
-    let s = 0;
-    let d = dates.has(today) ? today : addDays(today, -1);
-    while (dates.has(d)) {
-      s++;
-      d = addDays(d, -1);
-    }
-    return { actsToday: list.filter((a) => a.date === today), activeDays: active, streak: s };
-  }, [acts.data, today]);
-
-  const sleepRows = [...(sleep.data ?? [])]
-    .filter((r) => r.sommeil_total_h || r.sommeil_score !== null)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 3);
-  const lastNight = sleepRows[0]?.date === today ? sleepRows[0] : null;
-  const scores = sleepRows.map((r) => r.sommeil_score).filter((s): s is number => s !== null);
-  const avgScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-
   const steps = statToday.data?.steps ?? null;
   const stepsGoal = statToday.data?.steps_goal || 10000;
 
   return (
     <div className="space-y-4">
-      {opened && <ActivityDetail activity={opened} onClose={() => setOpened(null)} />}
       {openedDay && <DaySummary date={openedDay} onClose={() => setParams({}, { replace: true })} />}
       <header>
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Bonjour, {user.nom} 👋</h1>
@@ -102,84 +69,6 @@ export default function Home() {
       </Card>
 
       <WeekStrip />
-
-      <FitnessTodayCard />
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card title="Sport">
-          {actsToday.length ? (
-            <ul className="mb-4 space-y-1 text-sm">
-              {actsToday.map((a) => (
-                <li key={a.id}>
-                  <button type="button" className="-mx-2 rounded-xl px-2 py-0.5 text-left hover:bg-slate-50" onClick={() => setOpened(a)}>
-                    ✅ <span className="font-medium">{activityLabel(a, types.byId)}</span>
-                    {activityDetails(a, { hr: false }) && <span className="text-slate-500"> — {activityDetails(a, { hr: false })}</span>}
-                    <span className="ml-1 text-brand-700">›</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mb-4 text-sm text-slate-500">😴 Pas de sport aujourd'hui</p>
-          )}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <div className="text-xs text-slate-500">Ratio 7 jours</div>
-              <div className="text-lg font-semibold">{activeDays}/7</div>
-              <ProgressBar value={activeDays} max={7} />
-            </div>
-            <div className="space-y-1.5">
-              <div className="text-xs text-slate-500">Série</div>
-              <div className="flex items-center gap-1 text-lg font-semibold">
-                {streak} jour{streak > 1 ? "s" : ""}
-                {streak > 0 && <Flame className="h-5 w-5 text-orange-500" />}
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card title={<span className="inline-flex items-center gap-1.5"><Moon className="h-4 w-4" /> Sommeil — 3 dernières nuits</span>}>
-          {sleepRows.length ? (
-            <>
-              {lastNight ? (
-                <div className="mb-3">
-                  <span className="text-sm text-slate-500">Cette nuit : </span>
-                  {lastNight.sommeil_score !== null && (
-                    <>
-                      <span className="text-3xl font-bold text-slate-900">{lastNight.sommeil_score}</span>
-                      <span className="text-sm text-slate-500"> /100</span>
-                    </>
-                  )}
-                  {lastNight.sommeil_total_h ? (
-                    <span className={lastNight.sommeil_score !== null ? "text-sm text-slate-500" : "text-3xl font-bold text-slate-900"}>
-                      {lastNight.sommeil_score !== null ? " · " : ""}{fmt(lastNight.sommeil_total_h, 1)} h
-                    </span>
-                  ) : null}
-                  {avgScore !== null && sleepRows.length > 1 && (
-                    <div className="text-xs text-slate-500">Moyenne {sleepRows.length} nuits : {fmt(avgScore)}/100</div>
-                  )}
-                </div>
-              ) : avgScore !== null && (
-                <div className="mb-3">
-                  <span className="text-3xl font-bold text-slate-900">{fmt(avgScore)}</span>
-                  <span className="text-sm text-slate-500"> /100 en moyenne</span>
-                </div>
-              )}
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                {sleepRows.map((r) => (
-                  <div key={r.date} className="rounded-xl bg-slate-50 p-2">
-                    <div className="font-medium">{r.date === today ? "Cette nuit" : formatShort(r.date)}</div>
-                    {r.sommeil_score !== null && <div className="text-slate-500">Score : {r.sommeil_score}</div>}
-                    <div className="text-slate-500">{r.sommeil_total_h ? `${fmt(r.sommeil_total_h, 1)} h` : "—"}</div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <Empty>Pas encore de données sommeil. Synchronise Garmin depuis le Profil.</Empty>
-          )}
-        </Card>
-      </div>
 
       {steps ? (
         <Card title={<span className="inline-flex items-center gap-1.5"><Footprints className="h-4 w-4" /> Pas aujourd'hui</span>}>

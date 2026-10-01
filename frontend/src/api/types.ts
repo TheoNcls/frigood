@@ -11,6 +11,7 @@ export interface User {
   date_naissance: string | null;
   /** Infos et objectifs en texte libre (futur coaching personnalisé) */
   profil_coaching: string | null;
+  regime_alimentaire: RegimeAlimentaire;
   garmin_connected: boolean;
   /** Synchro Garmin automatique du matin (réglage du compte) */
   garmin_auto_sync: boolean;
@@ -339,3 +340,5 @@ export interface TaskOccurrence {
   fait: boolean;
   done_at: string | null;
 }
+
+export type RegimeAlimentaire = "omnivore" | "flexitarien" | "pescetarien" | "vegetarien" | "vegan";

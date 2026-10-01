@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Unplug, Watch } from "lucide-react";
 import { ApiError, api } from "../api/client";
@@ -106,9 +106,6 @@ function GarminLastSync() {
             : "aucune sur 7 jours"}
         </li>
       </ul>
-      {isAutoError(user) && (
-        <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">Synchro auto : {user.garmin_auto_status}</p>
-      )}
     </div>
   );
 }
@@ -167,24 +164,35 @@ export function GarminSettingsCard() {
     <Card title={<span className="inline-flex items-center gap-1.5"><Watch className="h-4 w-4" /> Garmin Connect</span>}>
       {user.garmin_connected ? (
         <div className="space-y-3">
-          <p className="text-sm text-emerald-700">✅ Connecté à Garmin Connect</p>
-          <GarminLastSync />
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0 text-sm">
+              <div className="font-medium text-emerald-700">✅ Connecté</div>
+              <div className="text-xs text-slate-500">
+                {user.garmin_last_sync_at ? `Mis à jour ${whenLabel(fromUtc(user.garmin_last_sync_at))}` : "Pas encore synchronisé"}
+                {user.garmin_auto_sync ? ` · synchro auto vers ${user.garmin_auto_heure}` : ""}
+              </div>
+            </div>
             <button className="btn-primary" disabled={sync.isPending} onClick={() => sync.mutate({})}>
               <RefreshCw className={`h-4 w-4 ${sync.isPending ? "animate-spin" : ""}`} />
               {sync.isPending ? "Synchronisation…" : "Synchroniser"}
             </button>
-            <button className="btn-secondary" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>
-              <Unplug className="h-4 w-4" /> Déconnecter
-            </button>
           </div>
-          <p className="text-xs text-slate-500">
-            Importe les 50 dernières activités et complète les données santé depuis la dernière synchronisation (30 jours max).
-          </p>
-          <div className="border-t border-slate-100 pt-3">
-            <GarminAutoSetting />
-          </div>
-          <GarminMoreOptions />
+          {isAutoError(user) && (
+            <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">Synchro auto : {user.garmin_auto_status}</p>
+          )}
+          <GarminMoreOptions
+            top={<>
+              <GarminLastSync />
+              <div className="border-t border-slate-100 pt-3"><GarminAutoSetting /></div>
+            </>}
+            bottom={
+              <div className="border-t border-slate-100 pt-3">
+                <button className="btn-secondary" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>
+                  <Unplug className="h-4 w-4" /> Déconnecter Garmin
+                </button>
+              </div>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-3">
@@ -277,7 +285,7 @@ function GarminImportSession({ open, onImported }: { open: boolean; onImported: 
 
 const HISTORY_OPTIONS = [30, 90, 180, 365];
 
-function GarminMoreOptions() {
+function GarminMoreOptions({ top, bottom }: { top?: ReactNode; bottom?: ReactNode }) {
   const user = useCurrentUser();
   const { refreshUser } = useAuth();
   const toast = useToast();
@@ -343,6 +351,7 @@ function GarminMoreOptions() {
     <details className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
       <summary className="cursor-pointer font-medium text-slate-600">Plus d'options</summary>
       <div className="mt-3 space-y-4">
+        {top}
         <div className="space-y-2">
           <div className="font-medium text-slate-700">Récupérer l'historique</div>
           <p className="text-xs text-slate-500">Comble les jours manquants ou incomplets sur la période. Compte environ une minute par mois.</p>
@@ -367,6 +376,7 @@ function GarminMoreOptions() {
             {recompute.isPending ? "Recalcul…" : "Recalculer"}
           </button>
         </div>
+        {bottom}
       </div>
     </details>
   );
