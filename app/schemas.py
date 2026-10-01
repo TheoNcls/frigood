@@ -529,6 +529,15 @@ class BodyCompositionCreate(BaseModel):
         return v
 
 
+class BodyCompositionUpdate(BaseModel):
+    """Correction d'une pesée : poids et masse grasse."""
+    poids_kg: float
+    masse_grasse_pct: float | None = None
+
+    _check_poids = field_validator("poids_kg")(BodyCompositionCreate._check_poids.__func__)
+    _check_mg = field_validator("masse_grasse_pct")(BodyCompositionCreate._check_mg.__func__)
+
+
 class BodyCompositionRead(BaseModel):
     id: int
     date: date_type
@@ -542,6 +551,7 @@ class BodyCompositionRead(BaseModel):
     graisse_viscerale: float | None = None
     age_metabolique: int | None = None
     source: str
+    modifie: bool = False
 
     model_config = {"from_attributes": True}
 

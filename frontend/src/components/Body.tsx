@@ -242,17 +242,35 @@ export function WeighInsCard() {
   const [f, setF] = useState({ date: todayISO(), poids: "", mg: "" });
   const rows = [...(body.data ?? [])].reverse();
   const hasGarmin = rows.some((r) => r.source === "garmin");
+  // Pesée déjà enregistrée ce jour-là (la plus récente) : affichée, et modifiable
+  const existing = rows.find((r) => r.date === f.date);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const key = existing ? `${existing.id}-${existing.poids_kg}-${existing.masse_grasse_pct}` : `none-${f.date}`;
+  if (body.data && loadedFor !== key) {
+    setLoadedFor(key);
+    setF((x) => ({
+      ...x,
+      poids: existing ? fmt(existing.poids_kg, 2) : "",
+      mg: existing?.masse_grasse_pct !== null && existing?.masse_grasse_pct !== undefined ? fmt(existing.masse_grasse_pct, 1) : "",
+    }));
+  }
+  const num = (v: string) => parseFloat(v.replace(",", "."));
+  const changed = existing
+    ? num(f.poids) !== existing.poids_kg || (f.mg ? num(f.mg) : null) !== existing.masse_grasse_pct
+    : !!f.poids;
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["body"] });
     await refreshUser();  // l'objectif protéines en g/kg suit le dernier poids
   };
   const add = useMutation({
-    mutationFn: () => api(`/users/${user.id}/body/`, {
-      method: "POST",
-      body: { date: f.date, poids_kg: parseFloat(f.poids.replace(",", ".")), masse_grasse_pct: f.mg ? parseFloat(f.mg.replace(",", ".")) : null },
-    }),
-    onSuccess: async () => { setF({ ...f, poids: "", mg: "" }); toast("Pesée enregistrée"); await refresh(); },
+    mutationFn: () => {
+      const values = { poids_kg: num(f.poids), masse_grasse_pct: f.mg ? num(f.mg) : null };
+      return existing
+        ? api(`/body/${existing.id}`, { method: "PUT", body: values })
+        : api(`/users/${user.id}/body/`, { method: "POST", body: { date: f.date, ...values } });
+    },
+    onSuccess: async () => { toast(existing ? "Pesée modifiée" : "Pesée enregistrée"); await refresh(); },
     onError: (e) => toast(e.message, "error"),
   });
 
@@ -270,8 +288,18 @@ export function WeighInsCard() {
         <Field label="Date"><input className="input" type="date" required max={todayISO()} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>
         <Field label="Poids (kg)"><input className="input" inputMode="decimal" required placeholder="72,4" value={f.poids} onChange={(e) => setF({ ...f, poids: e.target.value })} /></Field>
         <Field label="Masse grasse (%)"><input className="input" inputMode="decimal" placeholder="facultatif" value={f.mg} onChange={(e) => setF({ ...f, mg: e.target.value })} /></Field>
-        <button type="submit" className="btn-primary" disabled={add.isPending || !f.poids}>Ajouter</button>
+        <button type="submit" className="btn-primary" disabled={add.isPending || !f.poids || !changed}>
+          {existing ? "Modifier" : "Ajouter"}
+        </button>
       </form>
+      {existing && (
+        <p className="mt-2 text-xs text-slate-500">
+          Pesée du {formatShort(existing.date)} déjà enregistrée
+          {existing.source === "garmin" ? (existing.modifie ? " (balance, corrigée à la main)" : " (balance)") : ""} :
+          tu peux corriger le poids et la masse grasse.
+          {existing.source === "garmin" && " Ta correction ne sera pas écrasée par la synchro."}
+        </p>
+      )}
     </Card>
   );
 }

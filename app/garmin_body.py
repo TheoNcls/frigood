@@ -127,6 +127,8 @@ def store_weigh_ins(db: Session, user_id: int, raw) -> int:
             row = BodyComposition(user_id=user_id, garmin_sample_pk=pk, source="garmin")
             db.add(row)
             added += 1
+        elif row.modifie:
+            continue  # corrigée à la main : on garde la correction
         for k, v in values.items():
             setattr(row, k, v)
         row.raw_data = json.dumps(item, ensure_ascii=False, default=str)

@@ -378,6 +378,8 @@ class BodyComposition(Base):
     graisse_viscerale = Column(Float, nullable=True)
     age_metabolique = Column(Integer, nullable=True)
     source = Column(String(10), nullable=False, default="garmin")   # garmin, manuel
+    # Corrigée à la main (poids, masse grasse) : la synchro Garmin ne l'écrase plus
+    modifie = Column(Boolean, nullable=False, default=False, server_default=false())
     garmin_sample_pk = Column(String(40), nullable=True)
     raw_data = deferred(Column(Text, nullable=True))
     created_at = Column(DateTime, default=datetime.utcnow)

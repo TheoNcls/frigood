@@ -276,6 +276,8 @@ export interface BodyComposition {
   graisse_viscerale: number | null;
   age_metabolique: number | null;
   source: "garmin" | "manuel";
+  /** Pesée de la balance corrigée à la main */
+  modifie: boolean;
 }
 
 export interface FitnessMetric {

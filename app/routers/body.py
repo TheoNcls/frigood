@@ -5,7 +5,7 @@ from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
 from app.garmin_body import apply_protein_target
 from app.models import BodyComposition, FitnessMetric, User
-from app.schemas import BodyCompositionCreate, BodyCompositionRead, FitnessMetricRead
+from app.schemas import BodyCompositionCreate, BodyCompositionRead, BodyCompositionUpdate, FitnessMetricRead
 
 router = APIRouter(tags=["body"], dependencies=[Depends(get_principal)])
 
@@ -34,6 +34,25 @@ def add_weigh_in(user_id: int, data: BodyCompositionCreate, principal: Principal
     db.add(row)
     db.commit()
     apply_protein_target(db, user)
+    db.refresh(row)
+    return row
+
+
+@router.put("/body/{id}", response_model=BodyCompositionRead)
+def update_weigh_in(id: int, data: BodyCompositionUpdate, principal: Principal = Depends(get_principal),
+                    db: Session = Depends(get_db)):
+    """Corrige le poids et la masse grasse d'une pesée (manuelle ou de la balance)."""
+    row = db.get(BodyComposition, id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Pesée introuvable")
+    check_user_access(principal, row.user_id)
+    if row.poids_kg != data.poids_kg or row.masse_grasse_pct != data.masse_grasse_pct:
+        row.poids_kg = data.poids_kg
+        row.masse_grasse_pct = data.masse_grasse_pct
+        if row.source == "garmin":
+            row.modifie = True
+        db.commit()
+        apply_protein_target(db, db.get(User, row.user_id))
     db.refresh(row)
     return row
 
