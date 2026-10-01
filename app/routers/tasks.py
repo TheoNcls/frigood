@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
-from app.models import Task, TaskCompletion, User
+from app.models import Activity, ActivityType, Task, TaskCompletion, User
 from app.schemas import TaskCreate, TaskDone, TaskOccurrence, TaskRead
 
 router = APIRouter(tags=["tasks"], dependencies=[Depends(get_principal)])
@@ -50,10 +50,29 @@ def occurrences(task: Task, start: date, end: date) -> list[date]:
         months += 1
 
 
+def sport_activities(db: Session, user_id: int, tasks: list[Task], start: date, end: date) -> dict[tuple[int, date], int]:
+    """(type d'activité, jour) -> id de la première activité, pour les types utilisés par des tâches sportives."""
+    type_ids = {t.activity_type_id for t in tasks if t.activity_type_id}
+    if not type_ids:
+        return {}
+    found: dict[tuple[int, date], int] = {}
+    for a in (db.query(Activity)
+              .filter(Activity.user_id == user_id, Activity.activity_type_id.in_(type_ids),
+                      Activity.date >= start, Activity.date <= end)
+              .order_by(Activity.id)):
+        found.setdefault((a.activity_type_id, a.date), a.id)
+    return found
+
+
 def _statut(c: TaskCompletion | None) -> dict:
     if c is None:
         return {"statut": None, "fait": False, "done_at": None}
     return {"statut": c.statut, "fait": c.statut == "fait", "done_at": c.done_at}
+
+
+def _check_type(db: Session, data: TaskCreate):
+    if data.activity_type_id is not None and not db.get(ActivityType, data.activity_type_id):
+        raise HTTPException(status_code=400, detail="Type d'activité inconnu")
 
 
 def _own_task(db: Session, id: int, principal: Principal) -> Task:
@@ -85,13 +104,20 @@ def list_occurrences(
             Task.user_id == user_id, TaskCompletion.date >= date_from, TaskCompletion.date <= date_to,
         )
     }
+    sport = sport_activities(db, user_id, tasks, date_from, date_to)
     result = []
     for t in tasks:
         for d in occurrences(t, date_from, date_to):
+            completion = done.get((t.id, d))
+            activity_id = sport.get((t.activity_type_id, d)) if t.activity_type_id else None
+            # Un choix manuel (faite / pas faite) reste prioritaire sur la validation par l'activité
+            statut = _statut(completion) if completion or not activity_id else {"statut": "fait", "fait": True, "done_at": None}
             result.append(TaskOccurrence(
                 task_id=t.id, date=d, titre=t.titre, notes=t.notes, heure=t.heure, recurrence=t.recurrence,
                 recurrence_fin=t.recurrence_fin, serie_debut=t.date, important=bool(t.important),
-                **_statut(done.get((t.id, d))),
+                activity_type_id=t.activity_type_id, activity_type_nom=t.activity_type.nom if t.activity_type else None,
+                auto=bool(activity_id and not completion), activity_id=activity_id,
+                **statut,
             ))
     # Par jour, les tâches sans heure d'abord, puis par heure
     result.sort(key=lambda o: (o.date, o.heure or "", o.titre.lower()))
@@ -103,6 +129,7 @@ def create_task(user_id: int, data: TaskCreate, principal: Principal = Depends(g
     check_user_access(principal, user_id)
     if not db.get(User, user_id):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    _check_type(db, data)
     task = Task(user_id=user_id, **data.model_dump())
     db.add(task)
     db.commit()
@@ -113,6 +140,7 @@ def create_task(user_id: int, data: TaskCreate, principal: Principal = Depends(g
 @router.put("/tasks/{id}", response_model=TaskRead)
 def update_task(id: int, data: TaskCreate, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     task = _own_task(db, id, principal)
+    _check_type(db, data)
     for key, value in data.model_dump().items():
         setattr(task, key, value)
     # Les coches qui ne correspondent plus à une occurrence (date ou récurrence changée) sont retirées

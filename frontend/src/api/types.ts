@@ -268,6 +268,8 @@ export interface TaskInput {
   recurrence: Recurrence | null;
   recurrence_fin: string | null;
   important: boolean;
+  /** Tâche sportive : validée par une activité de ce type le jour prévu */
+  activity_type_id: number | null;
 }
 
 /** Une tâche à une date donnée (les tâches récurrentes ont une occurrence par jour concerné). */
@@ -281,6 +283,11 @@ export interface TaskOccurrence {
   recurrence_fin: string | null;
   serie_debut: string;
   important: boolean;
+  activity_type_id: number | null;
+  activity_type_nom: string | null;
+  /** Faite parce qu'une activité du bon type existe ce jour-là (pas de coche manuelle) */
+  auto: boolean;
+  activity_id: number | null;
   statut: TaskStatut | null;
   /** statut === "fait" */
   fait: boolean;

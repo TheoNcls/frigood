@@ -19,6 +19,7 @@ export function useInvalidateSport() {
     queryClient.invalidateQueries({ queryKey: ["activities"] });
     queryClient.invalidateQueries({ queryKey: ["daily_stats"] });
     queryClient.invalidateQueries({ queryKey: ["activity_types"] });
+    queryClient.invalidateQueries({ queryKey: ["tasks"] });  // tâches sportives validées par une activité
   };
 }
 

@@ -304,10 +304,13 @@ class Task(Base):
     recurrence_fin = Column(Date, nullable=True)        # dernière occurrence possible, facultative
     # Importante : reste plus longtemps « en retard » sur l'accueil et envoie des rappels
     important = Column(Boolean, nullable=False, default=False, server_default=false())
+    # Tâche sportive : validée automatiquement par une activité de ce type le jour prévu (Garmin ou manuelle)
+    activity_type_id = Column(Integer, ForeignKey("activity_types.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     completions = relationship("TaskCompletion", cascade="all, delete-orphan", back_populates="task")
     reminders = relationship("TaskReminder", cascade="all, delete-orphan")
+    activity_type = relationship("ActivityType")
 
 
 class TaskCompletion(Base):

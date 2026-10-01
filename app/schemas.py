@@ -381,6 +381,7 @@ class TaskBase(BaseModel):
     recurrence: str | None = None
     recurrence_fin: date_type | None = None
     important: bool = False
+    activity_type_id: int | None = None
 
     @field_validator("titre")
     @classmethod
@@ -434,6 +435,11 @@ class TaskOccurrence(BaseModel):
     recurrence_fin: date_type | None = None
     serie_debut: date_type
     important: bool = False
+    activity_type_id: int | None = None
+    activity_type_nom: str | None = None
+    # Validée par une activité du bon type ce jour-là (sans coche manuelle)
+    auto: bool = False
+    activity_id: int | None = None
     statut: Literal["fait", "pas_fait"] | None = None
     fait: bool
     done_at: datetime_type | None = None

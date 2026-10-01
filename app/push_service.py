@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import PushSubscription, Task, TaskCompletion, TaskReminder
+from app.models import Activity, PushSubscription, Task, TaskCompletion, TaskReminder
 
 log = logging.getLogger("frigood.push")
 
@@ -130,6 +130,9 @@ def due_reminders(db: Session, now: datetime) -> list[tuple[Task, date, str | No
                 continue
             if db.query(TaskCompletion).filter_by(task_id=t.id, date=d).first():
                 continue  # faite ou pas faite : tranchée
+            if t.activity_type_id and db.query(Activity).filter_by(
+                    user_id=t.user_id, activity_type_id=t.activity_type_id, date=d).first():
+                continue  # tâche sportive déjà validée par l'activité
             sent = {r.kind for r in db.query(TaskReminder).filter_by(task_id=t.id, date=d)}
             pending = [k for k in due if k not in sent]
             if not pending:

@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlarmClock, ArrowRight, Bell, Check, ListTodo, Plus, Repeat, Star, X } from "lucide-react";
+import { Activity as ActivityIcon, AlarmClock, ArrowRight, Bell, Check, ListTodo, Plus, Repeat, Star, X } from "lucide-react";
 import { api } from "../api/client";
 import type { Recurrence, TaskInput, TaskOccurrence, TaskStatut } from "../api/types";
-import { useTasks } from "../api/queries";
+import { useActivityTypes, useTasks } from "../api/queries";
 import { useCurrentUser } from "../auth/AuthContext";
 import { addDays, daysBetween, formatFull, formatLong, formatShort, parseISODate, todayISO } from "../lib/dates";
 import AddEntryModal from "./AddEntry";
@@ -69,8 +69,9 @@ export function TaskRow({ task, onEdit }: { task: TaskOccurrence; onEdit: (t: Ta
         type="button"
         role="checkbox"
         aria-checked={task.fait}
-        aria-label={task.fait ? `Marquer « ${task.titre} » comme à faire` : `Marquer « ${task.titre} » comme faite`}
-        disabled={toggle.isPending}
+        aria-label={task.auto ? `« ${task.titre} » validée par l'activité du jour` : task.fait ? `Marquer « ${task.titre} » comme à faire` : `Marquer « ${task.titre} » comme faite`}
+        title={task.auto ? "Validée automatiquement par l'activité du jour" : undefined}
+        disabled={toggle.isPending || task.auto}
         onClick={() => toggle.mutate(task)}
         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition ${
           task.fait
@@ -91,8 +92,15 @@ export function TaskRow({ task, onEdit }: { task: TaskOccurrence; onEdit: (t: Ta
           {task.heure && <span className={`mr-1.5 ${task.important ? "text-amber-700" : "text-violet-700"}`}>{task.heure}</span>}
           {task.titre}
         </span>
-        {(task.recurrence || task.notes || missed) && (
+        {(task.recurrence || task.notes || missed || task.activity_type_nom) && (
           <span className="block truncate text-xs text-slate-500">
+            {task.activity_type_nom && (
+              <span className={task.auto ? "font-medium text-emerald-700" : "text-orange-700"}>
+                <ActivityIcon className="mr-1 inline h-3 w-3" />
+                {task.auto ? `Validée par l'activité ${task.activity_type_nom}` : task.activity_type_nom}
+              </span>
+            )}
+            {task.activity_type_nom && (missed || task.recurrence || task.notes) ? " · " : ""}
             {missed && <span className="text-rose-500">Pas faite</span>}
             {missed && (task.recurrence || task.notes) ? " · " : ""}
             {task.recurrence && <><Repeat className="mr-1 inline h-3 w-3" />{RECURRENCE_LABELS[task.recurrence]}</>}
@@ -130,7 +138,9 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
     recurrence_fin: task?.recurrence_fin ?? "",
     notes: task?.notes ?? "",
     important: task?.important ?? false,
+    activity_type_id: task?.activity_type_id ? String(task.activity_type_id) : "",
   });
+  const types = useActivityTypes();
   const set = (key: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [key]: e.target.value });
 
   const body = (): TaskInput => ({
@@ -141,6 +151,7 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
     recurrence_fin: f.recurrence && f.recurrence_fin ? f.recurrence_fin : null,
     notes: f.notes.trim() || null,
     important: f.important,
+    activity_type_id: f.activity_type_id ? Number(f.activity_type_id) : null,
   });
 
   const save = useMutation({
@@ -165,6 +176,11 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
         <div className="mb-4 space-y-2 rounded-xl bg-violet-50 px-3 py-2.5 text-sm">
           <div className="text-violet-900">
             {formatLong(task.date)}
+            {task.auto && task.activity_type_nom ? (
+              <span className="block text-xs font-medium text-emerald-700">
+                Validée automatiquement : activité {task.activity_type_nom} ce jour-là
+              </span>
+            ) : null}
             {task.statut && task.done_at ? (
               <span className="block text-xs text-violet-700">
                 {task.statut === "fait" ? "Faite" : "Marquée pas faite"} le {formatFull(task.done_at)}
@@ -230,6 +246,17 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
             </span>
           </span>
         </label>
+        <Field
+          label="Sport associé (facultatif)"
+          hint={f.activity_type_id
+            ? "Validée toute seule dès qu'une activité de ce type est enregistrée ce jour-là (Garmin ou à la main)."
+            : "Pour une séance prévue (ex. Course tempo 20 min) : choisis le sport, la tâche se validera avec l'activité."}
+        >
+          <select className="input" value={f.activity_type_id} onChange={set("activity_type_id")}>
+            <option value="">Aucun</option>
+            {types.list.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
+          </select>
+        </Field>
         <Field label="Notes (facultatif)">
           <textarea className="input min-h-[3.5rem]" value={f.notes} onChange={set("notes")} />
         </Field>
@@ -267,7 +294,8 @@ function overdueDays(t: TaskOccurrence): number {
 function taskInput(t: TaskOccurrence, changes: Partial<TaskInput> = {}): TaskInput {
   return {
     titre: t.titre, notes: t.notes, date: t.serie_debut, heure: t.heure,
-    recurrence: t.recurrence, recurrence_fin: t.recurrence_fin, important: t.important, ...changes,
+    recurrence: t.recurrence, recurrence_fin: t.recurrence_fin, important: t.important,
+    activity_type_id: t.activity_type_id, ...changes,
   };
 }
 
