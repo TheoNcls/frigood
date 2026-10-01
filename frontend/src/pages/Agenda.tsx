@@ -6,14 +6,13 @@ import listPlugin from "@fullcalendar/list";
 import interactionPlugin, { type DateClickArg } from "@fullcalendar/interaction";
 import frLocale from "@fullcalendar/core/locales/fr";
 import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
 import type { Activity, TaskOccurrence } from "../api/types";
 import ActivityDetail from "../components/ActivityDetail";
 import DaySummary from "../components/DaySummary";
 import { useInvalidateSport } from "../components/Garmin";
-import AddEntryModal from "../components/AddEntry";
 import { IMPORTANT_COLOR, TASK_COLOR, TaskForm } from "../components/Tasks";
 import { useToast } from "../components/Toast";
 import { Card, Empty, PageHeader } from "../components/ui";
@@ -22,15 +21,9 @@ import { activityDetails, activityLabel } from "../lib/activity";
 import { fmt, logMacros } from "../lib/nutrition";
 
 export default function Agenda() {
-  const [adding, setAdding] = useState(false);
   return (
     <div className="space-y-4">
-      {adding && <AddEntryModal date={todayISO()} onClose={() => setAdding(false)} />}
-      <PageHeader
-        title="Agenda"
-        subtitle="Tâches, sport et repas au fil des jours"
-        action={<button className="btn-primary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Ajouter</button>}
-      />
+      <PageHeader title="Agenda" subtitle="Tâches, sport et repas au fil des jours" />
       <AgendaCalendar />
       <RecentActivities />
     </div>

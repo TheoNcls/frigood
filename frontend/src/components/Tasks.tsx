@@ -6,6 +6,7 @@ import type { Recurrence, TaskInput, TaskOccurrence, TaskStatut } from "../api/t
 import { useTasks } from "../api/queries";
 import { useCurrentUser } from "../auth/AuthContext";
 import { addDays, daysBetween, formatFull, formatLong, formatShort, parseISODate, todayISO } from "../lib/dates";
+import AddEntryModal from "./AddEntry";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
 import { ConfirmButton, Field, Segmented } from "./ui";
@@ -436,7 +437,7 @@ export function TodayTasks() {
   return (
     <section className="card border-violet-200">
       {editing && <TaskForm task={editing} onClose={() => setEditing(null)} />}
-      {adding && <TaskForm date={today} onClose={() => setAdding(false)} />}
+      {adding && <AddEntryModal date={today} initialTab="tache" onClose={() => setAdding(false)} />}
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ListTodo className="h-5 w-5 text-violet-700" />
