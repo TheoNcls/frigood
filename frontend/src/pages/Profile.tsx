@@ -8,7 +8,9 @@ import type { User } from "../api/types";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import { useToast } from "../components/Toast";
 import { usePreferences } from "../lib/preferences";
+import { fmt } from "../lib/nutrition";
 import { GarminSettingsCard } from "../components/Garmin";
+import { WeighInsCard, useLatestWeight } from "../components/Body";
 import { Card, Field, PageHeader } from "../components/ui";
 
 function numOrNull(v: string): number | null {
@@ -28,6 +30,7 @@ export default function Profile() {
       <PageHeader title="Profil" />
       <ProfileForm />
       <div id="garmin" className="scroll-mt-4"><GarminSettingsCard /></div>
+      <WeighInsCard />
       <PreferencesCard />
       <NotificationsCard />
       <PasswordForm />
@@ -65,6 +68,12 @@ function ProfileForm() {
     gluc: String(user.glucides_cible ?? ""),
     lip: String(user.lipides_cible ?? ""),
   });
+  // Protéines : en grammes fixes, ou en g/kg de poids (suit alors la dernière pesée)
+  const poids = useLatestWeight();
+  const [parKg, setParKg] = useState(user.proteines_g_kg !== null);
+  const [gKg, setGKg] = useState(String(user.proteines_g_kg ?? "1.4"));
+  const gKgNum = parseFloat(gKg.replace(",", "."));
+  const protFromKg = poids && gKgNum > 0 ? Math.round(gKgNum * poids) : null;
 
   const save = useMutation({
     mutationFn: () => api<User>(`/users/${user.id}`, {
@@ -72,12 +81,13 @@ function ProfileForm() {
       body: {
         nom: nom.trim(),
         calories_cible: numOrNull(t.cal),
-        proteines_cible: numOrNull(t.prot),
+        proteines_cible: parKg ? (protFromKg ?? numOrNull(t.prot)) : numOrNull(t.prot),
         glucides_cible: numOrNull(t.gluc),
         lipides_cible: numOrNull(t.lip),
+        proteines_g_kg: parKg && gKgNum > 0 ? gKgNum : null,
       },
     }),
-    onSuccess: (u) => { setUser(u); toast("Profil mis à jour !"); },
+    onSuccess: (u) => { setUser(u); setT((x) => ({ ...x, prot: String(u.proteines_cible ?? "") })); toast("Profil mis à jour !"); },
     onError: (e) => toast(e.message, "error"),
   });
 
@@ -92,11 +102,35 @@ function ProfileForm() {
           <div className="label">Objectifs nutritionnels (par jour)</div>
           <div className="grid grid-cols-2 gap-3">
             {([["cal", "Calories (kcal)"], ["prot", "Protéines (g)"], ["gluc", "Glucides (g)"], ["lip", "Lipides (g)"]] as const).map(([key, label]) => (
-              <Field key={key} label={label}>
-                <input className="input" type="number" min={0} step="any" value={t[key]} onChange={(e) => setT({ ...t, [key]: e.target.value })} />
+              <Field key={key} label={label} hint={key === "prot" && parKg ? (protFromKg ? `= ${gKg} g/kg × ${fmt(poids!, 1)} kg` : "Ajoute une pesée pour le calcul") : undefined}>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={key === "prot" && parKg && protFromKg ? String(protFromKg) : t[key]}
+                  disabled={key === "prot" && parKg && !!protFromKg}
+                  onChange={(e) => setT({ ...t, [key]: e.target.value })}
+                />
               </Field>
             ))}
           </div>
+          <label className="mt-3 flex cursor-pointer flex-wrap items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={parKg} onChange={(e) => setParKg(e.target.checked)} />
+            Protéines selon mon poids
+            {parKg && (
+              <span className="inline-flex items-center gap-1.5">
+                :
+                <input className="input w-20 py-1" inputMode="decimal" value={gKg} onChange={(e) => setGKg(e.target.value)} aria-label="Grammes de protéines par kg" />
+                g/kg
+              </span>
+            )}
+          </label>
+          {parKg && (
+            <p className="mt-1 text-xs text-slate-500">
+              Repère : 1,2 à 1,6 g/kg pour un sportif végétarien. L'objectif suit automatiquement ta dernière pesée.
+            </p>
+          )}
         </div>
         <button type="submit" className="btn-primary" disabled={save.isPending}>Enregistrer</button>
       </form>

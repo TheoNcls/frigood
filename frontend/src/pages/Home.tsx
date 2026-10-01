@@ -5,6 +5,7 @@ import ActivityDetail from "../components/ActivityDetail";
 import { OverdueTasks, TodayTasks, UpcomingImportant } from "../components/Tasks";
 import DaySummary from "../components/DaySummary";
 import WeekStrip from "../components/WeekStrip";
+import { FitnessTodayCard } from "../components/Body";
 import { AlertTriangle, Flame, Footprints, Moon } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
 import {
@@ -101,6 +102,8 @@ export default function Home() {
       </Card>
 
       <WeekStrip />
+
+      <FitnessTodayCard />
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Sport">

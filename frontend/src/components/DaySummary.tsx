@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Plus } from "lucide-react";
-import { useActivities, useActivityTypes, useDailyStat, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
+import { useActivities, useActivityTypes, useDailyStat, useIngredients, useMealLogs, useRecipes, useTasks, useBody, useFitness } from "../api/queries";
 import type { Activity, TaskOccurrence } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { activityDetails, activityLabel } from "../lib/activity";
@@ -47,6 +47,8 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
   const recipes = useRecipes();
   const types = useActivityTypes();
   const tasks = useTasks(date, date);
+  const body = useBody(date, date);
+  const fitness = useFitness(date, date);
   const [openedActivity, setOpenedActivity] = useState<Activity | null>(null);
   const [editingTask, setEditingTask] = useState<TaskOccurrence | null>(null);
   const [adding, setAdding] = useState<EntryTab | null>(null);
@@ -64,6 +66,8 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
   const activities = acts.data ?? [];
   const dayTasks = tasks.data ?? [];
   const ds = stat.data;
+  const weight = body.data?.[body.data.length - 1];
+  const fit = fitness.data?.[0];
   const loading = meals.isLoading || acts.isLoading || tasks.isLoading;
 
   const tasksSection = (
@@ -170,15 +174,19 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
             )}
           </Section>
 
-          {ds && (
-            <Section title="Santé Garmin">
+          {(ds || weight || fit) && (
+            <Section title="Santé">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Mini label="Poids" value={weight ? `${fmt(weight.poids_kg, 1)} kg${weight.masse_grasse_pct !== null ? ` · ${fmt(weight.masse_grasse_pct, 1)} % MG` : ""}` : null} />
+                <Mini label="Disposition" value={fit?.readiness_score !== null && fit?.readiness_score !== undefined ? `${fit.readiness_score}/100${fit.readiness_niveau ? ` · ${fit.readiness_niveau}` : ""}` : null} />
+                {ds && <>
                 <Mini label="Sommeil" value={ds.sommeil_total_h ? `${fmt(ds.sommeil_total_h, 1)} h${ds.sommeil_score ? ` · ${ds.sommeil_score}/100` : ""}` : null} />
                 <Mini label="Pas" value={ds.steps ? fmt(ds.steps) : null} />
                 <Mini label="BPM repos" value={ds.bpm_repos} />
                 <Mini label="Body battery" value={ds.body_battery_max ? `${ds.body_battery_min ?? "?"} → ${ds.body_battery_max}` : null} />
                 <Mini label="Stress moyen" value={ds.stress_moy !== null ? `${ds.stress_moy}/100` : null} />
                 <Mini label="HRV" value={ds.hrv_moy ? `${ds.hrv_moy} ms` : null} />
+                </>}
               </div>
             </Section>
           )}

@@ -120,6 +120,8 @@ class User(Base):
     proteines_cible = Column(Float, nullable=True)
     glucides_cible = Column(Float, nullable=True)
     lipides_cible = Column(Float, nullable=True)
+    # Objectif protéines en g par kg de poids : proteines_cible est recalculé à chaque nouvelle pesée
+    proteines_g_kg = Column(Float, nullable=True)
 
     garmin_tokens = Column(String, nullable=True)
     # Synchro automatique du matin (opt-in) : heure locale, et suivi du jour en cours
@@ -143,6 +145,8 @@ class User(Base):
     fridge_history = relationship("FridgeHistory", cascade="all, delete-orphan")
     tasks = relationship("Task", cascade="all, delete-orphan")
     push_subscriptions = relationship("PushSubscription", cascade="all, delete-orphan")
+    body_compositions = relationship("BodyComposition", cascade="all, delete-orphan")
+    fitness_metrics = relationship("FitnessMetric", cascade="all, delete-orphan")
 
     @property
     def garmin_connected(self) -> bool:
@@ -350,3 +354,53 @@ class PushSubscription(Base):
     auth = Column(String(100), nullable=False)
     user_agent = Column(String(300), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BodyComposition(Base):
+    """Une pesée : balance connectée Garmin ou saisie à la main (sans balance)."""
+    __tablename__ = "body_compositions"
+    __table_args__ = (UniqueConstraint("user_id", "garmin_sample_pk", name="uq_body_comp_sample"),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    mesure_at = Column(DateTime, nullable=True)            # UTC, si l'heure est connue
+    poids_kg = Column(Float, nullable=False)
+    imc = Column(Float, nullable=True)
+    masse_grasse_pct = Column(Float, nullable=True)
+    masse_musculaire_kg = Column(Float, nullable=True)
+    masse_osseuse_kg = Column(Float, nullable=True)
+    eau_pct = Column(Float, nullable=True)
+    graisse_viscerale = Column(Float, nullable=True)
+    age_metabolique = Column(Integer, nullable=True)
+    source = Column(String(10), nullable=False, default="garmin")   # garmin, manuel
+    garmin_sample_pk = Column(String(40), nullable=True)
+    raw_data = deferred(Column(Text, nullable=True))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FitnessMetric(Base):
+    """Indicateurs de forme Garmin d'un jour (selon la montre : disposition, statut, VO2max, prédictions…)."""
+    __tablename__ = "fitness_metrics"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_fitness_day"),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    readiness_score = Column(Integer, nullable=True)       # disposition à l'entraînement, 0-100
+    readiness_niveau = Column(String(20), nullable=True)
+    readiness_conseil = Column(String(80), nullable=True)
+    statut_entrainement = Column(String(30), nullable=True)
+    charge_aigue = Column(Integer, nullable=True)
+    charge_chronique = Column(Integer, nullable=True)
+    vo2max = Column(Float, nullable=True)
+    vo2max_velo = Column(Float, nullable=True)
+    prediction_5k_s = Column(Integer, nullable=True)
+    prediction_10k_s = Column(Integer, nullable=True)
+    prediction_semi_s = Column(Integer, nullable=True)
+    prediction_marathon_s = Column(Integer, nullable=True)
+    endurance_score = Column(Integer, nullable=True)
+    hill_score = Column(Integer, nullable=True)
+    age_forme = Column(Float, nullable=True)
+    raw_data = deferred(Column(Text, nullable=True))
+    synced_at = Column(DateTime, nullable=True)

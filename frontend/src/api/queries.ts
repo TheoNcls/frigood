@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 import { useAuth } from "../auth/AuthContext";
 import type {
-  Activity, ActivityType, DailyStat, FridgeHistory, FridgeItem, Ingredient, MealLog, Nutriment, Recipe, TaskOccurrence,
+  Activity, ActivityType, BodyComposition, DailyStat, FitnessMetric, FridgeHistory, FridgeItem, Ingredient, MealLog, Nutriment, Recipe,
+  TaskOccurrence,
 } from "./types";
 
 const CATALOG_STALE = 2 * 60 * 1000;
@@ -117,5 +118,21 @@ export function useTasks(date_from: string, date_to: string) {
   return useQuery({
     queryKey: ["tasks", uid, date_from, date_to],
     queryFn: () => api<TaskOccurrence[]>(`/users/${uid}/tasks/`, { query: { date_from, date_to } }),
+  });
+}
+
+export function useBody(date_from: string, date_to: string) {
+  const uid = useUserId();
+  return useQuery({
+    queryKey: ["body", uid, date_from, date_to],
+    queryFn: () => api<BodyComposition[]>(`/users/${uid}/body/`, { query: { date_from, date_to } }),
+  });
+}
+
+export function useFitness(date_from: string, date_to: string) {
+  const uid = useUserId();
+  return useQuery({
+    queryKey: ["fitness", uid, date_from, date_to],
+    queryFn: () => api<FitnessMetric[]>(`/users/${uid}/fitness/`, { query: { date_from, date_to } }),
   });
 }

@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models import Activity, User, DailyStat
 from app.schemas import ActivityCreate, ActivityRead, GarminAutoSettings, GarminCredentials, GarminTokens, DailyStatRead, UserRead
 from app.auth import Principal, get_principal, check_user_access
+from app.garmin_body import recompute_body_fitness
 from app.garmin_service import (
     MAX_HISTORY_DAYS, GarminSessionExpired, activity_details, login_with_tokens, recompute_days, run_sync, save_tokens,
 )
@@ -186,7 +187,8 @@ def garmin_recompute(user_id: int, principal: Principal = Depends(get_principal)
     """Recalcule les données santé depuis les JSON Garmin déjà stockés, sans appeler Garmin."""
     check_user_access(principal, user_id)
     days, typed = recompute_days(db, user_id)
-    return {"stats_days": days, "activities_typed": typed}
+    weigh, fitness = recompute_body_fitness(db, user_id)
+    return {"stats_days": days, "activities_typed": typed, "weigh_ins": weigh, "fitness_days": fitness}
 
 
 def _garmin_login(user: User, credentials: GarminCredentials, db: Session):

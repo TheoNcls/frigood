@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { BodyTrendCard, FitnessTrendCard } from "../components/Body";
 import { useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -42,6 +43,8 @@ export default function History() {
       <DayActivities date={date} />
       <DayHealth date={date} />
       <Trend endDate={date} />
+      <BodyTrendCard />
+      <FitnessTrendCard />
     </div>
   );
 }

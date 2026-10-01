@@ -260,6 +260,17 @@ class UserUpdate(BaseModel):
     proteines_cible: float | None = None
     glucides_cible: float | None = None
     lipides_cible: float | None = None
+    # Envoyé à null pour revenir à un objectif fixe en grammes
+    proteines_g_kg: float | None = None
+
+    @field_validator("proteines_g_kg")
+    @classmethod
+    def _check_g_kg(cls, v: float | None) -> float | None:
+        if v is None or v <= 0:
+            return None
+        if v > 4:
+            raise ValueError("Objectif protéines trop élevé (4 g/kg maximum)")
+        return round(v, 2)
 
 class UserRead(BaseModel):
     id: int
@@ -269,6 +280,7 @@ class UserRead(BaseModel):
     proteines_cible: float | None = None
     glucides_cible: float | None = None
     lipides_cible: float | None = None
+    proteines_g_kg: float | None = None
     garmin_connected: bool = False
     garmin_auto_sync: bool = False
     garmin_auto_heure: str = "07:00"
@@ -468,3 +480,66 @@ class PushKeys(BaseModel):
 class PushSubscriptionIn(BaseModel):
     endpoint: str
     keys: PushKeys
+
+
+# --- Corps & forme ---
+
+class BodyCompositionCreate(BaseModel):
+    """Pesée saisie à la main (sans balance connectée)."""
+    date: date_type
+    poids_kg: float
+    masse_grasse_pct: float | None = None
+    masse_musculaire_kg: float | None = None
+
+    @field_validator("poids_kg")
+    @classmethod
+    def _check_poids(cls, v: float) -> float:
+        if not 20 <= v <= 400:
+            raise ValueError("Poids invalide")
+        return round(v, 2)
+
+    @field_validator("masse_grasse_pct")
+    @classmethod
+    def _check_mg(cls, v: float | None) -> float | None:
+        if v is not None and not 1 <= v <= 75:
+            raise ValueError("Masse grasse invalide")
+        return v
+
+
+class BodyCompositionRead(BaseModel):
+    id: int
+    date: date_type
+    mesure_at: datetime_type | None = None
+    poids_kg: float
+    imc: float | None = None
+    masse_grasse_pct: float | None = None
+    masse_musculaire_kg: float | None = None
+    masse_osseuse_kg: float | None = None
+    eau_pct: float | None = None
+    graisse_viscerale: float | None = None
+    age_metabolique: int | None = None
+    source: str
+
+    model_config = {"from_attributes": True}
+
+
+class FitnessMetricRead(BaseModel):
+    date: date_type
+    readiness_score: int | None = None
+    readiness_niveau: str | None = None
+    readiness_conseil: str | None = None
+    statut_entrainement: str | None = None
+    charge_aigue: int | None = None
+    charge_chronique: int | None = None
+    vo2max: float | None = None
+    vo2max_velo: float | None = None
+    prediction_5k_s: int | None = None
+    prediction_10k_s: int | None = None
+    prediction_semi_s: int | None = None
+    prediction_marathon_s: int | None = None
+    endurance_score: int | None = None
+    hill_score: int | None = None
+    age_forme: float | None = None
+    synced_at: datetime_type | None = None
+
+    model_config = {"from_attributes": True}

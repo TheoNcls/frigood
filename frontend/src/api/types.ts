@@ -6,6 +6,8 @@ export interface User {
   proteines_cible: number | null;
   glucides_cible: number | null;
   lipides_cible: number | null;
+  /** Objectif protéines en g/kg : proteines_cible suit alors le dernier poids */
+  proteines_g_kg: number | null;
   garmin_connected: boolean;
   /** Synchro Garmin automatique du matin (réglage du compte) */
   garmin_auto_sync: boolean;
@@ -254,6 +256,43 @@ export interface GarminSyncResult {
   stats_days: number;
   /** Jours encore à récupérer (synchronisation par lots) */
   remaining_days: number;
+  /** Nouvelles pesées de la balance */
+  weigh_ins?: number;
+}
+
+export interface BodyComposition {
+  id: number;
+  date: string;
+  mesure_at: string | null;
+  poids_kg: number;
+  imc: number | null;
+  masse_grasse_pct: number | null;
+  masse_musculaire_kg: number | null;
+  masse_osseuse_kg: number | null;
+  eau_pct: number | null;
+  graisse_viscerale: number | null;
+  age_metabolique: number | null;
+  source: "garmin" | "manuel";
+}
+
+export interface FitnessMetric {
+  date: string;
+  readiness_score: number | null;
+  readiness_niveau: string | null;
+  readiness_conseil: string | null;
+  statut_entrainement: string | null;
+  charge_aigue: number | null;
+  charge_chronique: number | null;
+  vo2max: number | null;
+  vo2max_velo: number | null;
+  prediction_5k_s: number | null;
+  prediction_10k_s: number | null;
+  prediction_semi_s: number | null;
+  prediction_marathon_s: number | null;
+  endurance_score: number | null;
+  hill_score: number | null;
+  age_forme: number | null;
+  synced_at: string | null;
 }
 
 export type Recurrence = "daily" | "weekly" | "monthly";

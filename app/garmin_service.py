@@ -493,10 +493,23 @@ def run_sync(api, db: Session, user, today: date, history_days: int | None = Non
 
     todo = days_to_sync(db, user.id, today, history_days)
     stats_days = sync_days(api, db, user.id, todo[:BATCH_DAYS])
+
+    # Balance et forme : facultatives (pas de balance, montre qui ne gère pas un indicateur…)
+    from app.garmin_body import sync_body, sync_fitness
+    weigh_ins = 0
+    try:
+        weigh_ins = sync_body(api, db, user, today, history_days)
+    except Exception:
+        db.rollback()
+    try:
+        sync_fitness(api, db, user, today)
+    except Exception:
+        db.rollback()
     save_tokens(user, api, db)
     user.garmin_last_sync_at = datetime.utcnow()
     user.garmin_last_sync_auto = auto
     user.garmin_last_sync_activities = imported
     user.garmin_last_sync_days = stats_days
     db.commit()
-    return {"imported": imported, "skipped": skipped, "stats_days": stats_days, "remaining_days": len(todo) - stats_days}
+    return {"imported": imported, "skipped": skipped, "stats_days": stats_days, "remaining_days": len(todo) - stats_days,
+            "weigh_ins": weigh_ins}
