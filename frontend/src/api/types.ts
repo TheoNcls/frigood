@@ -329,6 +329,8 @@ export interface TaskOccurrence {
   important: boolean;
   activity_type_id: number | null;
   activity_type_nom: string | null;
+  /** Ajoutée depuis un bilan du coach */
+  par_coach: boolean;
   /** Faite parce qu'une activité du bon type existe ce jour-là (pas de coche manuelle) */
   auto: boolean;
   activity_id: number | null;

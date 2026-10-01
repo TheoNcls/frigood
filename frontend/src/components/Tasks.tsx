@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Activity as ActivityIcon, AlarmClock, ArrowRight, Bell, Check, ListTodo, Plus, Repeat, Star, X } from "lucide-react";
+import { Activity as ActivityIcon, AlarmClock, ArrowRight, Bell, Check, ListTodo, Plus, Repeat, Sparkles, Star, X } from "lucide-react";
 import { api } from "../api/client";
 import type { Recurrence, TaskInput, TaskOccurrence, TaskStatut } from "../api/types";
 import { useActivityTypes, useTasks } from "../api/queries";
@@ -91,6 +91,11 @@ export function TaskRow({ task, onEdit }: { task: TaskOccurrence; onEdit: (t: Ta
           {task.important && <Star className="mr-1 inline h-3.5 w-3.5 -translate-y-px fill-amber-400 text-amber-500" aria-label="Importante" />}
           {task.heure && <span className={`mr-1.5 ${task.important ? "text-amber-700" : "text-violet-700"}`}>{task.heure}</span>}
           {task.titre}
+          {task.par_coach && (
+            <span className="ml-1.5 inline-flex -translate-y-px items-center gap-0.5 rounded-full bg-violet-100 px-1.5 py-px align-middle text-[10px] font-semibold text-violet-700 no-underline">
+              <Sparkles className="h-2.5 w-2.5" /> Coach
+            </span>
+          )}
         </span>
         {(task.recurrence || task.notes || missed || task.activity_type_nom) && (
           <span className="block truncate text-xs text-slate-500">

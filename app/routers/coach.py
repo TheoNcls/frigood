@@ -1,13 +1,13 @@
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import coach
 from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
-from app.models import CoachReport, User
+from app.models import ActivityType, CoachReport, Task, User
 from app.push_service import now_local
-from app.schemas import CoachReportRead
+from app.schemas import CoachActivitiesAdd, CoachReportRead
 
 router = APIRouter(tags=["coach"], dependencies=[Depends(get_principal)])
 
@@ -43,17 +43,50 @@ def new_report(user_id: int, principal: Principal = Depends(get_principal), db: 
     if last and last.created_at and datetime.utcnow() - last.created_at < COOLDOWN:
         raise HTTPException(status_code=429, detail="Un bilan vient d'être fait, attends une minute avant d'en redemander un")
 
-    context = coach.build_context(db, user, now_local().date())
+    today = now_local().date()
+    context = coach.build_context(db, user, today)
+    sports = [t.nom for t in db.query(ActivityType).all()]
     try:
-        texte, usage = coach.ask_claude(context)
+        result, usage = coach.ask_claude(context, sports, coach.week_window(today))
     except coach.CoachError as e:
         raise HTTPException(status_code=502, detail=str(e))
     report = CoachReport(
-        user_id=user_id, texte=texte, model=usage.get("model"),
-        input_tokens=usage.get("input_tokens"), output_tokens=usage.get("output_tokens"),
+        user_id=user_id, texte=coach.to_markdown(result), donnees=json.dumps(result, ensure_ascii=False),
+        model=usage.get("model"), input_tokens=usage.get("input_tokens"), output_tokens=usage.get("output_tokens"),
         contexte=json.dumps(context, ensure_ascii=False, default=str),
     )
     db.add(report)
     db.commit()
     db.refresh(report)
     return report
+
+
+@router.post("/coach/{report_id}/activities")
+def add_activities(report_id: int, data: CoachActivitiesAdd, principal: Principal = Depends(get_principal),
+                   db: Session = Depends(get_db)):
+    """Ajoute à l'agenda les séances conseillées par le coach (tâches sportives, marquées « coach »)."""
+    report = db.get(CoachReport, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Bilan introuvable")
+    check_user_access(principal, report.user_id)
+    if report.activites_ajoutees_at:
+        raise HTTPException(status_code=409, detail="Les activités de ce bilan sont déjà dans l'agenda")
+    proposals = (json.loads(report.donnees) if report.donnees else {}).get("activites") or []
+    chosen = proposals if data.indexes is None else [proposals[i] for i in data.indexes if 0 <= i < len(proposals)]
+    today = now_local().date()
+    types = {t.nom: t.id for t in db.query(ActivityType).all()}
+    added = skipped = 0
+    for a in chosen:
+        d = date.fromisoformat(a["date"])
+        if d < today or a["sport"] not in types:
+            skipped += 1  # jour passé depuis le bilan, ou sport supprimé
+            continue
+        notes = a.get("details") or None
+        if a.get("duree_min") and notes:
+            notes = f"{a['duree_min']} min · {notes}"
+        db.add(Task(user_id=report.user_id, titre=a["titre"][:200], date=d, notes=notes,
+                    activity_type_id=types[a["sport"]], par_coach=True))
+        added += 1
+    report.activites_ajoutees_at = datetime.utcnow()
+    db.commit()
+    return {"added": added, "skipped": skipped}

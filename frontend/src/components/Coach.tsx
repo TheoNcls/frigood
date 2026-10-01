@@ -1,11 +1,35 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { CalendarPlus, Check, ChefHat, HeartPulse, Lightbulb, Search, Sparkles } from "lucide-react";
 import { api } from "../api/client";
 import { useCurrentUser } from "../auth/AuthContext";
+import { formatLong, todayISO } from "../lib/dates";
 import { useToast } from "./Toast";
 import { Card, Spinner } from "./ui";
+
+interface CoachRecipe {
+  titre: string;
+  pourquoi: string;
+  ingredients: string[];
+  etapes: string[];
+}
+
+interface CoachActivity {
+  date: string;
+  sport: string;
+  titre: string;
+  duree_min: number | null;
+  details: string;
+}
+
+interface CoachResult {
+  remarques: string;
+  sante_recuperation: string;
+  ameliorations: string;
+  recettes: CoachRecipe[];
+  activites: CoachActivity[];
+}
 
 interface CoachReport {
   id: number;
@@ -14,6 +38,9 @@ interface CoachReport {
   model: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  /** Bilan structuré (les anciens bilans n'ont que le texte) */
+  donnees: CoachResult | null;
+  activites_ajoutees_at: string | null;
 }
 
 /** Gras **…** dans une ligne. */
@@ -96,8 +123,8 @@ export function CoachCard() {
   return (
     <Card title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-violet-600" /> Coach</span>}>
       <p className="mb-3 text-sm text-slate-600">
-        Le coach lit tes repas, ton sport, ton sommeil, ton poids, ta forme Garmin, ton agenda et ton frigo, puis te fait un bilan
-        avec des conseils et des propositions pour la suite.
+        Le coach lit tes repas, ton sport, ton sommeil, ton poids, ta forme Garmin, ton agenda et ton frigo, puis te fait un bilan :
+        santé et récupération, conseils, recettes, et des séances pour ta semaine à ajouter à l'agenda.
       </p>
       {!user.profil_coaching && (
         <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -118,7 +145,7 @@ export function CoachCard() {
           <div className="mb-2 text-xs text-slate-500">
             Bilan du {at!.toLocaleDateString("fr-FR")} à {at!.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
           </div>
-          <CoachText text={r.texte} />
+          {r.donnees ? <StructuredReport report={r} /> : <CoachText text={r.texte} />}
           <p className="mt-4 text-xs text-slate-400">Conseils générés par une IA à partir de tes données : ils ne remplacent pas l'avis d'un professionnel de santé.</p>
         </div>
       )}
@@ -130,5 +157,118 @@ export function CoachCard() {
         ) : null}
       </details>
     </Card>
+  );
+}
+
+function Section({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-1.5">
+      <h3 className="flex items-center gap-1.5 pt-2 text-base font-semibold text-brand-800">{icon} {title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function StructuredReport({ report }: { report: CoachReport }) {
+  const d = report.donnees!;
+  return (
+    <div className="space-y-3">
+      {d.remarques && (
+        <Section icon={<Search className="h-4 w-4" />} title="Ce que je remarque sur les derniers jours"><CoachText text={d.remarques} /></Section>
+      )}
+      {d.sante_recuperation && (
+        <div className="rounded-xl bg-rose-50/60 px-3 pb-2.5">
+          <Section icon={<HeartPulse className="h-4 w-4 text-rose-600" />} title="Santé & récupération"><CoachText text={d.sante_recuperation} /></Section>
+        </div>
+      )}
+      {d.ameliorations && (
+        <Section icon={<Lightbulb className="h-4 w-4" />} title="Pour t'améliorer"><CoachText text={d.ameliorations} /></Section>
+      )}
+      {d.recettes.length > 0 && (
+        <Section icon={<ChefHat className="h-4 w-4" />} title={d.recettes.length > 1 ? "Recettes" : "Recette"}>
+          <div className="grid gap-3 md:grid-cols-2">
+            {d.recettes.map((rec, i) => (
+              <div key={i} className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 text-sm">
+                <div className="font-semibold text-slate-900">{rec.titre}</div>
+                {rec.pourquoi && <div className="mb-2 text-xs text-emerald-800">{rec.pourquoi}</div>}
+                {rec.ingredients.length > 0 && (
+                  <ul className="mb-2 list-disc space-y-0.5 pl-5 text-slate-700">{rec.ingredients.map((x, j) => <li key={j}>{x}</li>)}</ul>
+                )}
+                {rec.etapes.length > 0 && (
+                  <ol className="list-decimal space-y-0.5 pl-5 text-slate-700">{rec.etapes.map((x, j) => <li key={j}>{x}</li>)}</ol>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+      <CoachActivities report={report} />
+    </div>
+  );
+}
+
+/** Séances conseillées pour la semaine : à cocher, puis « Ajouter les activités du coach ? ». */
+function CoachActivities({ report }: { report: CoachReport }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const user = useCurrentUser();
+  const acts = report.donnees!.activites;
+  const today = todayISO();
+  const [chosen, setChosen] = useState<Set<number>>(() => new Set(acts.map((a, i) => (a.date >= today ? i : -1)).filter((i) => i >= 0)));
+  const added = !!report.activites_ajoutees_at;
+
+  const add = useMutation({
+    mutationFn: () => api<{ added: number; skipped: number }>(`/coach/${report.id}/activities`, {
+      method: "POST", body: { indexes: [...chosen].sort((a, b) => a - b) },
+    }),
+    onSuccess: (res) => {
+      queryClient.setQueryData(["coach", user.id], { ...report, activites_ajoutees_at: new Date().toISOString() });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      toast(`${res.added} activité${res.added > 1 ? "s" : ""} ajoutée${res.added > 1 ? "s" : ""} à l'agenda` +
+        (res.skipped ? ` (${res.skipped} ignorée${res.skipped > 1 ? "s" : ""} : jour passé)` : ""));
+    },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  if (!acts.length) return null;
+  return (
+    <Section icon={<CalendarPlus className="h-4 w-4" />} title="Activités conseillées pour ta semaine">
+      <ul className="space-y-1.5">
+        {acts.map((a, i) => {
+          const past = a.date < today;
+          return (
+            <li key={i}>
+              <label className={`flex gap-3 rounded-xl border px-3 py-2 text-sm ${chosen.has(i) && !added ? "border-violet-200 bg-violet-50/60" : "border-slate-100 bg-white"} ${added || past ? "" : "cursor-pointer"}`}>
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600"
+                  checked={chosen.has(i)}
+                  disabled={added || past}
+                  onChange={(e) => {
+                    const next = new Set(chosen);
+                    if (e.target.checked) next.add(i); else next.delete(i);
+                    setChosen(next);
+                  }}
+                />
+                <span className="min-w-0">
+                  <span className="block text-xs font-medium text-violet-700">{formatLong(a.date)}{past ? " (passé)" : ""}</span>
+                  <span className="block font-medium text-slate-900">{a.titre}</span>
+                  <span className="block text-xs text-slate-500">
+                    {a.sport}{a.duree_min ? ` · ${a.duree_min} min` : ""}{a.details ? ` · ${a.details}` : ""}
+                  </span>
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      {added ? (
+        <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700"><Check className="h-4 w-4" /> Ajoutées à ton agenda (badge « Coach »).</p>
+      ) : (
+        <button type="button" className="btn-primary bg-violet-600 hover:bg-violet-700" disabled={add.isPending || chosen.size === 0} onClick={() => add.mutate()}>
+          <CalendarPlus className="h-4 w-4" /> Ajouter les activités du coach ?{chosen.size ? ` (${chosen.size})` : ""}
+        </button>
+      )}
+    </Section>
   );
 }

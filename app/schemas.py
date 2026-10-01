@@ -1,3 +1,4 @@
+import json
 from typing import Literal
 from pydantic import BaseModel, field_validator, model_validator
 from datetime import date as date_type, datetime as datetime_type
@@ -456,6 +457,7 @@ class TaskCreate(TaskBase):
 
 class TaskRead(TaskBase):
     id: int
+    par_coach: bool = False
     model_config = {"from_attributes": True}
 
 
@@ -472,6 +474,7 @@ class TaskOccurrence(BaseModel):
     important: bool = False
     activity_type_id: int | None = None
     activity_type_nom: str | None = None
+    par_coach: bool = False
     # Validée par une activité du bon type ce jour-là (sans coche manuelle)
     auto: bool = False
     activity_id: int | None = None
@@ -585,5 +588,22 @@ class CoachReportRead(BaseModel):
     model: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    donnees: dict | None = None
+    activites_ajoutees_at: datetime_type | None = None
+
+    @field_validator("donnees", mode="before")
+    @classmethod
+    def _parse_donnees(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except ValueError:
+                return None
+        return v
 
     model_config = {"from_attributes": True}
+
+
+class CoachActivitiesAdd(BaseModel):
+    """Index des activités du bilan à ajouter à l'agenda (toutes si absent)."""
+    indexes: list[int] | None = None

@@ -63,7 +63,7 @@ function AgendaCalendar() {
     for (const t of tasks.data ?? []) {
       out.push({
         id: `t${t.task_id}_${t.date}`,
-        title: `${t.statut === "fait" ? "✓" : t.statut === "pas_fait" ? "✗" : "☐"} ${t.important ? "⭐ " : ""}${t.activity_type_id ? "🏃 " : ""}${t.titre}`,
+        title: `${t.statut === "fait" ? "✓" : t.statut === "pas_fait" ? "✗" : "☐"} ${t.important ? "⭐ " : ""}${t.activity_type_id ? "🏃 " : ""}${t.titre}${t.par_coach ? " ✨" : ""}`,
         // Avec une heure : événement horaire (heure affichée par le calendrier, tri chronologique)
         start: t.heure ? `${t.date}T${t.heure}` : t.date,
         allDay: !t.heure,

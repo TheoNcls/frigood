@@ -315,6 +315,8 @@ class Task(Base):
     important = Column(Boolean, nullable=False, default=False, server_default=false())
     # Tâche sportive : validée automatiquement par une activité de ce type le jour prévu (Garmin ou manuelle)
     activity_type_id = Column(Integer, ForeignKey("activity_types.id", ondelete="SET NULL"), nullable=True)
+    # Ajoutée depuis un bilan du coach (et non à la main)
+    par_coach = Column(Boolean, nullable=False, default=False, server_default=false())
     created_at = Column(DateTime, default=datetime.utcnow)
 
     completions = relationship("TaskCompletion", cascade="all, delete-orphan", back_populates="task")
@@ -436,3 +438,5 @@ class CoachReport(Base):
     input_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
     contexte = deferred(Column(Text, nullable=True))   # données envoyées (JSON), pour comprendre un bilan après coup
+    donnees = Column(Text, nullable=True)               # bilan structuré (JSON) : sections, recettes, activités
+    activites_ajoutees_at = Column(DateTime, nullable=True)

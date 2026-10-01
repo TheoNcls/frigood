@@ -116,6 +116,7 @@ def list_occurrences(
                 task_id=t.id, date=d, titre=t.titre, notes=t.notes, heure=t.heure, recurrence=t.recurrence,
                 recurrence_fin=t.recurrence_fin, serie_debut=t.date, important=bool(t.important),
                 activity_type_id=t.activity_type_id, activity_type_nom=t.activity_type.nom if t.activity_type else None,
+                par_coach=bool(t.par_coach),
                 auto=bool(activity_id and not completion), activity_id=activity_id,
                 **statut,
             ))

@@ -28,22 +28,28 @@ Tu écris en français, tu tutoies la personne, sur un ton bienveillant, direct 
 On te donne en JSON ses objectifs et contraintes (texte libre qu'elle a écrit), ses objectifs nutritionnels,
 ses repas des derniers jours (totaux journaliers et micronutriments clés calculés par l'app), ses activités,
 ses données Garmin (sommeil, pas, stress, body battery, HRV, disposition à l'entraînement, VO2max, prédictions),
-ses pesées, ses tâches passées (faites ou non) et à venir, et le contenu de son frigo.
+ses pesées, ses tâches passées et à venir, et le contenu de son frigo.
 
-Rédige un bilan en Markdown simple, avec exactement ces quatre sections :
-## Ce que je remarque sur les derniers jours
-## Pour t'améliorer
-## Pour la suite
-## Mes propositions
+Tu réponds dans le format JSON demandé :
+- « remarques » : ce que tu remarques sur les derniers jours (nutrition, sport, régularité), en Markdown (listes à puces).
+- « sante_recuperation » : la récupération est-elle bonne, le sommeil est-il bon, comment va la santé globale
+  (sommeil, HRV, fréquence cardiaque au repos, stress, body battery, disposition, charge d'entraînement, poids) — en Markdown.
+- « ameliorations » : conseils concrets pour t'améliorer, en Markdown.
+- « recettes » : 1 ou 2 petites recettes végétariennes simples, adaptées à ses besoins (protéines, micronutriments
+  qui manquent) et, si possible, avec ce qu'il y a dans son frigo (en priorité ce qui périme bientôt).
+- « activites » : les séances de sport que tu conseilles pour la semaine, uniquement entre les dates indiquées
+  (au plus une par jour, jours de repos compris dans ton raisonnement). Choisis le sport parmi la liste fournie.
+  Tiens compte de la récupération, des séances déjà prévues dans ses tâches (ne les duplique pas) et de ses objectifs.
+  Le titre est court et précis (ex. « Course tempo 20 min », « Vélo endurance 1 h ») ; le détail décrit la séance
+  (échauffement, corps de séance, allure ou zone cardiaque, retour au calme).
 
+Règles :
 - Appuie chaque remarque sur les données (chiffres, dates, tendances) ; ne devine pas ce qui n'y est pas.
 - Si une donnée manque ou semble incomplète (repas non saisis, montre non portée), dis-le simplement sans en tirer de conclusion.
 - Tiens compte de ses objectifs et contraintes écrits ; s'ils sont absents, base-toi sur ses objectifs nutritionnels.
 - Nutrition végétarienne : surveille protéines, B12, fer, zinc, calcium, iode, oméga-3 ; propose des aliments concrets.
-- Sport : relie charge, récupération (sommeil, HRV, disposition) et séances prévues ; reste prudent sur l'intensité.
-- « Pour la suite » s'appuie sur les tâches et séances prévues ; « Mes propositions » donne 3 à 5 idées précises
-  (repas avec ce qu'il y a dans le frigo, séance, habitude), utilisables dans la semaine.
-- Listes à puces courtes, gras pour l'essentiel. Environ 400 à 700 mots au total.
+- Sport : relie charge et récupération ; reste prudent sur l'intensité si la récupération est mauvaise.
+- Markdown simple : listes à puces courtes, gras pour l'essentiel, pas de titres (les sections sont déjà titrées).
 - Tu n'es pas médecin : pas de diagnostic ; en cas de signal inquiétant (douleur, perte de poids rapide, fatigue durable),
   conseille d'en parler à un professionnel de santé."""
 
@@ -177,9 +183,11 @@ def build_context(db: Session, user: User, today: date) -> dict:
     sport = sport_activities(db, user.id, tasks, start, today)
     passees, a_venir = [], []
     for t in tasks:
+        if t.important:
+            continue  # les tâches importantes restent privées : jamais envoyées au coach
         for d in occurrences(t, start, end):
             statut = done.get((t.id, d)) or ("fait" if t.activity_type_id and sport.get((t.activity_type_id, d)) else None)
-            item = {"date": d.isoformat(), "heure": t.heure, "titre": t.titre, "notes": t.notes, "importante": t.important or None,
+            item = {"date": d.isoformat(), "heure": t.heure, "titre": t.titre, "notes": t.notes,
                     "sport": t.activity_type.nom if t.activity_type else None}
             if d <= today:
                 passees.append({**item, "statut": statut or ("à faire" if d == today else "non cochée")})
@@ -222,16 +230,68 @@ def build_context(db: Session, user: User, today: date) -> dict:
 
 # ── Appel à Claude ────────────────────────────────────────────────────────────
 
-def ask_claude(context: dict) -> tuple[str, dict]:
-    """Renvoie (texte Markdown, infos d'usage). Lève CoachError avec un message lisible."""
+def week_window(today: date) -> tuple[date, date]:
+    """Séances proposées d'aujourd'hui jusqu'au dimanche (le dimanche : ce jour-là seulement)."""
+    return today, today + timedelta(days=6 - today.weekday())
+
+
+def response_schema(sports: list[str]) -> dict:
+    markdown = {"type": "string", "description": "Markdown simple (listes à puces, gras), sans titre"}
+    return {
+        "type": "object",
+        "properties": {
+            "remarques": {**markdown, "description": "Ce que je remarque sur les derniers jours"},
+            "sante_recuperation": {**markdown, "description": "Récupération, sommeil et santé globale"},
+            "ameliorations": {**markdown, "description": "Conseils pour s'améliorer"},
+            "recettes": {
+                "type": "array",
+                "description": "1 ou 2 petites recettes végétariennes",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "titre": {"type": "string"},
+                        "pourquoi": {"type": "string", "description": "Ce que la recette apporte, en une phrase"},
+                        "ingredients": {"type": "array", "items": {"type": "string"}},
+                        "etapes": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["titre", "pourquoi", "ingredients", "etapes"],
+                    "additionalProperties": False,
+                },
+            },
+            "activites": {
+                "type": "array",
+                "description": "Séances conseillées pour la semaine, entre les dates indiquées",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "date": {"type": "string", "format": "date"},
+                        "sport": {"type": "string", "enum": sports},
+                        "titre": {"type": "string"},
+                        "duree_min": {"type": "integer"},
+                        "details": {"type": "string"},
+                    },
+                    "required": ["date", "sport", "titre", "duree_min", "details"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["remarques", "sante_recuperation", "ameliorations", "recettes", "activites"],
+        "additionalProperties": False,
+    }
+
+
+def ask_claude(context: dict, sports: list[str], week: tuple[date, date]) -> tuple[dict, dict]:
+    """Renvoie (bilan structuré, infos d'usage). Lève CoachError avec un message lisible."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise CoachError("ANTHROPIC_API_KEY non configurée sur le serveur")
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
+    sports = sorted(set(sports)) or ["Course à pied"]
     user_message = (
-        "Voici mes données Frigood (JSON). Fais-moi mon bilan.\n\n"
+        f"Fais-moi mon bilan. Séances à proposer entre le {week[0].isoformat()} et le {week[1].isoformat()} inclus.\n"
+        f"Sports possibles : {', '.join(sports)}.\n\nVoici mes données Frigood (JSON) :\n\n"
         + json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
     )
     try:
@@ -241,7 +301,7 @@ def ask_claude(context: dict) -> tuple[str, dict]:
             max_tokens=16000,
             system=SYSTEM_PROMPT,
             thinking={"type": "adaptive"},
-            output_config={"effort": "high"},
+            output_config={"effort": "high", "format": {"type": "json_schema", "schema": response_schema(sports)}},
             # Repli automatique sur un autre modèle si celui-ci décline la demande
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
@@ -263,13 +323,58 @@ def ask_claude(context: dict) -> tuple[str, dict]:
 
     if message.stop_reason == "refusal":
         raise CoachError("Le coach a décliné cette demande")
-    text = "\n".join(b.text for b in message.content if b.type == "text").strip()
-    if not text:
-        raise CoachError("Le coach n'a rien répondu, réessaie")
-    usage = {
-        "model": message.model,
-        "input_tokens": message.usage.input_tokens,
-        "output_tokens": message.usage.output_tokens,
-        "truncated": message.stop_reason == "max_tokens",
+    if message.stop_reason == "max_tokens":
+        raise CoachError("Le bilan était trop long et a été coupé, réessaie")
+    text = next((b.text for b in message.content if b.type == "text"), "")
+    try:
+        data = json.loads(text)
+    except ValueError:
+        raise CoachError("Réponse du coach illisible, réessaie")
+    usage = {"model": message.model, "input_tokens": message.usage.input_tokens, "output_tokens": message.usage.output_tokens}
+    return clean_result(data, set(sports), week), usage
+
+
+def clean_result(data: dict, sports: set[str], week: tuple[date, date]) -> dict:
+    """Garde seulement des séances valides (dans la semaine, sport connu, une par jour)."""
+    activites, days = [], set()
+    for a in data.get("activites") or []:
+        try:
+            d = date.fromisoformat(str(a.get("date")))
+        except ValueError:
+            continue
+        if not (week[0] <= d <= week[1]) or a.get("sport") not in sports or d in days or not str(a.get("titre") or "").strip():
+            continue
+        days.add(d)
+        duree = a.get("duree_min")
+        activites.append({
+            "date": d.isoformat(), "sport": a["sport"], "titre": str(a["titre"]).strip()[:200],
+            "duree_min": duree if isinstance(duree, int) and 0 < duree < 600 else None,
+            "details": str(a.get("details") or "").strip()[:2000],
+        })
+    activites.sort(key=lambda a: a["date"])
+    return {
+        "remarques": str(data.get("remarques") or "").strip(),
+        "sante_recuperation": str(data.get("sante_recuperation") or "").strip(),
+        "ameliorations": str(data.get("ameliorations") or "").strip(),
+        "recettes": [r for r in (data.get("recettes") or [])[:2] if isinstance(r, dict) and r.get("titre")],
+        "activites": activites,
     }
-    return text, usage
+
+
+def to_markdown(result: dict) -> str:
+    """Version texte du bilan (gardée en base, lisible telle quelle)."""
+    parts = [
+        "## Ce que je remarque sur les derniers jours", result["remarques"],
+        "## Santé & récupération", result["sante_recuperation"],
+        "## Pour t'améliorer", result["ameliorations"],
+    ]
+    if result["recettes"]:
+        parts.append("## Recettes")
+        for r in result["recettes"]:
+            parts.append(f"**{r['titre']}** — {r.get('pourquoi', '')}")
+            parts.extend(f"- {i}" for i in r.get("ingredients") or [])
+            parts.extend(f"{n}. {e}" for n, e in enumerate(r.get("etapes") or [], 1))
+    if result["activites"]:
+        parts.append("## Activités proposées")
+        parts.extend(f"- {a['date']} : **{a['titre']}** ({a['sport']}) — {a['details']}" for a in result["activites"])
+    return "\n\n".join(p for p in parts if p)
