@@ -183,6 +183,17 @@ export function GarminSettingsCard() {
           <GarminMoreOptions
             top={<>
               <GarminLastSync />
+              {user.zones_fc && (
+                <div className="space-y-1">
+                  <div className="font-medium text-slate-700">Tes zones cardiaques ({user.zones_fc.profil === "running" ? "course" : "par défaut"})</div>
+                  <div className="flex flex-wrap gap-1.5 text-xs">
+                    {user.zones_fc.zones.map((z) => (
+                      <span key={z.zone} className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Z{z.zone} {z.min}–{z.max ?? "…"}</span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-500">Lues dans Garmin : le coach s'en sert, et la montre applique les siennes aux séances envoyées.</p>
+                </div>
+              )}
               <div className="border-t border-slate-100 pt-3"><GarminAutoSetting /></div>
             </>}
             bottom={

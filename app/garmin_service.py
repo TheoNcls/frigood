@@ -509,6 +509,11 @@ def run_sync(api, db: Session, user, today: date, history_days: int | None = Non
         sync_fitness(api, db, user, today)
     except Exception:
         db.rollback()
+    try:
+        from app.garmin_workouts import sync_hr_zones
+        sync_hr_zones(api, db, user)
+    except Exception:
+        db.rollback()
     save_tokens(user, api, db)
     user.garmin_last_sync_at = datetime.utcnow()
     user.garmin_last_sync_auto = auto

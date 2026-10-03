@@ -12,6 +12,8 @@ export interface User {
   /** Infos et objectifs en texte libre (futur coaching personnalisé) */
   profil_coaching: string | null;
   regime_alimentaire: RegimeAlimentaire;
+  /** Zones cardiaques Garmin (profil course) */
+  zones_fc: { profil: string; fc_max: number | null; fc_repos: number | null; zones: { zone: number; min: number; max: number | null }[] } | null;
   garmin_connected: boolean;
   /** Synchro Garmin automatique du matin (réglage du compte) */
   garmin_auto_sync: boolean;
@@ -332,6 +334,9 @@ export interface TaskOccurrence {
   activity_type_nom: string | null;
   /** Ajoutée depuis un bilan du coach */
   par_coach: boolean;
+  /** Séance structurée (course) et envoi sur la montre */
+  seance: SeanceStep[] | null;
+  garmin_envoye: boolean;
   /** Faite parce qu'une activité du bon type existe ce jour-là (pas de coche manuelle) */
   auto: boolean;
   activity_id: number | null;
@@ -342,3 +347,13 @@ export interface TaskOccurrence {
 }
 
 export type RegimeAlimentaire = "omnivore" | "flexitarien" | "pescetarien" | "vegetarien" | "vegan";
+
+export interface SeanceSimpleStep {
+  type: "echauffement" | "effort" | "recuperation" | "retour_au_calme";
+  duree_s: number | null;
+  distance_m: number | null;
+  zone_fc: number | null;
+  allure_s_km: number | null;
+}
+
+export type SeanceStep = SeanceSimpleStep | { type: "repetition"; repetitions: number; etapes: SeanceSimpleStep[] };

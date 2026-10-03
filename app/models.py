@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime
 from sqlalchemy import false, Boolean, Column, Integer, String, Float, ForeignKey, Date, DateTime, Text, UniqueConstraint
@@ -129,6 +130,9 @@ class User(Base):
     profil_coaching = Column(Text, nullable=True)
 
     garmin_tokens = Column(String, nullable=True)
+    # Zones cardiaques Garmin (profil course) : JSON {zones: [{zone, min, max}], fc_max, …}
+    garmin_zones_fc = Column(Text, nullable=True)
+    garmin_zones_at = Column(DateTime, nullable=True)
     # Synchro automatique du matin (opt-in) : heure locale, et suivi du jour en cours
     garmin_auto_sync = Column(Boolean, nullable=False, default=False, server_default=false())
     garmin_auto_heure = Column(String(5), nullable=False, default="07:00", server_default="07:00")
@@ -154,6 +158,13 @@ class User(Base):
     fitness_metrics = relationship("FitnessMetric", cascade="all, delete-orphan")
     garmin_ignored = relationship("GarminIgnoredActivity", cascade="all, delete-orphan")
     coach_reports = relationship("CoachReport", cascade="all, delete-orphan")
+
+    @property
+    def zones_fc(self) -> dict | None:
+        try:
+            return json.loads(self.garmin_zones_fc) if self.garmin_zones_fc else None
+        except ValueError:
+            return None
 
     @property
     def garmin_connected(self) -> bool:
@@ -319,11 +330,17 @@ class Task(Base):
     activity_type_id = Column(Integer, ForeignKey("activity_types.id", ondelete="SET NULL"), nullable=True)
     # Ajoutée depuis un bilan du coach (et non à la main)
     par_coach = Column(Boolean, nullable=False, default=False, server_default=false())
+    # Séance structurée (JSON : étapes, blocs répétés, cibles) et envoi sur la montre via Garmin Connect
+    seance = Column(Text, nullable=True)
+    garmin_workout_id = Column(String(40), nullable=True)
+    garmin_schedule_id = Column(String(40), nullable=True)
+    garmin_envoye_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     completions = relationship("TaskCompletion", cascade="all, delete-orphan", back_populates="task")
     reminders = relationship("TaskReminder", cascade="all, delete-orphan")
     activity_type = relationship("ActivityType")
+    user = relationship("User", overlaps="tasks")
 
 
 class TaskCompletion(Base):

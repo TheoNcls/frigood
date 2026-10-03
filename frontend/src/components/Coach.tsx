@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { CalendarPlus, Check, ChefHat, HeartPulse, Lightbulb, Search, Sparkles } from "lucide-react";
 import { api } from "../api/client";
 import { useCurrentUser } from "../auth/AuthContext";
+import type { SeanceStep } from "../api/types";
+import { SeanceSteps } from "./Seance";
 import { formatLong, todayISO } from "../lib/dates";
 import { useToast } from "./Toast";
 import { Card, Spinner } from "./ui";
@@ -21,6 +23,7 @@ interface CoachActivity {
   titre: string;
   duree_min: number | null;
   details: string;
+  etapes?: SeanceStep[];
 }
 
 interface CoachResult {
@@ -266,6 +269,7 @@ function CoachActivities({ report }: { report: CoachReport }) {
                   <span className="block text-xs text-slate-500">
                     {a.sport}{a.duree_min ? ` · ${a.duree_min} min` : ""}{a.details ? ` · ${a.details}` : ""}
                   </span>
+                  {a.etapes && a.etapes.length > 0 && <span className="mt-1.5 block"><SeanceSteps steps={a.etapes} /></span>}
                 </span>
               </label>
             </li>
@@ -273,7 +277,9 @@ function CoachActivities({ report }: { report: CoachReport }) {
         })}
       </ul>
       {added ? (
-        <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700"><Check className="h-4 w-4" /> Ajoutées à ton agenda (badge « Coach »).</p>
+        <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
+          <Check className="h-4 w-4" /> Ajoutées à ton agenda (badge « Coach »). Ouvre une séance de course pour l'envoyer sur ta montre.
+        </p>
       ) : (
         <button type="button" className="btn-primary bg-violet-600 hover:bg-violet-700" disabled={add.isPending || chosen.size === 0} onClick={() => add.mutate()}>
           <CalendarPlus className="h-4 w-4" /> Ajouter les activités du coach ?{chosen.size ? ` (${chosen.size})` : ""}

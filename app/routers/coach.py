@@ -90,7 +90,8 @@ def add_activities(report_id: int, data: CoachActivitiesAdd, principal: Principa
         if a.get("duree_min") and notes:
             notes = f"{a['duree_min']} min · {notes}"
         db.add(Task(user_id=report.user_id, titre=a["titre"][:200], date=d, notes=notes,
-                    activity_type_id=types[a["sport"]], par_coach=True))
+                    activity_type_id=types[a["sport"]], par_coach=True,
+                    seance=json.dumps(a["etapes"], ensure_ascii=False) if a.get("etapes") else None))
         added += 1
     report.activites_ajoutees_at = datetime.utcnow()
     db.commit()

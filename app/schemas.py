@@ -315,6 +315,7 @@ class UserRead(BaseModel):
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
     regime_alimentaire: str = "vegetarien"
+    zones_fc: dict | None = None
     garmin_connected: bool = False
     garmin_auto_sync: bool = False
     garmin_auto_heure: str = "07:00"
@@ -485,6 +486,8 @@ class TaskOccurrence(BaseModel):
     activity_type_id: int | None = None
     activity_type_nom: str | None = None
     par_coach: bool = False
+    seance: list | None = None
+    garmin_envoye: bool = False
     # Validée par une activité du bon type ce jour-là (sans coche manuelle)
     auto: bool = False
     activity_id: int | None = None

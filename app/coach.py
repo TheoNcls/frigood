@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from app.fridge_service import to_base_qty
+from app.garmin_workouts import clean_seance
 from app.garmin_service import activity_details
 from app.models import (
     Activity, BodyComposition, CoachReport, DailyStat, FitnessMetric, FridgeItem, Ingredient, MealLog, Recipe, Task, TaskCompletion,
@@ -47,6 +48,10 @@ Tu réponds dans le format JSON demandé :
   Tiens compte de la récupération, des séances déjà prévues dans ses tâches (ne les duplique pas) et de ses objectifs.
   Le titre est court et précis (ex. « Course tempo 20 min », « Vélo endurance 1 h ») ; le détail décrit la séance
   (échauffement, corps de séance, allure ou zone cardiaque, retour au calme).
+  Pour la course à pied, remplis aussi « etapes » : la séance étape par étape, telle qu'elle sera envoyée sur sa montre
+  Garmin (échauffement, efforts, récupérations, blocs répétés, retour au calme), chaque étape en durée (secondes) OU
+  en distance (mètres), avec de préférence une cible en zone cardiaque Z1 à Z5 (ses zones Garmin sont dans le profil),
+  sinon une allure en secondes par km. Pour les autres sports, « etapes » est une liste vide.
 
 Règles :
 - Appuie chaque remarque sur les données (chiffres, dates, tendances) ; ne devine pas ce qui n'y est pas.
@@ -284,6 +289,8 @@ def build_context(db: Session, user: User, today: date) -> dict:
                 "kcal": user.calories_cible, "proteines_g": user.proteines_cible, "proteines_g_par_kg": user.proteines_g_kg,
                 "glucides_g": user.glucides_cible, "lipides_g": user.lipides_cible},
             "regime": REGIME_LABELS.get(user.regime_alimentaire or "vegetarien", "végétarien"),
+            "zones_fc_course_garmin": (user.zones_fc or {}).get("zones"),
+            "fc_max": (user.zones_fc or {}).get("fc_max"),
         },
         f"repas_{MEAL_DAYS}_jours": repas,
         f"activites_{ACTIVITY_DAYS}_jours": activites,
@@ -306,6 +313,31 @@ def build_context(db: Session, user: User, today: date) -> dict:
 def week_window(today: date) -> tuple[date, date]:
     """Séances proposées d'aujourd'hui jusqu'au dimanche (le dimanche : ce jour-là seulement)."""
     return today, today + timedelta(days=6 - today.weekday())
+
+
+_NULLABLE_INT = {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+STEP_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "type": {"type": "string", "enum": ["echauffement", "effort", "recuperation", "retour_au_calme"]},
+        "duree_s": {**_NULLABLE_INT, "description": "Durée en secondes (ou null si distance)"},
+        "distance_m": {**_NULLABLE_INT, "description": "Distance en mètres (ou null si durée)"},
+        "zone_fc": {**_NULLABLE_INT, "description": "Zone cardiaque cible 1 à 5 (ou null)"},
+        "allure_s_km": {**_NULLABLE_INT, "description": "Allure cible en secondes par km (ou null)"},
+    },
+    "required": ["type", "duree_s", "distance_m", "zone_fc", "allure_s_km"],
+    "additionalProperties": False,
+}
+REPEAT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "type": {"type": "string", "const": "repetition"},
+        "repetitions": {"type": "integer", "description": "Nombre de répétitions du bloc"},
+        "etapes": {"type": "array", "items": STEP_SCHEMA, "description": "Étapes du bloc (ex. effort puis récupération)"},
+    },
+    "required": ["type", "repetitions", "etapes"],
+    "additionalProperties": False,
+}
 
 
 def response_schema(sports: list[str]) -> dict:
@@ -342,8 +374,13 @@ def response_schema(sports: list[str]) -> dict:
                         "titre": {"type": "string"},
                         "duree_min": {"type": "integer"},
                         "details": {"type": "string"},
+                        "etapes": {
+                            "type": "array",
+                            "description": "Course à pied : la séance étape par étape (liste vide pour les autres sports)",
+                            "items": {"anyOf": [STEP_SCHEMA, REPEAT_SCHEMA]},
+                        },
                     },
-                    "required": ["date", "sport", "titre", "duree_min", "details"],
+                    "required": ["date", "sport", "titre", "duree_min", "details", "etapes"],
                     "additionalProperties": False,
                 },
             },
@@ -423,6 +460,7 @@ def clean_result(data: dict, sports: set[str], week: tuple[date, date]) -> dict:
             "date": d.isoformat(), "sport": a["sport"], "titre": str(a["titre"]).strip()[:200],
             "duree_min": duree if isinstance(duree, int) and 0 < duree < 600 else None,
             "details": str(a.get("details") or "").strip()[:2000],
+            "etapes": clean_seance(a.get("etapes")),
         })
     activites.sort(key=lambda a: a["date"])
     return {

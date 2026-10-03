@@ -1,3 +1,4 @@
+import json
 import calendar
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -5,7 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
+from app.garmin_service import GarminSessionExpired, login_with_tokens, save_tokens
+from app.garmin_workouts import is_running_task, remove_task, send_task
 from app.models import Activity, ActivityType, Task, TaskCompletion, User
+from app.push_service import now_local
 from app.schemas import TaskCreate, TaskDone, TaskOccurrence, TaskRead
 
 router = APIRouter(tags=["tasks"], dependencies=[Depends(get_principal)])
@@ -117,6 +121,8 @@ def list_occurrences(
                 recurrence_fin=t.recurrence_fin, serie_debut=t.date, important=bool(t.important),
                 activity_type_id=t.activity_type_id, activity_type_nom=t.activity_type.nom if t.activity_type else None,
                 par_coach=bool(t.par_coach),
+                seance=json.loads(t.seance) if t.seance else None,
+                garmin_envoye=bool(t.garmin_workout_id),
                 auto=bool(activity_id and not completion), activity_id=activity_id,
                 **statut,
             ))
@@ -157,9 +163,73 @@ def update_task(id: int, data: TaskCreate, principal: Principal = Depends(get_pr
 
 @router.delete("/tasks/{id}")
 def delete_task(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    db.delete(_own_task(db, id, principal))
+    task = _own_task(db, id, principal)
+    if task.garmin_workout_id:
+        # Séance envoyée sur la montre : on la retire aussi de Garmin (sans bloquer la suppression)
+        try:
+            api = login_with_tokens(task.user, db)
+            remove_task(api, db, task)
+        except Exception:
+            db.rollback()
+    db.delete(task)
     db.commit()
     return {"message": "Tâche supprimée"}
+
+
+def _garmin_api(db: Session, task: Task):
+    user = task.user
+    if not user.garmin_tokens:
+        raise HTTPException(status_code=400, detail="Connecte d'abord Garmin dans le Profil")
+    try:
+        return login_with_tokens(user, db)
+    except GarminSessionExpired:
+        raise HTTPException(status_code=401, detail="SESSION_GARMIN_EXPIREE")
+
+
+def _garmin_error(e: Exception):
+    message = str(e)
+    if any(k in message for k in ("429", "Cloudflare", "Too Many")):
+        raise HTTPException(status_code=429, detail="GARMIN_BLOQUE")
+    raise HTTPException(status_code=502, detail=f"Garmin a refusé la séance : {message[:300]}")
+
+
+@router.post("/tasks/{id}/garmin")
+def send_to_garmin(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Crée la séance (course à pied) dans Garmin Connect et la programme au jour de la tâche."""
+    task = _own_task(db, id, principal)
+    if not task.seance or not is_running_task(task):
+        raise HTTPException(status_code=400, detail="Seules les séances de course détaillées peuvent être envoyées pour l'instant")
+    if task.recurrence:
+        raise HTTPException(status_code=400, detail="Une tâche récurrente ne peut pas être envoyée sur la montre")
+    if task.date < now_local().date():
+        raise HTTPException(status_code=400, detail="Le jour de cette séance est passé")
+    api = _garmin_api(db, task)
+    try:
+        if task.garmin_workout_id:
+            remove_task(api, db, task)  # renvoi : on remplace l'ancienne
+        send_task(api, db, task)
+        save_tokens(task.user, api, db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        _garmin_error(e)
+    return {"message": "Séance programmée sur Garmin", "workout_id": task.garmin_workout_id}
+
+
+@router.delete("/tasks/{id}/garmin")
+def remove_from_garmin(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    task = _own_task(db, id, principal)
+    if not task.garmin_workout_id:
+        return {"message": "Pas de séance Garmin"}
+    api = _garmin_api(db, task)
+    try:
+        remove_task(api, db, task)
+        save_tokens(task.user, api, db)
+    except Exception as e:
+        db.rollback()
+        _garmin_error(e)
+    return {"message": "Séance retirée de Garmin"}
 
 
 @router.post("/tasks/{id}/done")
