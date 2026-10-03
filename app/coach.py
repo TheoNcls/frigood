@@ -17,7 +17,9 @@ from app.models import (
 log = logging.getLogger("frigood.coach")
 
 MODEL = "claude-opus-5-5"
-PAST_DAYS = 14        # repas, activités, santé, tâches passées
+PAST_DAYS = 14        # santé Garmin, forme, tâches passées
+MEAL_DAYS = 7         # repas : la semaine écoulée suffit (contexte plus léger)
+ACTIVITY_DAYS = 42    # activités : 6 semaines pour juger la charge et la progression
 NEXT_DAYS = 14        # tâches à venir
 WEIGHT_DAYS = 90
 REGIME_LABELS = {
@@ -173,7 +175,8 @@ def build_context(db: Session, user: User, today: date) -> dict:
     # Repas : détail et totaux par jour
     meals = defaultdict(list)
     totals = defaultdict(lambda: defaultdict(float))
-    for m in (db.query(MealLog).filter(MealLog.user_id == user.id, MealLog.date >= start, MealLog.date <= today)
+    meal_start = today - timedelta(days=MEAL_DAYS - 1)
+    for m in (db.query(MealLog).filter(MealLog.user_id == user.id, MealLog.date >= meal_start, MealLog.date <= today)
               .order_by(MealLog.date, MealLog.id)):
         meals[m.date].append(f"{m.moment} : {_meal_label(m)}")
         _meal_totals(m, totals[m.date])
@@ -183,7 +186,9 @@ def build_context(db: Session, user: User, today: date) -> dict:
     ]
 
     activites = []
-    for a in (db.query(Activity).filter(Activity.user_id == user.id, Activity.date >= start, Activity.date <= today)
+    activity_start = today - timedelta(days=ACTIVITY_DAYS - 1)
+    weeks = defaultdict(lambda: {"seances": 0, "minutes": 0, "km": 0.0})
+    for a in (db.query(Activity).filter(Activity.user_id == user.id, Activity.date >= activity_start, Activity.date <= today)
               .order_by(Activity.date, Activity.id)):
         entry = {
             "date": a.date.isoformat(), "type": a.activity_type.nom if a.activity_type else None, "source": a.source,
@@ -200,6 +205,10 @@ def build_context(db: Session, user: User, today: date) -> dict:
             except (ValueError, TypeError, KeyError):
                 pass
         activites.append(entry)
+        w = weeks[a.date - timedelta(days=a.date.weekday())]
+        w["seances"] += 1
+        w["minutes"] += a.duree_min or 0
+        w["km"] += a.distance_km or 0
 
     sante = [
         {"date": s.date.isoformat(), "sommeil_h": s.sommeil_total_h, "sommeil_score": s.sommeil_score,
@@ -276,8 +285,12 @@ def build_context(db: Session, user: User, today: date) -> dict:
                 "glucides_g": user.glucides_cible, "lipides_g": user.lipides_cible},
             "regime": REGIME_LABELS.get(user.regime_alimentaire or "vegetarien", "végétarien"),
         },
-        f"repas_{PAST_DAYS}_jours": repas,
-        f"activites_{PAST_DAYS}_jours": activites,
+        f"repas_{MEAL_DAYS}_jours": repas,
+        f"activites_{ACTIVITY_DAYS}_jours": activites,
+        "volume_sport_par_semaine": [
+            {"semaine_du": monday.isoformat(), "seances": w["seances"], "minutes": w["minutes"], "km": round(w["km"], 1)}
+            for monday, w in sorted(weeks.items())
+        ],
         f"sante_garmin_{PAST_DAYS}_jours": sante,
         f"pesees_{WEIGHT_DAYS}_jours": pesees,
         "forme_garmin": forme,
