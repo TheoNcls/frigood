@@ -107,19 +107,27 @@ export function CoachCard() {
   const queryClient = useQueryClient();
   const [showData, setShowData] = useState(false);
 
+  // Le week-end : deux onglets (ce week-end = semaine en cours, semaine prochaine) ; en semaine : la semaine en cours
+  const weekend = [0, 6].includes(new Date().getDay());
+  const [choice, setChoice] = useState<"prochaine" | "courante">("prochaine");
+  const semaine = weekend ? choice : "courante";
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const monday = (d: Date) => { const m = new Date(d); m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m; };
+  const thisMonday = monday(new Date());
+  const nextMonday = new Date(thisMonday); nextMonday.setDate(nextMonday.getDate() + 7);
+  const nextSunday = new Date(nextMonday); nextSunday.setDate(nextSunday.getDate() + 6);
+  const targetMonday = semaine === "prochaine" ? nextMonday : thisMonday;
+  const target = iso(targetMonday);
+
   const report = useQuery({
-    queryKey: ["coach", user.id],
-    queryFn: () => api<CoachReport | null>(`/users/${user.id}/coach/`),
+    queryKey: ["coach", user.id, target],
+    queryFn: () => api<CoachReport | null>(`/users/${user.id}/coach/`, { query: { semaine_du: target } }),
   });
   const context = useQuery({
     queryKey: ["coach_context", user.id],
     queryFn: () => api<unknown>(`/users/${user.id}/coach/context`),
     enabled: showData,
   });
-  // Le week-end : préparer la semaine prochaine (par défaut) ou finir celle en cours
-  const weekend = [0, 6].includes(new Date().getDay());
-  const [choice, setChoice] = useState<"prochaine" | "courante">("prochaine");
-  const semaine = weekend ? choice : "courante";
   const weeks = useQuery({
     queryKey: ["coach_weeks", user.id],
     queryFn: () => api<string[]>(`/users/${user.id}/coach/weeks`),
@@ -127,7 +135,7 @@ export function CoachCard() {
   const ask = useMutation({
     mutationFn: () => api<CoachReport>(`/users/${user.id}/coach/`, { method: "POST", query: { semaine } }),
     onSuccess: (r) => {
-      queryClient.setQueryData(["coach", user.id], r);
+      queryClient.setQueryData(["coach", user.id, target], r);
       queryClient.invalidateQueries({ queryKey: ["coach_weeks", user.id] });
       toast(semaine === "prochaine" ? "Ta semaine prochaine est prête" : "Ton bilan est prêt");
     },
@@ -137,15 +145,9 @@ export function CoachCard() {
   const r = report.data;
   const at = r ? fromUtc(r.created_at) : null;
   // Un bilan par semaine préparée (du lundi au dimanche)
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const monday = (d: Date) => { const m = new Date(d); m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m; };
-  const thisMonday = monday(new Date());
-  const nextMonday = new Date(thisMonday); nextMonday.setDate(nextMonday.getDate() + 7);
   const done = new Set(weeks.data ?? []);
-  const targetMonday = semaine === "prochaine" ? nextMonday : thisMonday;
-  const doneTarget = done.has(iso(targetMonday));
+  const doneTarget = done.has(target);
   const ddmm = (d: Date) => d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
-  const nextSunday = new Date(nextMonday); nextSunday.setDate(nextSunday.getDate() + 6);
 
   return (
     <Card title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-violet-600" /> Coach</span>}>
@@ -166,8 +168,8 @@ export function CoachCard() {
             value={choice}
             onChange={setChoice}
             options={[
-              { value: "prochaine", label: `Semaine prochaine (${ddmm(nextMonday)} → ${ddmm(nextSunday)})` },
               { value: "courante", label: "Ce week-end" },
+              { value: "prochaine", label: `Semaine prochaine (${ddmm(nextMonday)} → ${ddmm(nextSunday)})` },
             ]}
           />
         </div>
@@ -185,7 +187,7 @@ export function CoachCard() {
             {semaine === "prochaine"
               ? `Semaine du ${ddmm(nextMonday)} déjà préparée.`
               : weekend
-                ? `Bilan de la semaine fait. Tu peux préparer la semaine prochaine.`
+                ? `Bilan de la semaine en cours déjà fait.`
                 : `Bilan de la semaine fait. Prochain possible le week-end, pour la semaine du ${ddmm(nextMonday)}.`}
           </span>
         )}
@@ -274,7 +276,7 @@ function CoachActivities({ report }: { report: CoachReport }) {
       method: "POST", body: { indexes: [...chosen].sort((a, b) => a - b) },
     }),
     onSuccess: (res) => {
-      queryClient.setQueryData(["coach", user.id], { ...report, activites_ajoutees_at: new Date().toISOString() });
+      queryClient.invalidateQueries({ queryKey: ["coach", user.id] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       toast(`${res.added} activité${res.added > 1 ? "s" : ""} ajoutée${res.added > 1 ? "s" : ""} à l'agenda` +
         (res.skipped ? ` (${res.skipped} ignorée${res.skipped > 1 ? "s" : ""} : jour passé)` : ""));

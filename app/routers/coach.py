@@ -13,6 +13,16 @@ router = APIRouter(tags=["coach"], dependencies=[Depends(get_principal)])
 
 
 
+def _target_of(report: CoachReport) -> date | None:
+    """Semaine préparée par un bilan (anciens bilans : la semaine où ils ont été faits)."""
+    if report.semaine_cible:
+        return report.semaine_cible
+    if report.created_at:
+        d = local_date(report.created_at)
+        return d - timedelta(days=d.weekday())
+    return None
+
+
 def _targets(db: Session, user_id: int) -> set:
     """Semaines déjà préparées (anciens bilans sans semaine : la semaine où ils ont été faits)."""
     out = set()
@@ -34,10 +44,15 @@ def _user(db: Session, user_id: int, principal: Principal) -> User:
 
 
 @router.get("/users/{user_id}/coach/", response_model=CoachReportRead | None)
-def last_report(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+def last_report(user_id: int, semaine_du: date | None = Query(default=None),
+                principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Dernier bilan, ou celui qui prépare la semaine du lundi `semaine_du`."""
     _user(db, user_id, principal)
-    return (db.query(CoachReport).filter_by(user_id=user_id)
-            .order_by(CoachReport.created_at.desc(), CoachReport.id.desc()).first())
+    reports = (db.query(CoachReport).filter_by(user_id=user_id)
+               .order_by(CoachReport.created_at.desc(), CoachReport.id.desc()))
+    if semaine_du is None:
+        return reports.first()
+    return next((r for r in reports if _target_of(r) == semaine_du), None)
 
 
 @router.get("/users/{user_id}/coach/weeks")
