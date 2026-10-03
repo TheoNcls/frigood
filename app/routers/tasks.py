@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
 from app.garmin_service import GarminSessionExpired, login_with_tokens, save_tokens
-from app.garmin_workouts import is_running_task, remove_task, send_task
+from app.garmin_workouts import can_send, remove_task, send_task
 from app.models import Activity, ActivityType, Task, TaskCompletion, User
 from app.push_service import now_local
 from app.schemas import TaskCreate, TaskDone, TaskOccurrence, TaskRead
@@ -68,6 +68,17 @@ def sport_activities(db: Session, user_id: int, tasks: list[Task], start: date, 
     return found
 
 
+def _seance_fields(raw: str | None) -> dict:
+    """Course : étapes (liste) ; renforcement : {"exercices": [...]}."""
+    try:
+        seance = json.loads(raw) if raw else None
+    except ValueError:
+        seance = None
+    if isinstance(seance, dict):
+        return {"seance": None, "exercices": seance.get("exercices") or None}
+    return {"seance": seance or None, "exercices": None}
+
+
 def _statut(c: TaskCompletion | None) -> dict:
     if c is None:
         return {"statut": None, "fait": False, "done_at": None}
@@ -121,7 +132,7 @@ def list_occurrences(
                 recurrence_fin=t.recurrence_fin, serie_debut=t.date, important=bool(t.important),
                 activity_type_id=t.activity_type_id, activity_type_nom=t.activity_type.nom if t.activity_type else None,
                 par_coach=bool(t.par_coach),
-                seance=json.loads(t.seance) if t.seance else None,
+                **_seance_fields(t.seance),
                 garmin_envoye=bool(t.garmin_workout_id),
                 auto=bool(activity_id and not completion), activity_id=activity_id,
                 **statut,
@@ -197,8 +208,8 @@ def _garmin_error(e: Exception):
 def send_to_garmin(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     """Crée la séance (course à pied) dans Garmin Connect et la programme au jour de la tâche."""
     task = _own_task(db, id, principal)
-    if not task.seance or not is_running_task(task):
-        raise HTTPException(status_code=400, detail="Seules les séances de course détaillées peuvent être envoyées pour l'instant")
+    if not can_send(task):
+        raise HTTPException(status_code=400, detail="Seules les séances détaillées de course ou de renforcement peuvent être envoyées")
     if task.recurrence:
         raise HTTPException(status_code=400, detail="Une tâche récurrente ne peut pas être envoyée sur la montre")
     if task.date < now_local().date():

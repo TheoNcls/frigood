@@ -7,7 +7,7 @@ import { useActivityTypes, useTasks } from "../api/queries";
 import { useCurrentUser } from "../auth/AuthContext";
 import { addDays, daysBetween, formatFull, formatLong, formatShort, parseISODate, todayISO } from "../lib/dates";
 import AddEntryModal from "./AddEntry";
-import { GarminSendButton, SeanceSteps } from "./Seance";
+import { ExercisesList, GarminSendButton, SeanceSteps } from "./Seance";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
 import { ConfirmButton, Field, Segmented } from "./ui";
@@ -192,10 +192,11 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
               </span>
             ) : null}
           </div>
-          {task.seance && task.seance.length > 0 && (
+          {((task.seance && task.seance.length > 0) || (task.exercices && task.exercices.length > 0)) && (
             <div className="space-y-2 rounded-lg bg-white/80 p-2">
               <div className="text-xs font-semibold text-slate-600">Séance</div>
-              <SeanceSteps steps={task.seance} />
+              {task.seance && task.seance.length > 0 && <SeanceSteps steps={task.seance} />}
+              {task.exercices && task.exercices.length > 0 && <ExercisesList exercises={task.exercices} />}
               {!task.recurrence && task.date >= todayISO() && <GarminSendButton task={task} />}
             </div>
           )}

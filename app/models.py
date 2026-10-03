@@ -126,6 +126,8 @@ class User(Base):
     date_naissance = Column(Date, nullable=True)
     # Régime alimentaire (transmis au coach) : omnivore, flexitarien, pescetarien, vegetarien, vegan
     regime_alimentaire = Column(String(20), nullable=False, default="vegetarien", server_default="vegetarien")
+    # Matériel de renfo disponible (JSON, clés de garmin_workouts.EQUIPMENT) ; vide = pas renseigné
+    materiel_sport = Column(Text, nullable=True)
     # Texte libre : infos et objectifs de la personne, pour un futur coaching personnalisé (Claude)
     profil_coaching = Column(Text, nullable=True)
 
@@ -163,6 +165,13 @@ class User(Base):
     def zones_fc(self) -> dict | None:
         try:
             return json.loads(self.garmin_zones_fc) if self.garmin_zones_fc else None
+        except ValueError:
+            return None
+
+    @property
+    def materiel(self) -> list[str] | None:
+        try:
+            return json.loads(self.materiel_sport) if self.materiel_sport else None
         except ValueError:
             return None
 

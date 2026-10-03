@@ -12,6 +12,8 @@ export interface User {
   /** Infos et objectifs en texte libre (futur coaching personnalisé) */
   profil_coaching: string | null;
   regime_alimentaire: RegimeAlimentaire;
+  /** Matériel de renfo disponible (null : pas renseigné, le coach a tous les exercices) */
+  materiel: string[] | null;
   /** Zones cardiaques Garmin (profil course) */
   zones_fc: { profil: string; fc_max: number | null; fc_repos: number | null; zones: { zone: number; min: number; max: number | null }[] } | null;
   garmin_connected: boolean;
@@ -336,6 +338,8 @@ export interface TaskOccurrence {
   par_coach: boolean;
   /** Séance structurée (course) et envoi sur la montre */
   seance: SeanceStep[] | null;
+  /** Séance de renforcement : exercices */
+  exercices: StrengthExercise[] | null;
   garmin_envoye: boolean;
   /** Faite parce qu'une activité du bon type existe ce jour-là (pas de coche manuelle) */
   auto: boolean;
@@ -357,3 +361,12 @@ export interface SeanceSimpleStep {
 }
 
 export type SeanceStep = SeanceSimpleStep | { type: "repetition"; repetitions: number; etapes: SeanceSimpleStep[] };
+
+export interface StrengthExercise {
+  exercice: string;
+  series: number;
+  repetitions: number | null;
+  duree_s: number | null;
+  charge_kg: number | null;
+  repos_s: number;
+}

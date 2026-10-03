@@ -197,6 +197,8 @@ function PreferencesCard() {
     <Card title="Préférences">
       <RegimeSetting />
       <div className="my-4 border-t border-slate-100" />
+      <MaterielSetting />
+      <div className="my-4 border-t border-slate-100" />
       <label className="flex cursor-pointer items-start justify-between gap-4">
         <span>
           <span className="block text-sm font-medium text-slate-800">Photos des produits</span>
@@ -258,6 +260,73 @@ function RegimeSetting() {
       >
         {REGIME_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
+    </div>
+  );
+}
+
+// Mêmes clés que garmin_workouts.EQUIPMENT côté serveur
+const MATERIEL_OPTIONS: { value: string; label: string }[] = [
+  { value: "halteres", label: "Haltères" },
+  { value: "kettlebell", label: "Kettlebell" },
+  { value: "elastiques", label: "Élastiques" },
+  { value: "barre", label: "Barre et disques" },
+  { value: "banc", label: "Banc de musculation" },
+  { value: "barre_traction", label: "Barre de traction" },
+  { value: "machines", label: "Machines et poulies (salle)" },
+  { value: "trx", label: "TRX / sangles" },
+  { value: "swiss_ball", label: "Swiss ball" },
+  { value: "medecine_ball", label: "Médecine-ball" },
+];
+
+/** Matériel de renfo : le coach ne propose que des exercices faisables avec. */
+function MaterielSetting() {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const [picked, setPicked] = useState<string[]>(user.materiel ?? []);
+  const changed = user.materiel === null || [...picked].sort().join() !== [...user.materiel].sort().join();
+  const all = picked.length === MATERIEL_OPTIONS.length;
+
+  const save = useMutation({
+    mutationFn: () => api<User>(`/users/${user.id}`, { method: "PUT", body: { materiel: picked } }),
+    onSuccess: (u) => { setUser(u); setPicked(u.materiel ?? []); toast("Matériel enregistré"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+  const toggle = (v: string) => setPicked((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
+
+  return (
+    <div>
+      <span className="block text-sm font-medium text-slate-800">Matériel de renforcement</span>
+      <span className="block text-xs text-slate-500">
+        Le coach choisit ses exercices (poids du corps, mobilité, et ceux de ton matériel) parmi ceux que ta montre Garmin connaît.
+        {user.materiel === null && " Pas encore renseigné : il peut tout proposer."}
+      </span>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <span className="rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs text-brand-700">Poids du corps ✓</span>
+        {MATERIEL_OPTIONS.map((o) => {
+          const on = picked.includes(o.value);
+          return (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={on}
+              className={`rounded-full border px-3 py-1 text-xs transition ${on ? "border-brand-600 bg-brand-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+              onClick={() => toggle(o.value)}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <button type="button" className="text-xs font-medium text-brand-700 hover:underline"
+          onClick={() => setPicked(all ? [] : MATERIEL_OPTIONS.map((o) => o.value))}>
+          {all ? "Tout décocher" : "Salle de sport : tout cocher"}
+        </button>
+        <button type="button" className="btn-primary" disabled={save.isPending || !changed} onClick={() => save.mutate()}>
+          Enregistrer
+        </button>
+      </div>
     </div>
   );
 }

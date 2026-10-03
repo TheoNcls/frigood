@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app import coach
+from app.garmin_workouts import exercises_for
 from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
 from app.models import ActivityType, CoachReport, Task, User
@@ -92,7 +93,7 @@ def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^
     context = coach.build_context(db, user, today)
     sports = [t.nom for t in db.query(ActivityType).all()]
     try:
-        result, usage = coach.ask_claude(context, sports, week)
+        result, usage = coach.ask_claude(context, sports, week, exercises_for(user.materiel))
     except coach.CoachError as e:
         raise HTTPException(status_code=502, detail=str(e))
     report = CoachReport(
@@ -131,7 +132,8 @@ def add_activities(report_id: int, data: CoachActivitiesAdd, principal: Principa
             notes = f"{a['duree_min']} min · {notes}"
         db.add(Task(user_id=report.user_id, titre=a["titre"][:200], date=d, notes=notes,
                     activity_type_id=types[a["sport"]], par_coach=True,
-                    seance=json.dumps(a["etapes"], ensure_ascii=False) if a.get("etapes") else None))
+                    seance=json.dumps(a["etapes"], ensure_ascii=False) if a.get("etapes")
+                    else json.dumps({"exercices": a["exercices"]}, ensure_ascii=False) if a.get("exercices") else None))
         added += 1
     report.activites_ajoutees_at = datetime.utcnow()
     db.commit()

@@ -271,6 +271,19 @@ class UserUpdate(BaseModel):
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
     regime_alimentaire: str | None = None
+    # Envoyé à null pour revenir à « pas renseigné » (tous les exercices)
+    materiel: list[str] | None = None
+
+    @field_validator("materiel")
+    @classmethod
+    def _check_materiel(cls, v: list[str] | None) -> list[str] | None:
+        from app.garmin_workouts import EQUIPMENT
+        if v is None:
+            return None
+        unknown = [m for m in v if m not in EQUIPMENT]
+        if unknown:
+            raise ValueError(f"Matériel inconnu : {', '.join(unknown)}")
+        return sorted(set(v))
 
     @field_validator("regime_alimentaire")
     @classmethod
@@ -315,6 +328,7 @@ class UserRead(BaseModel):
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
     regime_alimentaire: str = "vegetarien"
+    materiel: list[str] | None = None
     zones_fc: dict | None = None
     garmin_connected: bool = False
     garmin_auto_sync: bool = False
@@ -487,6 +501,7 @@ class TaskOccurrence(BaseModel):
     activity_type_nom: str | None = None
     par_coach: bool = False
     seance: list | None = None
+    exercices: list | None = None
     garmin_envoye: bool = False
     # Validée par une activité du bon type ce jour-là (sans coche manuelle)
     auto: bool = False

@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from app.fridge_service import to_base_qty
-from app.garmin_workouts import clean_seance
+from app.garmin_workouts import EQUIPMENT, clean_exercises, clean_seance, exercises_for
 from app.garmin_service import activity_details
 from app.models import (
     Activity, BodyComposition, CoachReport, DailyStat, FitnessMetric, FridgeItem, Ingredient, MealLog, Recipe, Task, TaskCompletion,
@@ -52,6 +52,11 @@ Tu réponds dans le format JSON demandé :
   Garmin (échauffement, efforts, récupérations, blocs répétés, retour au calme), chaque étape en durée (secondes) OU
   en distance (mètres), avec de préférence une cible en zone cardiaque Z1 à Z5 (ses zones Garmin sont dans le profil),
   sinon une allure en secondes par km. Pour les autres sports, « etapes » est une liste vide.
+  Pour le renforcement / la musculation, remplis « exercices » (choisis-les dans la liste proposée) : séries,
+  répétitions OU durée (gainage), charge en kg si utile (sinon null : poids du corps) et repos entre les séries.
+  La liste ne contient que des exercices faisables avec son matériel (« materiel_renfo_disponible » dans le profil).
+  Pense à un court échauffement et à quelques étirements ou exercices de mobilité quand c'est pertinent.
+  Pour les autres sports, « exercices » est une liste vide.
 
 Règles :
 - Appuie chaque remarque sur les données (chiffres, dates, tendances) ; ne devine pas ce qui n'y est pas.
@@ -291,6 +296,8 @@ def build_context(db: Session, user: User, today: date) -> dict:
             "regime": REGIME_LABELS.get(user.regime_alimentaire or "vegetarien", "végétarien"),
             "zones_fc_course_garmin": (user.zones_fc or {}).get("zones"),
             "fc_max": (user.zones_fc or {}).get("fc_max"),
+            "materiel_renfo_disponible": (["poids du corps"] + [EQUIPMENT[m] for m in user.materiel if m in EQUIPMENT])
+                                         if user.materiel is not None else None,
         },
         f"repas_{MEAL_DAYS}_jours": repas,
         f"activites_{ACTIVITY_DAYS}_jours": activites,
@@ -348,7 +355,24 @@ REPEAT_SCHEMA = {
 }
 
 
-def response_schema(sports: list[str]) -> dict:
+def exercise_schema(exercises: list[str] | None = None) -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            # Liste fermée : uniquement les exercices faisables avec son matériel
+            "exercice": {"type": "string", "enum": exercises or exercises_for(None)},
+            "series": {"type": "integer"},
+            "repetitions": {**_NULLABLE_INT, "description": "Répétitions par série (ou null si durée)"},
+            "duree_s": {**_NULLABLE_INT, "description": "Durée par série en secondes, pour le gainage (ou null)"},
+            "charge_kg": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Charge en kg (ou null : poids du corps)"},
+            "repos_s": {"type": "integer", "description": "Repos après chaque série, en secondes"},
+        },
+        "required": ["exercice", "series", "repetitions", "duree_s", "charge_kg", "repos_s"],
+        "additionalProperties": False,
+    }
+
+
+def response_schema(sports: list[str], exercises: list[str] | None = None) -> dict:
     markdown = {"type": "string", "description": "Markdown simple (listes à puces, gras), sans titre"}
     return {
         "type": "object",
@@ -387,8 +411,13 @@ def response_schema(sports: list[str]) -> dict:
                             "description": "Course à pied : la séance étape par étape (liste vide pour les autres sports)",
                             "items": {"anyOf": [STEP_SCHEMA, REPEAT_SCHEMA]},
                         },
+                        "exercices": {
+                            "type": "array",
+                            "description": "Renforcement / musculation : les exercices (liste vide pour les autres sports)",
+                            "items": exercise_schema(exercises),
+                        },
                     },
-                    "required": ["date", "sport", "titre", "duree_min", "details", "etapes"],
+                    "required": ["date", "sport", "titre", "duree_min", "details", "etapes", "exercices"],
                     "additionalProperties": False,
                 },
             },
@@ -405,7 +434,8 @@ def context_today(context: dict) -> date:
         return date.today()
 
 
-def ask_claude(context: dict, sports: list[str], week: tuple[date, date]) -> tuple[dict, dict]:
+def ask_claude(context: dict, sports: list[str], week: tuple[date, date],
+               exercises: list[str] | None = None) -> tuple[dict, dict]:
     """Renvoie (bilan structuré, infos d'usage). Lève CoachError avec un message lisible."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -428,7 +458,7 @@ def ask_claude(context: dict, sports: list[str], week: tuple[date, date]) -> tup
             max_tokens=16000,
             system=SYSTEM_PROMPT,
             thinking={"type": "adaptive"},
-            output_config={"effort": "high", "format": {"type": "json_schema", "schema": response_schema(sports)}},
+            output_config={"effort": "high", "format": {"type": "json_schema", "schema": response_schema(sports, exercises)}},
             # Repli automatique sur un autre modèle si celui-ci décline la demande
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
@@ -478,6 +508,7 @@ def clean_result(data: dict, sports: set[str], week: tuple[date, date]) -> dict:
             "duree_min": duree if isinstance(duree, int) and 0 < duree < 600 else None,
             "details": str(a.get("details") or "").strip()[:2000],
             "etapes": clean_seance(a.get("etapes")),
+            "exercices": clean_exercises(a.get("exercices")),
         })
     activites.sort(key=lambda a: a["date"])
     return {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Watch } from "lucide-react";
 import { ApiError, api } from "../api/client";
-import type { SeanceSimpleStep, SeanceStep, TaskOccurrence } from "../api/types";
+import type { SeanceSimpleStep, SeanceStep, StrengthExercise, TaskOccurrence } from "../api/types";
 import { useToast } from "./Toast";
 import { useInvalidateTasks } from "./Tasks";
 
@@ -46,6 +46,24 @@ export function SeanceSteps({ steps }: { steps: SeanceStep[] }) {
           <ul className="space-y-1 pl-1">{s.etapes.map((e, j) => <StepLine key={j} s={e} />)}</ul>
         </li>
       ) : <StepLine key={i} s={s} />)}
+    </ol>
+  );
+}
+
+/** Séance de renforcement : exercices, séries, répétitions (ou durée), charge et repos. */
+export function ExercisesList({ exercises }: { exercises: StrengthExercise[] }) {
+  return (
+    <ol className="space-y-1 text-xs">
+      {exercises.map((e, i) => (
+        <li key={i} className="flex flex-wrap items-baseline gap-x-2">
+          <span className="font-medium text-slate-800">{e.exercice}</span>
+          <span className="text-slate-500">
+            {e.series} × {e.duree_s ? `${e.duree_s} s` : `${e.repetitions} rép.`}
+            {e.charge_kg ? ` · ${e.charge_kg.toLocaleString("fr-FR")} kg` : ""}
+            {e.repos_s ? ` · repos ${e.repos_s} s` : ""}
+          </span>
+        </li>
+      ))}
     </ol>
   );
 }

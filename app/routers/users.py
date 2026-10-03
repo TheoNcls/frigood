@@ -1,3 +1,4 @@
+import json
 from app.garmin_body import apply_protein_target
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -88,11 +89,13 @@ def update_user(id: int, data: UserUpdate, principal: Principal = Depends(get_pr
     check_user_access(principal, id)
     user = _get_user(db, id)
     clearable = {"proteines_g_kg", "date_naissance", "profil_coaching"}
-    for key, value in data.model_dump(exclude_none=True, exclude=clearable).items():
+    for key, value in data.model_dump(exclude_none=True, exclude=clearable | {"materiel"}).items():
         setattr(user, key, value)
     # Champs qu'on peut effacer : envoyés explicitement, même à null (g/kg à null = objectif fixe)
     for key in clearable & data.model_fields_set:
         setattr(user, key, getattr(data, key))
+    if "materiel" in data.model_fields_set:
+        user.materiel_sport = json.dumps(data.materiel) if data.materiel is not None else None
     db.commit()
     apply_protein_target(db, user)
     db.refresh(user)
