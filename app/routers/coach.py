@@ -1,6 +1,6 @@
 import json
 from datetime import date, datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app import coach
 from app.auth import Principal, check_user_access, get_principal
@@ -11,6 +11,18 @@ from app.schemas import CoachActivitiesAdd, CoachReportRead
 
 router = APIRouter(tags=["coach"], dependencies=[Depends(get_principal)])
 
+
+
+def _targets(db: Session, user_id: int) -> set:
+    """Semaines déjà préparées (anciens bilans sans semaine : la semaine où ils ont été faits)."""
+    out = set()
+    for semaine_cible, created_at in db.query(CoachReport.semaine_cible, CoachReport.created_at).filter_by(user_id=user_id):
+        if semaine_cible:
+            out.add(semaine_cible)
+        elif created_at:
+            d = local_date(created_at)
+            out.add(d - timedelta(days=d.weekday()))
+    return out
 
 
 def _user(db: Session, user_id: int, principal: Principal) -> User:
@@ -28,6 +40,13 @@ def last_report(user_id: int, principal: Principal = Depends(get_principal), db:
             .order_by(CoachReport.created_at.desc(), CoachReport.id.desc()).first())
 
 
+@router.get("/users/{user_id}/coach/weeks")
+def prepared_weeks(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Lundis des semaines déjà préparées par un bilan."""
+    _user(db, user_id, principal)
+    return sorted(d.isoformat() for d in _targets(db, user_id))
+
+
 @router.get("/users/{user_id}/coach/context")
 def preview_context(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     """Les données qui seraient envoyées au coach, pour vérifier ce qu'il voit."""
@@ -36,29 +55,35 @@ def preview_context(user_id: int, principal: Principal = Depends(get_principal),
 
 
 @router.post("/users/{user_id}/coach/", response_model=CoachReportRead)
-def new_report(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^(courante|prochaine)$"),
+               principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Bilan et séances pour la semaine en cours, ou (le week-end seulement) pour la semaine prochaine."""
     user = _user(db, user_id, principal)
     today = now_local().date()
-    monday = today - timedelta(days=today.weekday())
-    last = (db.query(CoachReport).filter_by(user_id=user_id).order_by(CoachReport.created_at.desc()).first())
-    if last and last.created_at and local_date(last.created_at) >= monday:
-        # Un bilan par semaine (chaque bilan coûte un appel à Claude)
+    next_week = semaine == "prochaine"
+    if next_week and not coach.is_weekend(today):
+        raise HTTPException(status_code=400, detail="La semaine prochaine se prépare le week-end (samedi ou dimanche)")
+    week = coach.week_window(today, next_week)
+    target = week[0] - timedelta(days=week[0].weekday())   # lundi de la semaine préparée
+    if target in _targets(db, user_id):
+        # Un bilan par semaine préparée (chaque bilan coûte un appel à Claude)
+        label = "la semaine prochaine" if next_week else "cette semaine"
         raise HTTPException(
             status_code=409,
-            detail=f"Tu as déjà fait ton bilan cette semaine (le {local_date(last.created_at):%d/%m}). "
-                   f"Prochain bilan possible à partir du lundi {monday + timedelta(days=7):%d/%m}.",
+            detail=f"Tu as déjà fait ton bilan pour {label} (semaine du lundi {target:%d/%m}). "
+                   + ("" if next_week else f"Prochain bilan possible le week-end pour la semaine du {target + timedelta(days=7):%d/%m}."),
         )
 
     context = coach.build_context(db, user, today)
     sports = [t.nom for t in db.query(ActivityType).all()]
     try:
-        result, usage = coach.ask_claude(context, sports, coach.week_window(today))
+        result, usage = coach.ask_claude(context, sports, week)
     except coach.CoachError as e:
         raise HTTPException(status_code=502, detail=str(e))
     report = CoachReport(
         user_id=user_id, texte=coach.to_markdown(result), donnees=json.dumps(result, ensure_ascii=False),
         model=usage.get("model"), input_tokens=usage.get("input_tokens"), output_tokens=usage.get("output_tokens"),
-        contexte=json.dumps(context, ensure_ascii=False, default=str),
+        contexte=json.dumps(context, ensure_ascii=False, default=str), semaine_cible=target,
     )
     db.add(report)
     db.commit()

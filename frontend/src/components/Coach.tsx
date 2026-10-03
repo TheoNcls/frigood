@@ -8,7 +8,7 @@ import type { SeanceStep } from "../api/types";
 import { SeanceSteps } from "./Seance";
 import { formatLong, todayISO } from "../lib/dates";
 import { useToast } from "./Toast";
-import { Card, Spinner } from "./ui";
+import { Card, Segmented, Spinner } from "./ui";
 
 interface CoachRecipe {
   titre: string;
@@ -44,6 +44,8 @@ interface CoachReport {
   /** Bilan structuré (les anciens bilans n'ont que le texte) */
   donnees: CoachResult | null;
   activites_ajoutees_at: string | null;
+  /** Lundi de la semaine préparée */
+  semaine_cible: string | null;
 }
 
 /** Gras **…** dans une ligne. */
@@ -114,19 +116,36 @@ export function CoachCard() {
     queryFn: () => api<unknown>(`/users/${user.id}/coach/context`),
     enabled: showData,
   });
+  // Le week-end : préparer la semaine prochaine (par défaut) ou finir celle en cours
+  const weekend = [0, 6].includes(new Date().getDay());
+  const [choice, setChoice] = useState<"prochaine" | "courante">("prochaine");
+  const semaine = weekend ? choice : "courante";
+  const weeks = useQuery({
+    queryKey: ["coach_weeks", user.id],
+    queryFn: () => api<string[]>(`/users/${user.id}/coach/weeks`),
+  });
   const ask = useMutation({
-    mutationFn: () => api<CoachReport>(`/users/${user.id}/coach/`, { method: "POST" }),
-    onSuccess: (r) => { queryClient.setQueryData(["coach", user.id], r); toast("Ton bilan est prêt"); },
+    mutationFn: () => api<CoachReport>(`/users/${user.id}/coach/`, { method: "POST", query: { semaine } }),
+    onSuccess: (r) => {
+      queryClient.setQueryData(["coach", user.id], r);
+      queryClient.invalidateQueries({ queryKey: ["coach_weeks", user.id] });
+      toast(semaine === "prochaine" ? "Ta semaine prochaine est prête" : "Ton bilan est prêt");
+    },
     onError: (e) => toast(e.message, "error"),
   });
 
   const r = report.data;
   const at = r ? fromUtc(r.created_at) : null;
-  // Un bilan par semaine (du lundi au dimanche)
+  // Un bilan par semaine préparée (du lundi au dimanche)
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const monday = (d: Date) => { const m = new Date(d); m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m; };
   const thisMonday = monday(new Date());
-  const doneThisWeek = !!at && at >= thisMonday;
   const nextMonday = new Date(thisMonday); nextMonday.setDate(nextMonday.getDate() + 7);
+  const done = new Set(weeks.data ?? []);
+  const targetMonday = semaine === "prochaine" ? nextMonday : thisMonday;
+  const doneTarget = done.has(iso(targetMonday));
+  const ddmm = (d: Date) => d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+  const nextSunday = new Date(nextMonday); nextSunday.setDate(nextSunday.getDate() + 6);
 
   return (
     <Card title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-violet-600" /> Coach</span>}>
@@ -140,15 +159,34 @@ export function CoachCard() {
           <Link to="/profil" className="font-medium underline">Profil → Mes infos & objectifs</Link>.
         </p>
       )}
+      {weekend && (
+        <div className="mb-3">
+          <Segmented
+            full
+            value={choice}
+            onChange={setChoice}
+            options={[
+              { value: "prochaine", label: `Semaine prochaine (${ddmm(nextMonday)} → ${ddmm(nextSunday)})` },
+              { value: "courante", label: "Ce week-end" },
+            ]}
+          />
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className="btn-primary" disabled={ask.isPending || doneThisWeek} onClick={() => ask.mutate()}>
+        <button type="button" className="btn-primary" disabled={ask.isPending || doneTarget || weeks.isLoading} onClick={() => ask.mutate()}>
           <Sparkles className="h-4 w-4" />
-          {ask.isPending ? "Le coach analyse tes données…" : r ? "Nouveau bilan" : "Demander mon bilan"}
+          {ask.isPending ? "Le coach analyse tes données…"
+            : semaine === "prochaine" ? "Préparer ma semaine prochaine"
+              : r ? "Nouveau bilan" : "Demander mon bilan"}
         </button>
         {ask.isPending && <span className="text-xs text-slate-500">Compte jusqu'à une minute.</span>}
-        {doneThisWeek && !ask.isPending && (
+        {doneTarget && !ask.isPending && (
           <span className="text-xs text-slate-500">
-            Bilan de la semaine fait. Prochain possible le lundi {nextMonday.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}.
+            {semaine === "prochaine"
+              ? `Semaine du ${ddmm(nextMonday)} déjà préparée.`
+              : weekend
+                ? `Bilan de la semaine fait. Tu peux préparer la semaine prochaine.`
+                : `Bilan de la semaine fait. Prochain possible le week-end, pour la semaine du ${ddmm(nextMonday)}.`}
           </span>
         )}
       </div>
@@ -157,6 +195,7 @@ export function CoachCard() {
         <div className="mt-4 border-t border-slate-100 pt-3">
           <div className="mb-2 text-xs text-slate-500">
             Bilan du {at!.toLocaleDateString("fr-FR")} à {at!.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            {r.semaine_cible && at! < new Date(`${r.semaine_cible}T00:00`) && ` · pour la semaine du ${ddmm(new Date(`${r.semaine_cible}T12:00`))}`}
           </div>
           {r.donnees ? <StructuredReport report={r} /> : <CoachText text={r.texte} />}
           <p className="mt-4 text-xs text-slate-400">Conseils générés par une IA à partir de tes données : ils ne remplacent pas l'avis d'un professionnel de santé.</p>

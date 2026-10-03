@@ -310,9 +310,17 @@ def build_context(db: Session, user: User, today: date) -> dict:
 
 # ── Appel à Claude ────────────────────────────────────────────────────────────
 
-def week_window(today: date) -> tuple[date, date]:
-    """Séances proposées d'aujourd'hui jusqu'au dimanche (le dimanche : ce jour-là seulement)."""
-    return today, today + timedelta(days=6 - today.weekday())
+def week_window(today: date, next_week: bool = False) -> tuple[date, date]:
+    """Séances proposées d'aujourd'hui jusqu'au dimanche (le dimanche : ce jour-là seulement),
+    ou toute la semaine suivante, du lundi au dimanche."""
+    sunday = today + timedelta(days=6 - today.weekday())
+    if next_week:
+        return sunday + timedelta(days=1), sunday + timedelta(days=7)
+    return today, sunday
+
+
+def is_weekend(today: date) -> bool:
+    return today.weekday() >= 5
 
 
 _NULLABLE_INT = {"anyOf": [{"type": "integer"}, {"type": "null"}]}
@@ -390,6 +398,13 @@ def response_schema(sports: list[str]) -> dict:
     }
 
 
+def context_today(context: dict) -> date:
+    try:
+        return date.fromisoformat(context.get("aujourd_hui", ""))
+    except ValueError:
+        return date.today()
+
+
 def ask_claude(context: dict, sports: list[str], week: tuple[date, date]) -> tuple[dict, dict]:
     """Renvoie (bilan structuré, infos d'usage). Lève CoachError avec un message lisible."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -400,7 +415,9 @@ def ask_claude(context: dict, sports: list[str], week: tuple[date, date]) -> tup
     client = anthropic.Anthropic(api_key=api_key)
     sports = sorted(set(sports)) or ["Course à pied"]
     user_message = (
-        f"Fais-moi mon bilan. Séances à proposer entre le {week[0].isoformat()} et le {week[1].isoformat()} inclus.\n"
+        # Séances qui commencent après aujourd'hui : c'est la semaine prochaine, préparée le week-end
+        ("C'est le week-end : fais-moi mon bilan et prépare ma semaine prochaine. " if week[0] > context_today(context) else "Fais-moi mon bilan. ")
+        + f"Séances à proposer entre le {week[0].isoformat()} et le {week[1].isoformat()} inclus.\n"
         f"Sports possibles : {', '.join(sports)}.\n\nVoici mes données Frigood (JSON) :\n\n"
         + json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
     )

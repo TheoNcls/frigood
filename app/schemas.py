@@ -603,6 +603,7 @@ class CoachReportRead(BaseModel):
     output_tokens: int | None = None
     donnees: dict | None = None
     activites_ajoutees_at: datetime_type | None = None
+    semaine_cible: date_type | None = None
 
     @field_validator("donnees", mode="before")
     @classmethod

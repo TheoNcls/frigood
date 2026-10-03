@@ -459,3 +459,5 @@ class CoachReport(Base):
     contexte = deferred(Column(Text, nullable=True))   # données envoyées (JSON), pour comprendre un bilan après coup
     donnees = Column(Text, nullable=True)               # bilan structuré (JSON) : sections, recettes, activités
     activites_ajoutees_at = Column(DateTime, nullable=True)
+    # Lundi de la semaine préparée (un bilan par semaine préparée ; le week-end : la semaine suivante possible)
+    semaine_cible = Column(Date, nullable=True)
