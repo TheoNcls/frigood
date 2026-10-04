@@ -21,6 +21,8 @@ interface Row {
   checked: boolean;
   /** Ajouté à la recette */
   extra: boolean;
+  /** Ingrédient en option dans la recette (décoché par défaut) */
+  optional: boolean;
 }
 
 // Arrondi d'affichage : au gramme, au dixième sous 10 g
@@ -30,22 +32,39 @@ const num = (v: string) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** Ingrédients de la recette d'origine en g / ml, pour ce nombre de portions. */
+const baseQty = (ri: Recipe["ingredients"][number]) =>
+  ri.type_mesure === "unite" ? ri.quantite * (ri.ingredient.quantite_defaut ?? 0) : ri.quantite;
+
+/** Ingrédients de la recette d'origine en g / ml, pour ce nombre de portions (sans les options). */
 function recipeComposition(recipe: Recipe, portions: number): Map<number, number> {
   const f = portions / (recipe.portions || 1);
   const out = new Map<number, number>();
   for (const ri of recipe.ingredients) {
-    const base = ri.type_mesure === "unite" ? ri.quantite * (ri.ingredient.quantite_defaut ?? 0) : ri.quantite;
-    out.set(ri.ingredient_id, (out.get(ri.ingredient_id) ?? 0) + base * f);
+    if (ri.par_defaut) out.set(ri.ingredient_id, (out.get(ri.ingredient_id) ?? 0) + baseQty(ri) * f);
   }
   return out;
 }
 
+/** Lignes du formulaire : tous les ingrédients, les options décochées (mais déjà à la bonne quantité). */
 function recipeRows(recipe: Recipe, portions: number): Row[] {
-  return [...recipeComposition(recipe, portions)].map(([id, q]) => ({ ingredient_id: id, quantite: String(round(q)), checked: true, extra: false }));
+  const f = portions / (recipe.portions || 1);
+  const rows: Row[] = [];
+  for (const ri of recipe.ingredients) {
+    const same = rows.find((r) => r.ingredient_id === ri.ingredient_id);
+    if (same) {
+      same.quantite = String(round(num(same.quantite) + baseQty(ri) * f));
+      continue;
+    }
+    rows.push({ ingredient_id: ri.ingredient_id, quantite: String(round(baseQty(ri) * f)), checked: ri.par_defaut, extra: false, optional: !ri.par_defaut });
+  }
+  return rows;
 }
 
 const differs = (a: number, b: number) => Math.abs(a - b) > Math.max(1, 0.02 * b);
+
+function sameComposition(mine: Map<number, number>, original: Map<number, number>): boolean {
+  return mine.size === original.size && [...mine].every(([id, q]) => original.has(id) && !differs(q, original.get(id)!));
+}
 
 /** Ce qui change par rapport à la recette : « sans coriandre · + fromage 60 g · oignon 150 g ». */
 export function preparationChanges(prep: Preparation, recipe: Recipe | undefined, ingredients: Map<number, Ingredient>): string[] {
@@ -104,11 +123,8 @@ export function PrepareRecipeForm({ onDone }: { onDone: (item: FridgeItem) => vo
   const total = compositionMacros(used, ingredients.byId);
   const perPortion = portionsNum > 0 ? total.cal / portionsNum : 0;
 
-  const modified = useMemo(() => {
-    if (!recipe) return false;
-    const original = recipeComposition(recipe, scaledFor);
-    return rows.some((r) => r.extra || !r.checked || differs(num(r.quantite), original.get(r.ingredient_id) ?? 0));
-  }, [recipe, rows, scaledFor]);
+  // Différent de la recette : ingrédient retiré, option ou ingrédient ajouté, quantité changée
+  const modified = !!recipe && !sameComposition(new Map(used.map((u) => [u.ingredient_id, u.quantite])), recipeComposition(recipe, scaledFor));
 
   function chooseRecipe(id: number) {
     const r = recipes.byId.get(id);
@@ -137,7 +153,7 @@ export function PrepareRecipeForm({ onDone }: { onDone: (item: FridgeItem) => vo
     const ing = ingredients.byId.get(pendingAdd);
     setRows((rs) => rs.some((r) => r.ingredient_id === pendingAdd)
       ? rs.map((r) => (r.ingredient_id === pendingAdd ? { ...r, checked: true } : r))
-      : [...rs, { ingredient_id: pendingAdd, quantite: String(ing?.quantite_defaut ?? 100), checked: true, extra: true }]);
+      : [...rs, { ingredient_id: pendingAdd, quantite: String(ing?.quantite_defaut ?? 100), checked: true, extra: true, optional: false }]);
     setAdding(false);
     setPendingAdd(null);
   }
@@ -205,11 +221,12 @@ export function PrepareRecipeForm({ onDone }: { onDone: (item: FridgeItem) => vo
                           checked={r.checked}
                           onChange={(e) => setRow(i, { checked: e.target.checked })}
                         />
-                        <span className={`truncate text-sm ${r.checked ? "text-slate-800" : "text-slate-400 line-through"}`}>
+                        <span className={`truncate text-sm ${r.checked ? "text-slate-800" : r.optional ? "text-slate-500" : "text-slate-400 line-through"}`}>
                           {fridgeIngIds.has(r.ingredient_id) && <span title="Au frigo">🧊 </span>}
                           {ing?.nom ?? "?"}
                         </span>
                         {r.extra && <span className="badge shrink-0 bg-brand-50 text-brand-700">ajouté</span>}
+                        {r.optional && <span className="badge shrink-0 bg-slate-100 text-slate-500">option</span>}
                       </label>
                       <input
                         className="input w-20 py-1 text-right"

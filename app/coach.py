@@ -111,7 +111,8 @@ def _meal_totals(log_: MealLog, acc: dict):
         r: Recipe = log_.recipe
         factor = (log_.quantite or 1) / (r.portions or 1)
         for ri in r.ingredients:
-            _ingredient_totals(ri.ingredient, to_base_qty(ri.ingredient, ri.quantite, ri.type_mesure) * factor, acc)
+            if ri.par_defaut:   # les options ne comptent que si on les a cochées en préparant
+                _ingredient_totals(ri.ingredient, to_base_qty(ri.ingredient, ri.quantite, ri.type_mesure) * factor, acc)
 
 
 def _meal_label(log_: MealLog) -> str:

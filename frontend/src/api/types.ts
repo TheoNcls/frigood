@@ -140,6 +140,8 @@ export interface RecipeIngredient {
   ingredient_id: number;
   quantite: number;
   type_mesure: TypeMesure;
+  /** Coché par défaut à la préparation ; sinon une option (non comptée dans la recette) */
+  par_defaut: boolean;
   ingredient: Ingredient;
 }
 

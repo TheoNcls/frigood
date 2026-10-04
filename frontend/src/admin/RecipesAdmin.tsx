@@ -16,6 +16,7 @@ const NO_COUNTS = new Map<number, number>();
 function recipeExtras(recipe: Recipe) {
   const extras = new Map<string, { valeur: number; unite: string }>();
   for (const ri of recipe.ingredients) {
+    if (!ri.par_defaut) continue;   // options : non comptées
     const grams = ri.type_mesure === "unite" ? ri.quantite * (ri.ingredient.quantite_defaut ?? 0) : ri.quantite;
     for (const n of ri.ingredient.nutriments) {
       const e = extras.get(n.nutriment.nom) ?? { valeur: 0, unite: n.nutriment.unite };
@@ -189,7 +190,9 @@ function RecipeNutrition({ recipe }: { recipe: Recipe }) {
   const extras = recipeExtras(recipe);
   return (
     <div className="rounded-xl bg-slate-50 p-4">
-      <div className="mb-3 text-xs text-slate-500">Recette entière ({portions} portion(s))</div>
+      <div className="mb-3 text-xs text-slate-500">
+        Recette entière ({portions} portion(s)){recipe.ingredients.some((ri) => !ri.par_defaut) && ", sans les options"}
+      </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Calories" value={`${fmt(m.cal)} kcal`} hint={portions > 1 ? `${fmt(m.cal / portions)} / portion` : undefined} />
         <Stat label="Protéines" value={`${fmt(m.prot, 1)} g`} hint={portions > 1 ? `${fmt(m.prot / portions, 1)} / portion` : undefined} />
@@ -212,18 +215,25 @@ function RecipeIngredients({ recipe }: { recipe: Recipe }) {
   const [ingredientId, setIngredientId] = useState<number | null>(null);
   const [mesure, setMesure] = useState<TypeMesure>("poids");
   const [quantite, setQuantite] = useState("100");
+  const [parDefaut, setParDefaut] = useState(true);
   const ing = ingredientId ? ingredients.byId.get(ingredientId) : undefined;
 
   const add = useMutation({
     mutationFn: () => api(`/recipes/${recipe.id}/ingredients`, {
       method: "POST",
-      body: { ingredient_id: ingredientId, quantite: parseNum(quantite), type_mesure: mesure },
+      body: { ingredient_id: ingredientId, quantite: parseNum(quantite), type_mesure: mesure, par_defaut: parDefaut },
     }),
     onSuccess: () => { invalidate(); toast(`${ing?.nom} ajouté`); },
     onError: (e) => toast(e.message, "error"),
   });
   const remove = useMutation({
     mutationFn: (iid: number) => api(`/recipes/${recipe.id}/ingredients/${iid}`, { method: "DELETE" }),
+    onSuccess: invalidate,
+    onError: (e) => toast(e.message, "error"),
+  });
+  const toggle = useMutation({
+    mutationFn: ({ iid, par_defaut }: { iid: number; par_defaut: boolean }) =>
+      api(`/recipes/${recipe.id}/ingredients/${iid}`, { method: "PUT", body: { par_defaut } }),
     onSuccess: invalidate,
     onError: (e) => toast(e.message, "error"),
   });
@@ -237,11 +247,28 @@ function RecipeIngredients({ recipe }: { recipe: Recipe }) {
   return (
     <div>
       <div className="label">Ingrédients</div>
+      <p className="mb-2 text-xs text-slate-500">
+        Décoche « par défaut » pour une option (ex. seitan ou steak végétal) : proposée à la préparation, décochée,
+        et pas comptée dans la recette.
+      </p>
       {recipe.ingredients.length ? (
         <ul className="mb-4 divide-y divide-slate-100 rounded-xl border border-slate-200">
           {recipe.ingredients.map((ri) => (
-            <li key={ri.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-              <span className="flex-1">{ri.ingredient.nom}</span>
+            <li key={ri.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+              <span className={`min-w-0 flex-1 ${ri.par_defaut ? "" : "text-slate-500"}`}>
+                {ri.ingredient.nom}
+                {!ri.par_defaut && <span className="badge ml-1.5 bg-slate-100 align-middle text-slate-500">option</span>}
+              </span>
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-brand-600"
+                  checked={ri.par_defaut}
+                  disabled={toggle.isPending}
+                  onChange={(e) => toggle.mutate({ iid: ri.ingredient_id, par_defaut: e.target.checked })}
+                />
+                par défaut
+              </label>
               <span className="text-slate-600">
                 {ri.type_mesure === "unite" ? `${fmt(ri.quantite, 1)} unité(s)` : `${fmt(ri.quantite, 1)} ${ri.ingredient.unite}`}
               </span>
@@ -278,6 +305,10 @@ function RecipeIngredients({ recipe }: { recipe: Recipe }) {
               <input className="input" type="number" min={0} step="any" value={quantite} onChange={(e) => setQuantite(e.target.value)} />
             </Field>
           </div>
+          <label className="flex cursor-pointer items-center gap-1.5 pb-2.5 text-sm text-slate-700">
+            <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={parDefaut} onChange={(e) => setParDefaut(e.target.checked)} />
+            Coché par défaut
+          </label>
           <button type="submit" className="btn-secondary" disabled={add.isPending}><Plus className="h-4 w-4" /> Ajouter</button>
         </div>
       </form>

@@ -44,9 +44,9 @@ async function exportAll() {
   sheet(recipes.flatMap((r) => {
     const base = { Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation, "Créé par": r.created_by_nom };
     return r.ingredients.length
-      ? r.ingredients.map((ri) => ({ ...base, "Ingrédient": ri.ingredient.nom, "Quantité": ri.quantite, "Type mesure": ri.type_mesure, "Unité": ri.ingredient.unite }))
+      ? r.ingredients.map((ri) => ({ ...base, "Ingrédient": ri.ingredient.nom, "Quantité": ri.quantite, "Type mesure": ri.type_mesure, "Unité": ri.ingredient.unite, "Par défaut": ri.par_defaut ? "oui" : "non" }))
       : [base];
-  }), "Recettes", ["Recette", "Description", "Catégorie", "Portions", "Temps préparation (min)", "Ingrédient", "Quantité", "Type mesure", "Unité", "Créé par"]);
+  }), "Recettes", ["Recette", "Description", "Catégorie", "Portions", "Temps préparation (min)", "Ingrédient", "Quantité", "Type mesure", "Unité", "Par défaut", "Créé par"]);
 
   sheet(nutriments.map((x) => ({ Nom: x.nom, "Unité": x.unite })), "Nutriments", ["Nom", "Unité"]);
 
@@ -144,7 +144,7 @@ const IMPORTS: ImportKind[] = [
     key: "recettes",
     title: "Recettes (avec leurs ingrédients)",
     sheet: "Recettes",
-    columns: "Recette, Description, Catégorie, Portions, Temps préparation (min), et si besoin Ingrédient, Quantité, Type mesure (poids / unite) — une ligne par ingrédient",
+    columns: "Recette, Description, Catégorie, Portions, Temps préparation (min), et si besoin Ingrédient, Quantité, Type mesure (poids / unite), Par défaut (oui / non : option) — une ligne par ingrédient",
     run: async (rows, progress) => {
       const { ingredients, recipes } = await fetchCatalog();
       const groups = new Map<string, Row[]>();
@@ -175,7 +175,8 @@ const IMPORTS: ImportKind[] = [
               const ing = ingredients.find((x) => same(x.nom, ingNom));
               const q = n(line["Quantité"]);
               const mesure = s(line["Type mesure"])?.toLowerCase().startsWith("unit") ? "unite" : "poids";
-              if (!ing || !q || !(await tryPost(`/recipes/${created.id}/ingredients`, { ingredient_id: ing.id, quantite: q, type_mesure: mesure }))) {
+              const parDefaut = !/^(non|no|0|false|option)/.test(s(line["Par défaut"])?.toLowerCase() ?? "");
+              if (!ing || !q || !(await tryPost(`/recipes/${created.id}/ingredients`, { ingredient_id: ing.id, quantite: q, type_mesure: mesure, par_defaut: parDefaut }))) {
                 res.skipped.push(`${nom} / ${ingNom}`);
               }
             }

@@ -40,9 +40,9 @@ export function ingredientMacros(ing: Ingredient, grams: number): Macros {
   };
 }
 
-/** Macros de la recette complète (toutes portions). */
+/** Macros de la recette complète (toutes portions), sans les ingrédients en option. */
 export function recipeMacros(recipe: Recipe): Macros {
-  return recipe.ingredients.reduce((acc, ri) => {
+  return recipe.ingredients.filter((ri) => ri.par_defaut).reduce((acc, ri) => {
     const grams = ri.type_mesure === "unite" ? ri.quantite * (ri.ingredient.quantite_defaut ?? 0) : ri.quantite;
     return addMacros(acc, ingredientMacros(ri.ingredient, grams));
   }, ZERO);

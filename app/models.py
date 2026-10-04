@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import datetime
-from sqlalchemy import false, Boolean, Column, Integer, String, Float, ForeignKey, Date, DateTime, Text, UniqueConstraint
+from sqlalchemy import false, true, Boolean, Column, Integer, String, Float, ForeignKey, Date, DateTime, Text, UniqueConstraint
 from sqlalchemy.orm import deferred, relationship
 from app.database import Base
 
@@ -92,6 +92,8 @@ class RecipeIngredient(Base):
     ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=False)
     quantite = Column(Float, nullable=False)
     type_mesure = Column(String, nullable=False, default="poids")
+    # Coché par défaut quand on prépare la recette ; sinon c'est une option (ex. seitan ou steak végétal)
+    par_defaut = Column(Boolean, nullable=False, default=True, server_default=true())
 
     recette = relationship("Recipe", back_populates="ingredients")
     ingredient = relationship("Ingredient", back_populates="recettes")

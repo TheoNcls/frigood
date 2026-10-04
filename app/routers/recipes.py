@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models import Recipe, RecipeIngredient
-from app.schemas import RecipeCreate, RecipeRead, RecipeIngredientCreate
+from app.schemas import RecipeCreate, RecipeRead, RecipeIngredientCreate, RecipeIngredientUpdate
 from app.auth import Principal, get_principal, require_admin
 
 router = APIRouter(prefix="/recipes", tags=["recipes"], dependencies=[Depends(get_principal)])
@@ -75,6 +75,22 @@ def add_ingredient_to_recipe(id: int, data: RecipeIngredientCreate, db: Session 
     lien = RecipeIngredient(recipe_id=id, **data.model_dump())
     db.add(lien)
     db.commit()
+    db.refresh(recipe)
+    return recipe
+
+
+@router.put("/{id}/ingredients/{ingredient_id}", response_model=RecipeRead, dependencies=[Depends(require_admin)])
+def update_recipe_ingredient(id: int, ingredient_id: int, data: RecipeIngredientUpdate, db: Session = Depends(get_db)):
+    lien = db.query(RecipeIngredient).filter_by(recipe_id=id, ingredient_id=ingredient_id).first()
+    if not lien:
+        raise HTTPException(status_code=404, detail="Ingrédient non trouvé dans cette recette")
+    changes = data.model_dump(exclude_none=True)
+    if "quantite" in changes and changes["quantite"] <= 0:
+        raise HTTPException(status_code=400, detail="La quantité doit être positive")
+    for key, value in changes.items():
+        setattr(lien, key, value)
+    db.commit()
+    recipe = db.get(Recipe, id)
     db.refresh(recipe)
     return recipe
 

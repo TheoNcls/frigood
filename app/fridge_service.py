@@ -62,11 +62,11 @@ def consume(db: Session, user_id: int, qty: float, action: str, meal_log_id: int
 
 
 def recipe_composition(recipe: Recipe, portions: float) -> dict[int, float]:
-    """Ingrédients de la recette d'origine (g / ml) pour ce nombre de portions."""
+    """Ingrédients de la recette d'origine (g / ml) pour ce nombre de portions, sans les options."""
     factor = portions / (recipe.portions or 1)
     out: dict[int, float] = {}
     for ri in recipe.ingredients:
-        if ri.ingredient:
+        if ri.ingredient and ri.par_defaut:
             out[ri.ingredient_id] = out.get(ri.ingredient_id, 0) + to_base_qty(ri.ingredient, ri.quantite, ri.type_mesure) * factor
     return out
 
@@ -96,20 +96,6 @@ def consume_preparation_ingredients(db: Session, user_id: int, prep: Preparation
         taken = consume(db, user_id, pi.quantite, "cuisine", ingredient_id=pi.ingredient_id)
         if taken > EPS and pi.ingredient:
             msgs.append(f"{pi.ingredient.nom} −{taken:.0f} {pi.ingredient.unite}")
-    return msgs
-
-
-def consume_recipe_ingredients(db: Session, user_id: int, recipe: Recipe, factor: float,
-                               action: str, meal_log_id: int | None = None) -> list[str]:
-    """Retire les ingrédients d'une recette (factor = fraction de la recette complète)."""
-    msgs = []
-    for ri in recipe.ingredients:
-        qty = to_base_qty(ri.ingredient, ri.quantite, ri.type_mesure) * factor
-        if qty <= EPS:
-            continue
-        taken = consume(db, user_id, qty, action, meal_log_id, ingredient_id=ri.ingredient_id)
-        if taken > EPS:
-            msgs.append(f"{ri.ingredient.nom} −{taken:.0f} {ri.ingredient.unite}")
     return msgs
 
 

@@ -136,6 +136,13 @@ class RecipeIngredientCreate(BaseModel):
     ingredient_id: int
     quantite: float
     type_mesure: str = "poids"
+    # Décoché : une option, proposée à la préparation sans être comptée dans la recette
+    par_defaut: bool = True
+
+class RecipeIngredientUpdate(BaseModel):
+    quantite: float | None = None
+    type_mesure: str | None = None
+    par_defaut: bool | None = None
 
 class RecipeIngredientRead(RecipeIngredientCreate):
     id: int
