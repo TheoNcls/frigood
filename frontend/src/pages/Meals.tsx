@@ -33,12 +33,12 @@ export default function Meals() {
   const usage = useUsageCounts();
 
   const [moment, setMoment] = useState<Moment>(defaultMoment());
-  const [kind, setKind] = useState<"recette" | "ingredient">("recette");
+  const [kind, setKind] = useState<"recette" | "ingredient">("ingredient");
   const [dishId, setDishId] = useState<number | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [ingredientId, setIngredientId] = useState<number | null>(null);
   const [mesure, setMesure] = useState<TypeMesure>("poids");
-  const [quantite, setQuantite] = useState("1");
+  const [quantite, setQuantite] = useState("100");
   const [notes, setNotes] = useState("");
   const [scanning, setScanning] = useState(false);
 
@@ -163,7 +163,7 @@ export default function Meals() {
                   full
                   value={kind}
                   onChange={chooseKind}
-                  options={[{ value: "recette", label: "Recette" }, { value: "ingredient", label: "Ingrédient" }]}
+                  options={[{ value: "ingredient", label: "Ingrédient" }, { value: "recette", label: "Recette" }]}
                 />
               </div>
             </div>
