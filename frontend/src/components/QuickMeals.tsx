@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Copy, Zap } from "lucide-react";
 import { api } from "../api/client";
-import { useIngredients, useMealLogs, useRecipes } from "../api/queries";
+import { useFridge, useIngredients, useMealLogs, useRecipes } from "../api/queries";
 import type { MealLog, MealLogCreate, Moment } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { addDays } from "../lib/dates";
@@ -58,7 +58,11 @@ export default function QuickMeals({ date, moment }: { date: string; moment: Mom
   const all = useMealLogs();  // même requête que le tri par fréquence : déjà en cache
   const ingredients = useIngredients();
   const recipes = useRecipes();
+  const fridge = useFridge();
   const add = useAddMeals();
+  // Une recette se mange à partir d'un plat préparé : sans plat au frigo, pas de raccourci
+  const dishRecipes = useMemo(() => new Set((fridge.data ?? []).flatMap((f) => (f.recipe_id ? [f.recipe_id] : []))), [fridge.data]);
+  const available = (l: MealLog) => !l.recipe_id || dishRecipes.has(l.recipe_id);
 
   const { yesterday, habits, today } = useMemo(() => {
     const logs = all.data ?? [];
@@ -83,6 +87,8 @@ export default function QuickMeals({ date, moment }: { date: string; moment: Mom
   const label = (l: MealLog) => describeLog(l, ingredients.byId, recipes.byId);
   // Déjà noté aujourd'hui comme hier : pas de doublon possible
   const sameAsYesterday = yesterday.length > 0 && yesterday.every((l) => today.has(habitKey(l)));
+  const copyable = yesterday.filter(available);
+  const missing = yesterday.filter((l) => !available(l));
 
   return (
     <Card title={<span className="inline-flex items-center gap-1.5"><Zap className="h-4 w-4 text-amber-500" /> Raccourcis · {MOMENT_LABELS[moment]}</span>}>
@@ -91,19 +97,29 @@ export default function QuickMeals({ date, moment }: { date: string; moment: Mom
           <p className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
             <Copy className="h-4 w-4 shrink-0" /> Déjà noté comme hier ({MOMENT_HIER[moment].toLowerCase()}).
           </p>
+        ) : yesterday.length > 0 && !copyable.length ? (
+          <p className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+            <Copy className="h-4 w-4 shrink-0" />
+            {MOMENT_HIER[moment]} : {missing.map((l) => recipes.byId.get(l.recipe_id!)?.nom ?? "?").join(", ")}, pas de plat préparé au frigo.
+          </p>
         ) : yesterday.length > 0 && (
           <button
             type="button"
             className="flex w-full items-start gap-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-left text-sm hover:bg-brand-50 disabled:opacity-50"
-            disabled={add.isPending}
-            onClick={() => add.mutate(yesterday.map((l) => copyOf(l, date, moment)))}
+            disabled={add.isPending || !copyable.length}
+            onClick={() => add.mutate(copyable.map((l) => copyOf(l, date, moment)))}
           >
             <Copy className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />
             <span className="min-w-0">
               <span className="block font-medium text-slate-900">
-                Comme hier : {MOMENT_HIER[moment]} · {yesterday.length} aliment{yesterday.length > 1 ? "s" : ""}
+                Comme hier : {MOMENT_HIER[moment]} · {copyable.length} aliment{copyable.length > 1 ? "s" : ""}
               </span>
-              <span className="block truncate text-xs text-slate-500">{yesterday.map(label).join(" · ")}</span>
+              <span className="block truncate text-xs text-slate-500">{copyable.map(label).join(" · ")}</span>
+              {missing.length > 0 && (
+                <span className="block truncate text-xs text-amber-700">
+                  Pas de plat préparé au frigo : {missing.map((l) => recipes.byId.get(l.recipe_id!)?.nom ?? "?").join(", ")}
+                </span>
+              )}
             </span>
           </button>
         )}
@@ -113,18 +129,19 @@ export default function QuickMeals({ date, moment }: { date: string; moment: Mom
             <div className="flex flex-wrap gap-1.5">
               {habits.map(({ log, n }) => {
                 const done = today.has(habitKey(log));
+                const ok = available(log);
                 return (
                   <button
                     key={habitKey(log)}
                     type="button"
-                    title={`${n} fois sur ${HABIT_DAYS} jours`}
-                    disabled={add.isPending}
+                    title={ok ? `${n} fois sur ${HABIT_DAYS} jours` : "Pas de plat préparé au frigo"}
+                    disabled={add.isPending || !ok}
                     onClick={() => add.mutate([copyOf(log, date, moment)])}
                     className={`rounded-full border px-3 py-1 text-sm transition disabled:opacity-50 ${
                       done ? "border-slate-200 bg-slate-50 text-slate-400" : "border-slate-200 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50"
                     }`}
                   >
-                    {done ? "✓ " : "+ "}{label(log)}
+                    {done ? "✓ " : ok ? "+ " : "🧊 "}{label(log)}
                   </button>
                 );
               })}

@@ -368,6 +368,26 @@ class ChangePassword(BaseModel):
     new_password: str
 
 
+# --- Plat préparé ---
+
+class PreparationIngredientIn(BaseModel):
+    ingredient_id: int
+    quantite: float  # g / ml
+
+class PreparationIngredientRead(PreparationIngredientIn):
+    model_config = {"from_attributes": True}
+
+class PreparationRead(BaseModel):
+    id: int
+    recipe_id: int
+    portions: float
+    date: date_type | None = None
+    adaptee: bool = False
+    ingredients: list[PreparationIngredientRead] = []
+
+    model_config = {"from_attributes": True}
+
+
 # --- MealLog ---
 
 class MealLogCreate(BaseModel):
@@ -378,10 +398,21 @@ class MealLogCreate(BaseModel):
     quantite: float | None = None
     type_mesure: str = "poids"
     notes: str | None = None
+    # Recette : le plat du frigo dont on prend une part (sinon celui de cette recette qui périme le plus tôt)
+    fridge_item_id: int | None = None
 
-class MealLogRead(MealLogCreate):
+class MealLogRead(BaseModel):
     id: int
     user_id: int
+    date: date_type
+    moment: str
+    recipe_id: int | None = None
+    ingredient_id: int | None = None
+    quantite: float | None = None
+    type_mesure: str = "poids"
+    notes: str | None = None
+    preparation_id: int | None = None
+    preparation: PreparationRead | None = None
     fridge_updates: list[str] = []
 
     model_config = {"from_attributes": True}
@@ -396,6 +427,9 @@ class FridgeItemCreate(BaseModel):
     date_achat: date_type | None = None
     date_peremption: date_type | None = None
     deduire_ingredients: bool = False
+    # Plat cuisiné : ingrédients réellement utilisés pour toute la préparation (g / ml).
+    # Absent : la recette d'origine, à l'échelle du nombre de portions
+    ingredients: list[PreparationIngredientIn] | None = None
 
 class FridgeItemUpdate(BaseModel):
     quantite: float | None = None
@@ -411,6 +445,7 @@ class FridgeItemRead(BaseModel):
     date_achat: date_type | None = None
     date_peremption: date_type | None = None
     created_at: datetime_type | None = None
+    preparation: PreparationRead | None = None
 
     model_config = {"from_attributes": True}
 

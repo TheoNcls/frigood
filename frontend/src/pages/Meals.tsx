@@ -7,6 +7,7 @@ import type { MealLog, MealLogCreate, Moment, TypeMesure } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import FoodPicker from "../components/FoodPicker";
 import FoodThumb from "../components/FoodThumb";
+import { DishPicker, PrepareRecipeModal } from "../components/Preparation";
 import QuickMeals, { copyOf, useAddMeals } from "../components/QuickMeals";
 import { useToast } from "../components/Toast";
 import { Card, Empty, ErrorMessage, Field, MacroTile, PageHeader, Segmented, Spinner } from "../components/ui";
@@ -33,14 +34,16 @@ export default function Meals() {
 
   const [moment, setMoment] = useState<Moment>(defaultMoment());
   const [kind, setKind] = useState<"recette" | "ingredient">("recette");
-  const [recipeId, setRecipeId] = useState<number | null>(null);
+  const [dishId, setDishId] = useState<number | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [ingredientId, setIngredientId] = useState<number | null>(null);
   const [mesure, setMesure] = useState<TypeMesure>("poids");
   const [quantite, setQuantite] = useState("1");
   const [notes, setNotes] = useState("");
   const [scanning, setScanning] = useState(false);
 
-  const recipe = recipeId ? recipes.byId.get(recipeId) : undefined;
+  // Plat du frigo dont on prend une part (disparaît du frigo quand il est terminé)
+  const dish = dishId ? (fridge.data ?? []).find((f) => f.id === dishId && f.recipe_id) : undefined;
   const ingredient = ingredientId ? ingredients.byId.get(ingredientId) : undefined;
 
   const fridgeIngIds = useMemo(() => new Set((fridge.data ?? []).flatMap((f) => (f.ingredient_id ? [f.ingredient_id] : []))), [fridge.data]);
@@ -64,8 +67,8 @@ export default function Meals() {
     setQuantite(k === "recette" ? "1" : String(ingredient?.quantite_defaut ?? 100));
   }
 
-  function chooseRecipe(id: number) {
-    setRecipeId(id);
+  function chooseDish(id: number) {
+    setDishId(id);
     setQuantite("1");
   }
 
@@ -93,12 +96,13 @@ export default function Meals() {
     e.preventDefault();
     const q = parseFloat(quantite);
     if (!Number.isFinite(q) || q <= 0) return toast("Indique une quantité positive", "error");
-    if (kind === "recette" && !recipeId) return toast("Choisis une recette", "error");
+    if (kind === "recette" && !dish) return toast("Choisis un plat préparé", "error");
     if (kind === "ingredient" && !ingredientId) return toast("Choisis un ingrédient", "error");
     addMeal.mutate({
       date,
       moment,
-      recipe_id: kind === "recette" ? recipeId : null,
+      recipe_id: kind === "recette" ? dish!.recipe_id : null,
+      fridge_item_id: kind === "recette" ? dish!.id : null,
       ingredient_id: kind === "ingredient" ? ingredientId : null,
       quantite: q,
       type_mesure: kind === "ingredient" ? mesure : "poids",
@@ -109,7 +113,13 @@ export default function Meals() {
   const logs = [...(meals.data ?? [])].sort((a, b) => MOMENTS.indexOf(a.moment) - MOMENTS.indexOf(b.moment));
   const total = totalMacros(logs, ingredients.byId, recipes.byId);
   const preview = logMacros(
-    { recipe_id: kind === "recette" ? recipeId : null, ingredient_id: kind === "ingredient" ? ingredientId : null, quantite: parseFloat(quantite) || 0, type_mesure: mesure },
+    {
+      recipe_id: kind === "recette" ? dish?.recipe_id ?? null : null,
+      ingredient_id: kind === "ingredient" ? ingredientId : null,
+      quantite: parseFloat(quantite) || 0,
+      type_mesure: mesure,
+      preparation: kind === "recette" ? dish?.preparation : null,
+    },
     ingredients.byId, recipes.byId,
   );
 
@@ -120,6 +130,7 @@ export default function Meals() {
           <ScanFoodModal onSelect={(ing) => chooseIngredient(ing.id, ing)} onClose={() => setScanning(false)} />
         </Suspense>
       )}
+      {preparing && <PrepareRecipeModal onClose={() => setPreparing(false)} onDone={(item) => chooseDish(item.id)} />}
       <PageHeader
         title="Repas"
         subtitle={formatLong(date)}
@@ -158,7 +169,7 @@ export default function Meals() {
             </div>
 
             {kind === "recette" ? (
-              <FoodPicker label="Recette" items={recipes.list} counts={usage.recipes} inFridge={fridgeRecIds} value={recipeId} onChange={chooseRecipe} />
+              <DishPicker value={dish?.id ?? null} onChange={chooseDish} onPrepare={() => setPreparing(true)} />
             ) : (
               <FoodPicker
                 label="Ingrédient"
@@ -186,8 +197,8 @@ export default function Meals() {
             <Field
               label={kind === "recette" ? "Portions consommées" : mesure === "unite" ? "Nombre d'unités" : `Quantité (${ingredient?.unite ?? "g"})`}
               hint={
-                kind === "recette" && recipe && (recipe.portions ?? 1) > 1
-                  ? `Recette prévue pour ${recipe.portions} portions`
+                kind === "recette" && dish
+                  ? `Il reste ${fmt(dish.quantite, 1)} portion(s) dans ce plat`
                   : kind === "ingredient" && mesure === "unite" && ingredient
                     ? `1 unité ≈ ${ingredient.quantite_defaut} ${ingredient.unite} · enregistré : ${fmt((parseFloat(quantite) || 0) * (ingredient.quantite_defaut ?? 0))} ${ingredient.unite}`
                     : undefined
@@ -220,6 +231,8 @@ export default function Meals() {
               {logs.map((log) => {
                 const m = logMacros(log, ingredients.byId, recipes.byId);
                 const ing = log.ingredient_id ? ingredients.byId.get(log.ingredient_id) : undefined;
+                // Refaire une recette : il faut encore un plat préparé au frigo
+                const noDish = !!log.recipe_id && !fridgeRecIds.has(log.recipe_id);
                 return (
                   <li key={log.id} className="flex items-start gap-3 py-3">
                     <FoodThumb
@@ -241,8 +254,8 @@ export default function Meals() {
                     <button
                       className="btn-ghost px-2 text-brand-700"
                       aria-label={`Refaire ce repas (${MOMENT_LABELS[moment]})`}
-                      title={`Refaire (${MOMENT_LABELS[moment]})`}
-                      disabled={addAgain.isPending}
+                      title={noDish ? "Plus de plat préparé au frigo" : `Refaire (${MOMENT_LABELS[moment]})`}
+                      disabled={addAgain.isPending || noDish}
                       onClick={() => addAgain.mutate([copyOf(log, date, moment)])}
                     >
                       <Repeat2 className="h-4 w-4" />

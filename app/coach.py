@@ -100,6 +100,13 @@ def _ingredient_totals(ing: Ingredient, qty_base: float, acc: dict):
 def _meal_totals(log_: MealLog, acc: dict):
     if log_.ingredient_id and log_.ingredient:
         _ingredient_totals(log_.ingredient, to_base_qty(log_.ingredient, log_.quantite or 0, log_.type_mesure), acc)
+    elif log_.preparation:
+        # Part d'un plat préparé : ce qui a réellement été cuisiné
+        p = log_.preparation
+        factor = (log_.quantite or 1) / (p.portions or 1)
+        for pi in p.ingredients:
+            if pi.ingredient:
+                _ingredient_totals(pi.ingredient, pi.quantite * factor, acc)
     elif log_.recipe_id and log_.recipe:
         r: Recipe = log_.recipe
         factor = (log_.quantite or 1) / (r.portions or 1)
@@ -109,7 +116,8 @@ def _meal_totals(log_: MealLog, acc: dict):
 
 def _meal_label(log_: MealLog) -> str:
     if log_.recipe_id and log_.recipe:
-        return f"{log_.recipe.nom} × {log_.quantite or 1:g} portion(s)"
+        adaptee = " (version adaptée)" if log_.preparation and log_.preparation.adaptee else ""
+        return f"{log_.recipe.nom}{adaptee} × {log_.quantite or 1:g} portion(s)"
     ing = log_.ingredient
     if not ing:
         return "?"
@@ -282,6 +290,8 @@ def build_context(db: Session, user: User, today: date) -> dict:
         else:
             rec = db.get(Recipe, f.recipe_id) if f.recipe_id else None
             nom, unite = (rec.nom if rec else "?"), "portion(s)"
+            if f.preparation and f.preparation.adaptee:
+                nom += " (version adaptée)"
         frigo.append({"aliment": nom, "quantite": f"{f.quantite:g} {unite}",
                       "peremption": f.date_peremption.isoformat() if f.date_peremption else None})
 

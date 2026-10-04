@@ -153,6 +153,7 @@ class User(Base):
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")
     daily_stats = relationship("DailyStat", back_populates="user", cascade="all, delete-orphan")
     fridge_items = relationship("FridgeItem", cascade="all, delete-orphan")
+    preparations = relationship("Preparation", cascade="all, delete-orphan")
     fridge_history = relationship("FridgeHistory", cascade="all, delete-orphan")
     tasks = relationship("Task", cascade="all, delete-orphan")
     push_subscriptions = relationship("PushSubscription", cascade="all, delete-orphan")
@@ -197,10 +198,13 @@ class MealLog(Base):
     quantite = Column(Float, nullable=True)
     type_mesure = Column(String, nullable=True, default="poids")
     notes = Column(String, nullable=True)
+    # Part d'un plat préparé : sa composition réelle (ingrédients cochés, quantités modifiées)
+    preparation_id = Column(Integer, ForeignKey("preparations.id", ondelete="SET NULL"), nullable=True)
 
     user = relationship("User", back_populates="meal_logs")
     recipe = relationship("Recipe")
     ingredient = relationship("Ingredient")
+    preparation = relationship("Preparation")
 
 
 class Activity(Base):
@@ -302,6 +306,39 @@ class FridgeItem(Base):
     date_achat = Column(Date, nullable=True)
     date_peremption = Column(Date, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Plat cuisiné : ce qui a réellement été préparé
+    preparation_id = Column(Integer, ForeignKey("preparations.id", ondelete="SET NULL"), nullable=True)
+
+    preparation = relationship("Preparation")
+
+
+class Preparation(Base):
+    """Une recette préparée : ingrédients réellement utilisés (en g / ml) et nombre de portions obtenues.
+    Gardée après que le plat a quitté le frigo : les repas qui en viennent s'y réfèrent."""
+    __tablename__ = "preparations"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+    portions = Column(Float, nullable=False)
+    date = Column(Date, nullable=True)
+    # Différente de la recette d'origine (ingrédient retiré, ajouté ou quantité changée)
+    adaptee = Column(Boolean, nullable=False, default=False, server_default=false())
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    ingredients = relationship("PreparationIngredient", cascade="all, delete-orphan", lazy="selectin",
+                               order_by="PreparationIngredient.id")
+
+
+class PreparationIngredient(Base):
+    __tablename__ = "preparation_ingredients"
+
+    id = Column(Integer, primary_key=True)
+    preparation_id = Column(Integer, ForeignKey("preparations.id", ondelete="CASCADE"), nullable=False, index=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
+    quantite = Column(Float, nullable=False)  # unité de base de l'ingrédient (g / ml)
+
+    ingredient = relationship("Ingredient")
 
 
 class FridgeHistory(Base):

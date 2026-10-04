@@ -1,4 +1,4 @@
-import type { Ingredient, MealLog, Moment, Recipe } from "../api/types";
+import type { Ingredient, MealLog, Moment, Preparation, Recipe } from "../api/types";
 
 export interface Macros {
   cal: number;
@@ -30,7 +30,7 @@ function scale(m: Macros, f: number): Macros {
   return { cal: m.cal * f, prot: m.prot * f, gluc: m.gluc * f, lip: m.lip * f };
 }
 
-function ingredientMacros(ing: Ingredient, grams: number): Macros {
+export function ingredientMacros(ing: Ingredient, grams: number): Macros {
   const f = grams / 100;
   return {
     cal: (ing.calories ?? 0) * f,
@@ -48,12 +48,27 @@ export function recipeMacros(recipe: Recipe): Macros {
   }, ZERO);
 }
 
+/** Ingrédients en g / ml (une préparation, ou la recette en cours d'adaptation). */
+export function compositionMacros(items: { ingredient_id: number; quantite: number }[], ingredients: Map<number, Ingredient>): Macros {
+  return items.reduce((acc, it) => {
+    const ing = ingredients.get(it.ingredient_id);
+    return ing ? addMacros(acc, ingredientMacros(ing, it.quantite)) : acc;
+  }, ZERO);
+}
+
+/** Macros d'une portion d'un plat préparé. */
+export function preparationPortionMacros(prep: Preparation, ingredients: Map<number, Ingredient>): Macros {
+  return scale(compositionMacros(prep.ingredients, ingredients), 1 / (prep.portions || 1));
+}
+
 export function logMacros(
-  log: Pick<MealLog, "recipe_id" | "ingredient_id" | "quantite" | "type_mesure">,
+  log: Pick<MealLog, "recipe_id" | "ingredient_id" | "quantite" | "type_mesure"> & { preparation?: Preparation | null },
   ingredients: Map<number, Ingredient>,
   recipes: Map<number, Recipe>,
 ): Macros {
   const q = log.quantite ?? 0;
+  // Part d'un plat préparé : ce qui a réellement été cuisiné
+  if (log.preparation) return scale(preparationPortionMacros(log.preparation, ingredients), q || 1);
   if (log.recipe_id) {
     const recipe = recipes.get(log.recipe_id);
     if (!recipe) return ZERO;
@@ -76,7 +91,7 @@ export function describeLog(log: MealLog, ingredients: Map<number, Ingredient>, 
   const q = log.quantite ?? 0;
   if (log.recipe_id) {
     const r = recipes.get(log.recipe_id);
-    return `${r?.nom ?? "?"} × ${fmt(q || 1, 1)} portion(s)`;
+    return `${r?.nom ?? "?"}${log.preparation?.adaptee ? " (ma version)" : ""} × ${fmt(q || 1, 1)} portion(s)`;
   }
   const ing = log.ingredient_id ? ingredients.get(log.ingredient_id) : undefined;
   if (log.type_mesure === "unite") return `${ing?.nom ?? "?"} × ${fmt(q, 1)} unité(s)`;

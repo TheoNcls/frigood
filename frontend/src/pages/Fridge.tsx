@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, type FormEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import { useFridge, useFridgeHistory, useIngredients, useRecipes } from "../api/queries";
@@ -8,11 +8,12 @@ import { useCurrentUser } from "../auth/AuthContext";
 import { FoodBadges } from "../components/FoodBadges";
 import FoodThumb from "../components/FoodThumb";
 import FoodPicker from "../components/FoodPicker";
+import { PrepareRecipeForm, preparationChanges, useInvalidateFridge } from "../components/Preparation";
 import { useToast } from "../components/Toast";
 import { Card, Empty, ErrorMessage, Field, PageHeader, Segmented, Spinner } from "../components/ui";
 import { addDays, formatFull, todayISO } from "../lib/dates";
 import {
-  ACTION_LABELS, DUREE_RECETTE_DEFAUT, EXPIRY_STYLES, expiryInfo, fridgeItemName, fridgeItemQty,
+  ACTION_LABELS, EXPIRY_STYLES, expiryInfo, fridgeItemName, fridgeItemQty,
 } from "../lib/fridge";
 import { fmt } from "../lib/nutrition";
 import { useUsageCounts } from "../lib/usage";
@@ -21,14 +22,6 @@ type Tab = "contenu" | "ajouter" | "historique";
 
 // Caméra et lecteur de code-barre chargés seulement au premier scan
 const ScanFoodModal = lazy(() => import("../components/ScanFoodModal"));
-
-function useInvalidateFridge() {
-  const queryClient = useQueryClient();
-  return () => {
-    queryClient.invalidateQueries({ queryKey: ["fridge"] });
-    queryClient.invalidateQueries({ queryKey: ["fridge_history"] });
-  };
-}
 
 export default function Fridge() {
   const fridge = useFridge();
@@ -85,6 +78,9 @@ function Contents({ onAdd }: { onAdd: () => void }) {
         {items.map((item) => {
           const exp = expiryInfo(item.date_peremption);
           const ing = item.ingredient_id ? ingredients.byId.get(item.ingredient_id) : undefined;
+          const changes = item.preparation
+            ? preparationChanges(item.preparation, recipes.byId.get(item.recipe_id ?? -1), ingredients.byId)
+            : [];
           return (
             <li key={item.id} className="card">
               <div className="flex items-start gap-3">
@@ -98,12 +94,16 @@ function Contents({ onAdd }: { onAdd: () => void }) {
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-slate-900">
                     {fridgeItemName(item, ingredients.byId, recipes.byId)}
+                    {item.preparation?.adaptee && <span className="badge ml-1.5 bg-violet-50 align-middle text-violet-700">ma version</span>}
                   </div>
                   <div className="text-sm text-slate-500">{fridgeItemQty(item, ingredients.byId)}</div>
+                  {changes.length > 0 && <div className="text-xs text-violet-700">{changes.join(" · ")}</div>}
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     <span className={`badge ${EXPIRY_STYLES[exp.level]}`}>{exp.label}</span>
                     {ing && <FoodBadges item={ing} compact />}
-                    {item.date_achat && <span className="text-slate-500">Ajouté le {formatFull(item.date_achat)}</span>}
+                    {item.date_achat && (
+                      <span className="text-slate-500">{item.recipe_id ? "Préparé" : "Ajouté"} le {formatFull(item.date_achat)}</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -191,19 +191,31 @@ function RemovePanel({ item, onClose }: { item: FridgeItem; onClose: () => void 
 }
 
 function AddForm({ onDone }: { onDone: () => void }) {
+  const [kind, setKind] = useState<"ingredient" | "recette">("ingredient");
+  return (
+    <Card>
+      <div className="max-w-xl space-y-4">
+        <Segmented
+          value={kind}
+          onChange={setKind}
+          options={[{ value: "ingredient", label: "Ingrédient" }, { value: "recette", label: "Plat cuisiné (recette)" }]}
+        />
+        {kind === "ingredient" ? <AddIngredientForm onDone={onDone} /> : <PrepareRecipeForm onDone={onDone} />}
+      </div>
+    </Card>
+  );
+}
+
+function AddIngredientForm({ onDone }: { onDone: () => void }) {
   const user = useCurrentUser();
   const ingredients = useIngredients();
-  const recipes = useRecipes();
   const usage = useUsageCounts();
   const invalidate = useInvalidateFridge();
   const toast = useToast();
 
-  const [kind, setKind] = useState<"ingredient" | "recette">("ingredient");
   const [ingredientId, setIngredientId] = useState<number | null>(null);
-  const [recipeId, setRecipeId] = useState<number | null>(null);
   const [mesure, setMesure] = useState<TypeMesure>("poids");
   const [quantite, setQuantite] = useState("100");
-  const [deduire, setDeduire] = useState(true);
   const [dateAchat, setDateAchat] = useState(todayISO());
   const [peremption, setPeremption] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -217,29 +229,26 @@ function AddForm({ onDone }: { onDone: () => void }) {
   }
 
   const ingredient = ingredientId ? ingredients.byId.get(ingredientId) : undefined;
-  const recipe = recipeId ? recipes.byId.get(recipeId) : undefined;
-  const duree = kind === "recette" ? DUREE_RECETTE_DEFAUT : ingredient?.duree_conservation ?? 7;
+  const duree = ingredient?.duree_conservation ?? 7;
   // Tant que l'utilisateur n'a pas choisi de date, la péremption suit la date d'achat + la durée de conservation
   const peremptionEffective = peremption ?? addDays(dateAchat, duree);
 
   const qNum = parseFloat(quantite) || 0;
-  const baseQty = kind === "ingredient" && mesure === "unite" ? qNum * (ingredient?.quantite_defaut ?? 0) : qNum;
+  const baseQty = mesure === "unite" ? qNum * (ingredient?.quantite_defaut ?? 0) : qNum;
 
   const add = useMutation({
     mutationFn: () => api(`/users/${user.id}/fridge/`, {
       method: "POST",
       body: {
-        ingredient_id: kind === "ingredient" ? ingredientId : null,
-        recipe_id: kind === "recette" ? recipeId : null,
+        ingredient_id: ingredientId,
         quantite: baseQty,
         date_achat: dateAchat,
         date_peremption: peremptionEffective,
-        deduire_ingredients: kind === "recette" && deduire,
       },
     }),
     onSuccess: () => {
       invalidate();
-      toast(`« ${kind === "recette" ? recipe?.nom : ingredient?.nom} » ajouté au frigo`);
+      toast(`« ${ingredient?.nom} » ajouté au frigo`);
       onDone();
     },
     onError: (e) => toast(e.message, "error"),
@@ -247,81 +256,51 @@ function AddForm({ onDone }: { onDone: () => void }) {
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (kind === "ingredient" && !ingredientId) return toast("Choisis un ingrédient", "error");
-    if (kind === "recette" && !recipeId) return toast("Choisis une recette", "error");
+    if (!ingredientId) return toast("Choisis un ingrédient", "error");
     if (baseQty <= 0) return toast("Indique une quantité positive", "error");
     add.mutate();
   }
 
   return (
-    <Card>
+    <form onSubmit={submit} className="space-y-4">
       {scanning && (
         <Suspense fallback={null}>
           <ScanFoodModal onSelect={(ing) => chooseIngredient(ing.id, ing)} onClose={() => setScanning(false)} />
         </Suspense>
       )}
-      <form onSubmit={submit} className="max-w-xl space-y-4">
+      <FoodPicker
+        label="Ingrédient"
+        items={ingredients.list}
+        counts={usage.ingredients}
+        value={ingredientId}
+        onChange={chooseIngredient}
+        onScan={() => setScanning(true)}
+      />
+      {ingredient?.quantite_defaut ? (
         <Segmented
-          value={kind}
-          onChange={(k) => { setKind(k); setPeremption(null); setMesure("poids"); setQuantite(k === "recette" ? String(recipe?.portions ?? 1) : String(ingredient?.quantite_defaut ?? 100)); }}
-          options={[{ value: "ingredient", label: "Ingrédient" }, { value: "recette", label: "Plat cuisiné (recette)" }]}
+          value={mesure}
+          onChange={(m) => { setMesure(m); setQuantite(m === "unite" ? "1" : String(ingredient.quantite_defaut ?? 100)); }}
+          options={[{ value: "poids", label: `Poids (${ingredient.unite})` }, { value: "unite", label: "Unité" }]}
         />
+      ) : null}
+      <Field
+        label={mesure === "unite" ? "Nombre d'unités" : `Quantité (${ingredient?.unite ?? "g"})`}
+        hint={mesure === "unite" && ingredient ? `≈ ${fmt(baseQty)} ${ingredient.unite}` : undefined}
+      >
+        <input className="input" type="number" min={0} step="any" value={quantite} onChange={(e) => setQuantite(e.target.value)} />
+      </Field>
 
-        {kind === "ingredient" ? (
-          <>
-            <FoodPicker
-              label="Ingrédient"
-              items={ingredients.list}
-              counts={usage.ingredients}
-              value={ingredientId}
-              onChange={chooseIngredient}
-              onScan={() => setScanning(true)}
-            />
-            {ingredient?.quantite_defaut ? (
-              <Segmented
-                value={mesure}
-                onChange={(m) => { setMesure(m); setQuantite(m === "unite" ? "1" : String(ingredient.quantite_defaut ?? 100)); }}
-                options={[{ value: "poids", label: `Poids (${ingredient.unite})` }, { value: "unite", label: "Unité" }]}
-              />
-            ) : null}
-            <Field
-              label={mesure === "unite" ? "Nombre d'unités" : `Quantité (${ingredient?.unite ?? "g"})`}
-              hint={mesure === "unite" && ingredient ? `≈ ${fmt(baseQty)} ${ingredient.unite}` : undefined}
-            >
-              <input className="input" type="number" min={0} step="any" value={quantite} onChange={(e) => setQuantite(e.target.value)} />
-            </Field>
-          </>
-        ) : (
-          <>
-            <FoodPicker
-              label="Recette"
-              items={recipes.list}
-              counts={usage.recipes}
-              value={recipeId}
-              onChange={(id) => { setRecipeId(id); setPeremption(null); setQuantite(String(recipes.byId.get(id)?.portions ?? 1)); }}
-            />
-            <Field label="Nombre de portions">
-              <input className="input" type="number" min={0} step="any" value={quantite} onChange={(e) => setQuantite(e.target.value)} />
-            </Field>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={deduire} onChange={(e) => setDeduire(e.target.checked)} />
-              Je viens de la cuisiner : retirer ses ingrédients du frigo
-            </label>
-          </>
-        )}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Date d'achat">
+          <input className="input" type="date" value={dateAchat} onChange={(e) => e.target.value && setDateAchat(e.target.value)} />
+        </Field>
+        <Field label="Péremption" hint={`Conservation par défaut : ${duree} jour(s)`}>
+          <input className="input" type="date" value={peremptionEffective} onChange={(e) => setPeremption(e.target.value || null)} />
+        </Field>
+      </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={kind === "recette" ? "Date de préparation" : "Date d'achat"}>
-            <input className="input" type="date" value={dateAchat} onChange={(e) => e.target.value && setDateAchat(e.target.value)} />
-          </Field>
-          <Field label="Péremption" hint={`Conservation par défaut : ${duree} jour(s)`}>
-            <input className="input" type="date" value={peremptionEffective} onChange={(e) => setPeremption(e.target.value || null)} />
-          </Field>
-        </div>
-
-        <button type="submit" className="btn-primary w-full" disabled={add.isPending}>Ajouter au frigo</button>
-      </form>
-    </Card>
+      <button type="submit" className="btn-primary w-full" disabled={add.isPending}>Ajouter au frigo</button>
+    </form>
   );
 }
 

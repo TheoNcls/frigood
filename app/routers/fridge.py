@@ -2,10 +2,12 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import FridgeItem, FridgeHistory, Ingredient, Recipe, User
+from app.models import FridgeItem, FridgeHistory, Ingredient, MealLog, Recipe, User
 from app.schemas import FridgeItemCreate, FridgeItemUpdate, FridgeItemRead, FridgeHistoryRead
 from app.auth import Principal, get_principal, check_user_access
-from app.fridge_service import log_history, consume_recipe_ingredients, remove_item
+from app.fridge_service import (
+    MAX_PREP_INGREDIENTS, consume_preparation_ingredients, create_preparation, log_history, remove_item,
+)
 
 router = APIRouter(tags=["fridge"], dependencies=[Depends(get_principal)])
 
@@ -54,6 +56,7 @@ def add_to_fridge(user_id: int, data: FridgeItemCreate, principal: Principal = D
     date_achat = data.date_achat or date.today()
     date_peremption = data.date_peremption
     recipe = None
+    composition = None
 
     if data.ingredient_id:
         ing = db.get(Ingredient, data.ingredient_id)
@@ -67,7 +70,21 @@ def add_to_fridge(user_id: int, data: FridgeItemCreate, principal: Principal = D
             raise HTTPException(status_code=404, detail="Recette introuvable")
         if date_peremption is None:
             date_peremption = date_achat + timedelta(days=DUREE_RECETTE_DEFAUT)
+        if data.ingredients is not None:
+            composition = {}
+            for row in data.ingredients:
+                if row.quantite <= 0:
+                    continue
+                if not db.get(Ingredient, row.ingredient_id):
+                    raise HTTPException(status_code=404, detail="Ingrédient introuvable")
+                composition[row.ingredient_id] = composition.get(row.ingredient_id, 0) + row.quantite
+            if not composition:
+                raise HTTPException(status_code=400, detail="Coche au moins un ingrédient")
+            if len(composition) > MAX_PREP_INGREDIENTS:
+                raise HTTPException(status_code=400, detail=f"{MAX_PREP_INGREDIENTS} ingrédients maximum")
 
+    # Plat cuisiné : ce qui a réellement été préparé (la recette, ou ta version)
+    prep = create_preparation(db, user_id, recipe, data.quantite, date_achat, composition) if recipe else None
     item = FridgeItem(
         user_id=user_id,
         ingredient_id=data.ingredient_id,
@@ -75,15 +92,15 @@ def add_to_fridge(user_id: int, data: FridgeItemCreate, principal: Principal = D
         quantite=data.quantite,
         date_achat=date_achat,
         date_peremption=date_peremption,
+        preparation_id=prep.id if prep else None,
     )
     db.add(item)
     db.flush()
     log_history(db, user_id, item, data.quantite, "ajout")
 
-    # Plat cuisiné : on retire du frigo les ingrédients utilisés (sans bloquer si absents)
-    if recipe and data.deduire_ingredients:
-        factor = data.quantite / (recipe.portions or 1)
-        consume_recipe_ingredients(db, user_id, recipe, factor, "cuisine")
+    # On retire du frigo les ingrédients utilisés (sans bloquer si absents)
+    if prep and data.deduire_ingredients:
+        consume_preparation_ingredients(db, user_id, prep)
 
     db.commit()
     db.refresh(item)
@@ -132,7 +149,11 @@ def delete_fridge_item(id: int, raison: str = Query(default="suppression"),
             ajout = query.order_by(FridgeHistory.id.desc()).first()
             if ajout:
                 db.delete(ajout)
+        prep = item.preparation
         db.delete(item)
+        # Préparation saisie par erreur : inutile de la garder si aucun repas n'en vient
+        if prep and not db.query(MealLog).filter(MealLog.preparation_id == prep.id).count():
+            db.delete(prep)
     else:
         log_history(db, item.user_id, item, -item.quantite, action)
         remove_item(db, item)

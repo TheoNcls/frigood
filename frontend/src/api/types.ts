@@ -158,6 +158,17 @@ export interface Recipe {
 
 export type Moment = "matin" | "midi" | "soir" | "snack";
 
+/** Recette préparée : ingrédients réellement utilisés (g / ml) et portions obtenues */
+export interface Preparation {
+  id: number;
+  recipe_id: number;
+  portions: number;
+  date: string | null;
+  /** Différente de la recette d'origine */
+  adaptee: boolean;
+  ingredients: { ingredient_id: number; quantite: number }[];
+}
+
 export interface MealLog {
   id: number;
   user_id: number;
@@ -168,6 +179,9 @@ export interface MealLog {
   quantite: number | null;
   type_mesure: TypeMesure;
   notes: string | null;
+  /** Part d'un plat préparé (null : ancien repas, recette d'origine) */
+  preparation_id: number | null;
+  preparation: Preparation | null;
   fridge_updates: string[];
 }
 
@@ -179,6 +193,8 @@ export interface MealLogCreate {
   quantite: number;
   type_mesure: TypeMesure;
   notes: string | null;
+  /** Recette : le plat du frigo dont on prend une part */
+  fridge_item_id?: number | null;
 }
 
 export interface ActivityType {
@@ -241,6 +257,8 @@ export interface FridgeItem {
   date_achat: string | null;
   date_peremption: string | null;
   created_at: string | null;
+  /** Plat cuisiné : ce qui a réellement été préparé */
+  preparation: Preparation | null;
 }
 
 export type FridgeAction = "ajout" | "repas" | "cuisine" | "modification" | "consomme" | "perime" | "suppression";
