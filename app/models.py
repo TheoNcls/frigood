@@ -132,6 +132,8 @@ class User(Base):
     materiel_sport = Column(Text, nullable=True)
     # Texte libre : infos et objectifs de la personne, pour un futur coaching personnalisé (Claude)
     profil_coaching = Column(Text, nullable=True)
+    # Accès au coach IA (chaque bilan coûte un appel à Claude) : activé par l'administration
+    coach_autorise = Column(Boolean, nullable=False, default=False, server_default=false())
 
     garmin_tokens = Column(String, nullable=True)
     # Zones cardiaques Garmin (profil course) : JSON {zones: [{zone, min, max}], fc_max, …}
@@ -150,6 +152,8 @@ class User(Base):
     garmin_last_sync_auto = Column(Boolean, nullable=True)
     garmin_last_sync_activities = Column(Integer, nullable=True)
     garmin_last_sync_days = Column(Integer, nullable=True)
+    # Dernier essai de synchro à l'ouverture de l'appli (UTC) : pas plus d'un essai toutes les 30 min
+    garmin_open_try_at = Column(DateTime, nullable=True)
 
     meal_logs = relationship("MealLog", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")
@@ -186,6 +190,11 @@ class User(Base):
     def is_admin(self) -> bool:
         admins = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
         return (self.email or "").lower() in admins
+
+    @property
+    def coach_access(self) -> bool:
+        """L'administration a toujours accès au coach ; les autres comptes une fois autorisés."""
+        return bool(self.coach_autorise) or self.is_admin
 
 
 class MealLog(Base):

@@ -6,6 +6,7 @@ import DataAdmin from "./DataAdmin";
 import IngredientsAdmin from "./IngredientsAdmin";
 import NutrimentsAdmin from "./NutrimentsAdmin";
 import RecipesAdmin from "./RecipesAdmin";
+import UsersAdmin from "./UsersAdmin";
 
 const TABS = [
   { to: "ingredients", label: "Ingrédients" },
@@ -13,6 +14,7 @@ const TABS = [
   { to: "nutriments", label: "Nutriments" },
   { to: "activites", label: "Types d'activité" },
   { to: "donnees", label: "Données" },
+  { to: "utilisateurs", label: "Utilisateurs" },
 ];
 
 export default function Admin() {
@@ -21,7 +23,7 @@ export default function Admin() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Administration" subtitle="Catalogue partagé par tous les utilisateurs" />
+      <PageHeader title="Administration" subtitle="Catalogue partagé et comptes des utilisateurs" />
       <nav className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <div className="segmented">
           {TABS.map((t) => (
@@ -46,6 +48,7 @@ export default function Admin() {
         <Route path="nutriments" element={<NutrimentsAdmin />} />
         <Route path="activites" element={<ActivityTypesAdmin />} />
         <Route path="donnees" element={<DataAdmin />} />
+        <Route path="utilisateurs" element={<UsersAdmin />} />
         <Route path="*" element={<Navigate to="ingredients" replace />} />
       </Routes>
     </div>

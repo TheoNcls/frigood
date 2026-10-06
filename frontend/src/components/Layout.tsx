@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { CalendarDays, CalendarRange, Home, LogOut, Refrigerator, ShieldCheck, User, UtensilsCrossed } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { useGarminSyncOnOpen } from "./Garmin";
 
 const BASE_NAV = [
   { to: "/", label: "Accueil", icon: Home, end: true },
@@ -14,6 +15,7 @@ const ADMIN_NAV = { to: "/admin", label: "Admin", icon: ShieldCheck, end: false 
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  useGarminSyncOnOpen();
   const NAV = user?.is_admin ? [...BASE_NAV, ADMIN_NAV] : BASE_NAV;
 
   return (

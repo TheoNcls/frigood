@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Unplug, Watch } from "lucide-react";
 import { ApiError, api } from "../api/client";
@@ -23,6 +23,48 @@ export function useInvalidateSport() {
     queryClient.invalidateQueries({ queryKey: ["body"] });
     queryClient.invalidateQueries({ queryKey: ["fitness"] });
   };
+}
+
+const OPEN_SYNC_AFTER_MS = 2 * 3600_000;   // même seuil que le serveur
+const OPEN_RETRY_MS = 10 * 60_000;
+
+/**
+ * À l'ouverture (ou au retour sur l'appli) : synchro Garmin si la dernière date de plus de 2 h.
+ * Le serveur décide (session enregistrée seulement, un essai toutes les 30 min au plus) ; ici, rien ne bloque l'écran.
+ */
+export function useGarminSyncOnOpen() {
+  const { user, refreshUser } = useAuth();
+  const invalidate = useInvalidateSport();
+  const toast = useToast();
+  const lastTry = useRef(0);
+  const uid = user?.id;
+  const connected = !!user?.garmin_connected;
+  const lastSync = user?.garmin_last_sync_at ?? null;
+
+  useEffect(() => {
+    if (!uid || !connected) return;
+    async function run() {
+      const stale = !lastSync || Date.now() - fromUtc(lastSync).getTime() > OPEN_SYNC_AFTER_MS;
+      if (document.visibilityState !== "visible" || !stale || Date.now() - lastTry.current < OPEN_RETRY_MS) return;
+      lastTry.current = Date.now();
+      try {
+        const res = await api<{ status: string; imported?: number }>(`/users/${uid}/garmin_sync_open`, { method: "POST" });
+        if (res.status === "ok") {
+          invalidate();
+          await refreshUser();
+          if (res.imported) toast(`⌚ Garmin : ${res.imported} nouvelle(s) activité(s)`);
+        } else if (res.status === "session_expiree" && !sessionStorage.getItem("garmin_expiree_vu")) {
+          try { sessionStorage.setItem("garmin_expiree_vu", "1"); } catch { /* stockage indisponible */ }
+          toast("Session Garmin expirée : reconnecte-toi dans Profil", "error");
+        }
+      } catch {
+        // Synchro de confort : en cas d'échec, le bouton de synchro reste là
+      }
+    }
+    run();
+    document.addEventListener("visibilitychange", run);
+    return () => document.removeEventListener("visibilitychange", run);
+  }, [uid, connected, lastSync]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** Date UTC de l'API (sans fuseau) → Date locale. */

@@ -347,6 +347,8 @@ class UserRead(BaseModel):
     garmin_last_sync_activities: int | None = None
     garmin_last_sync_days: int | None = None
     is_admin: bool = False
+    coach_autorise: bool = False
+    coach_access: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -678,3 +680,23 @@ class CoachReportRead(BaseModel):
 class CoachActivitiesAdd(BaseModel):
     """Index des activités du bilan à ajouter à l'agenda (toutes si absent)."""
     indexes: list[int] | None = None
+
+
+# --- Administration des comptes ---
+
+class AdminUserRead(BaseModel):
+    id: int
+    nom: str
+    email: str
+    is_admin: bool = False
+    coach_autorise: bool = False
+    coach_access: bool = False
+    garmin_connected: bool = False
+    garmin_last_sync_at: datetime_type | None = None
+    bilans_coach: int = 0
+    dernier_bilan_at: datetime_type | None = None
+
+    model_config = {"from_attributes": True}
+
+class AdminUserUpdate(BaseModel):
+    coach_autorise: bool | None = None

@@ -1,4 +1,6 @@
 import json
+import logging
+import threading
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date as date_type, datetime, timedelta
@@ -6,12 +8,20 @@ from app.database import get_db
 from app.models import Activity, GarminIgnoredActivity, User, DailyStat
 from app.schemas import ActivityCreate, ActivityRead, GarminAutoSettings, GarminCredentials, GarminTokens, DailyStatRead, UserRead
 from app.auth import Principal, get_principal, check_user_access
+from app import garmin_auto
+from app.push_service import now_local
 from app.garmin_body import recompute_body_fitness
 from app.garmin_service import (
     MAX_HISTORY_DAYS, GarminSessionExpired, activity_details, login_with_tokens, recompute_days, run_sync, save_tokens,
 )
 
 router = APIRouter(tags=["activities"], dependencies=[Depends(get_principal)])
+log = logging.getLogger("frigood.garmin_open")
+
+OPEN_SYNC_AFTER = timedelta(hours=2)      # à l'ouverture : synchro si la dernière date de plus de 2 h
+OPEN_RETRY_AFTER = timedelta(minutes=30)  # et pas plus d'un essai toutes les 30 min (échec, plusieurs appareils…)
+_open_lock = threading.Lock()
+_open_running: set[int] = set()
 
 
 @router.post("/users/{user_id}/activities/", response_model=ActivityRead)
@@ -161,6 +171,45 @@ def garmin_sync(
         return run_sync(api, db, user, today, history_days)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erreur Garmin : {str(e)}")
+
+
+@router.post("/users/{user_id}/garmin_sync_open")
+def garmin_sync_on_open(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """À l'ouverture de l'appli : synchro si la dernière date de plus de 2 h.
+    Uniquement avec la session enregistrée (jamais de mot de passe), et jamais si Garmin vient de bloquer le serveur."""
+    check_user_access(principal, user_id)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    if not user.garmin_tokens:
+        return {"status": "non_connecte"}
+    now = datetime.utcnow()
+    if user.garmin_last_sync_at and now - user.garmin_last_sync_at < OPEN_SYNC_AFTER:
+        return {"status": "a_jour"}
+    if (user.garmin_open_try_at and now - user.garmin_open_try_at < OPEN_RETRY_AFTER) or garmin_auto.blocked_now():
+        return {"status": "attente"}
+    with _open_lock:
+        if user_id in _open_running:
+            return {"status": "en_cours"}
+        _open_running.add(user_id)
+    try:
+        user.garmin_open_try_at = now
+        db.commit()
+        try:
+            api = login_with_tokens(user, db)
+            res = run_sync(api, db, user, now_local().date(), auto=True)
+        except GarminSessionExpired:
+            return {"status": "session_expiree"}
+        except Exception as e:
+            message = str(e)[:200]
+            if garmin_auto.is_blocked_error(message):
+                garmin_auto.block()
+            log.warning("Synchro Garmin à l'ouverture échouée (compte %s) : %s", user_id, message)
+            return {"status": "erreur"}
+        return {"status": "ok", "imported": res["imported"], "stats_days": res["stats_days"]}
+    finally:
+        with _open_lock:
+            _open_running.discard(user_id)
 
 
 @router.post("/users/{user_id}/garmin_tokens")

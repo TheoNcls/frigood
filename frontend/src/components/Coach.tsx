@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CalendarPlus, Check, ChefHat, HeartPulse, Lightbulb, Search, Sparkles } from "lucide-react";
+import { CalendarPlus, Check, ChefHat, HeartPulse, Lightbulb, Lock, Search, Sparkles } from "lucide-react";
 import { api } from "../api/client";
 import { useCurrentUser } from "../auth/AuthContext";
 import type { SeanceStep, StrengthExercise } from "../api/types";
@@ -102,7 +102,25 @@ function fromUtc(s: string): Date {
 }
 
 /** Coach Claude : bilan des derniers jours, conseils et propositions, à partir de toutes les données de l'app. */
+const COACH_TITLE = <span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-violet-600" /> Coach</span>;
+
 export function CoachCard() {
+  const user = useCurrentUser();
+  // Chaque bilan coûte un appel à Claude : le coach est activé compte par compte par l'administration
+  if (!user.coach_access) {
+    return (
+      <Card title={COACH_TITLE}>
+        <p className="flex items-start gap-2 text-sm text-slate-600">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          Le coach IA n'est pas encore activé pour ton compte. Demande l'accès à l'administrateur de Frigood.
+        </p>
+      </Card>
+    );
+  }
+  return <CoachContent />;
+}
+
+function CoachContent() {
   const user = useCurrentUser();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -151,7 +169,7 @@ export function CoachCard() {
   const ddmm = (d: Date) => d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
 
   return (
-    <Card title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-violet-600" /> Coach</span>}>
+    <Card title={COACH_TITLE}>
       <p className="mb-3 text-sm text-slate-600">
         Le coach lit tes repas, ton sport, ton sommeil, ton poids, ta forme Garmin, ton agenda et ton frigo, puis te fait un bilan :
         santé et récupération, conseils, recettes, et des séances pour ta semaine à ajouter à l'agenda.

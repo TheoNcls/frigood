@@ -28,6 +28,9 @@ export interface User {
   garmin_last_sync_activities: number | null;
   garmin_last_sync_days: number | null;
   is_admin: boolean;
+  /** Coach IA activé par l'administration (l'administration y a toujours accès) */
+  coach_autorise: boolean;
+  coach_access: boolean;
 }
 
 export interface AuthResponse extends User {
