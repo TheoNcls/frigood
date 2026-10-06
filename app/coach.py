@@ -17,7 +17,7 @@ from app.models import (
 
 log = logging.getLogger("frigood.coach")
 
-MODEL = "claude-opus-5-5"
+MODEL = "claude-sonnet-5-5"   # Sonnet 5.5 : 2 $ / 10 $ par million de tokens (Opus 5.5 : 4 $ / 20 $)
 PAST_DAYS = 14        # santé Garmin, forme, tâches passées
 MEAL_DAYS = 7         # repas : la semaine écoulée suffit (contexte plus léger)
 ACTIVITY_DAYS = 42    # activités : 6 semaines pour juger la charge et la progression
@@ -466,7 +466,7 @@ def ask_claude(context: dict, sports: list[str], week: tuple[date, date],
         # Streaming : la réponse peut prendre un moment (évite les délais d'attente HTTP)
         with client.beta.messages.stream(
             model=MODEL,
-            max_tokens=16000,
+            max_tokens=32000,   # la réflexion compte dans la limite, en plus du bilan
             system=SYSTEM_PROMPT,
             thinking={"type": "adaptive"},
             output_config={"effort": "high", "format": {"type": "json_schema", "schema": response_schema(sports, exercises)}},

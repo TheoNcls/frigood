@@ -514,6 +514,13 @@ def run_sync(api, db: Session, user, today: date, history_days: int | None = Non
         sync_hr_zones(api, db, user)
     except Exception:
         db.rollback()
+    # Séances faites : on les retire de la montre (avec la session déjà ouverte)
+    workouts_removed = 0
+    try:
+        from app.garmin_workouts import remove_done_workouts
+        workouts_removed = remove_done_workouts(api, db, user, today)
+    except Exception:
+        db.rollback()
     save_tokens(user, api, db)
     user.garmin_last_sync_at = datetime.utcnow()
     user.garmin_last_sync_auto = auto
@@ -521,4 +528,4 @@ def run_sync(api, db: Session, user, today: date, history_days: int | None = Non
     user.garmin_last_sync_days = stats_days
     db.commit()
     return {"imported": imported, "skipped": skipped, "stats_days": stats_days, "remaining_days": len(todo) - stats_days,
-            "weigh_ins": weigh_ins}
+            "weigh_ins": weigh_ins, "workouts_removed": workouts_removed}

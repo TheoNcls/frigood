@@ -197,7 +197,8 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
               <div className="text-xs font-semibold text-slate-600">Séance</div>
               {task.seance && task.seance.length > 0 && <SeanceSteps steps={task.seance} />}
               {task.exercices && task.exercices.length > 0 && <ExercisesList exercises={task.exercices} />}
-              {!task.recurrence && task.date >= todayISO() && <GarminSendButton task={task} />}
+              {/* Une séance faite est retirée de la montre à la synchro suivante : plus rien à envoyer */}
+              {!task.recurrence && task.date >= todayISO() && !task.fait && <GarminSendButton task={task} />}
             </div>
           )}
           <Segmented

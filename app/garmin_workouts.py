@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.models import Task, User
+from app.models import Activity, Task, TaskCompletion, User
 
 ZONES_REFRESH = timedelta(hours=24)
 RUNNING_KEYS = {"running", "trail_running", "treadmill_running", "track_running", "street_running", "indoor_running"}
@@ -549,6 +549,35 @@ def send_task(api, db: Session, task: Task) -> None:
     task.garmin_schedule_id = _find_id(scheduled, "workoutScheduleId", "scheduledWorkoutId", "id")
     task.garmin_envoye_at = datetime.utcnow()
     db.commit()
+
+
+MAX_CLEANUP = 5   # séances retirées par synchro au plus (Garmin n'aime pas les rafales d'appels)
+
+
+def is_done(db: Session, task: Task) -> bool:
+    """Même règle que l'agenda : le choix manuel (faite / pas faite) d'abord,
+    sinon une activité du même type le même jour valide la séance."""
+    c = db.query(TaskCompletion).filter_by(task_id=task.id, date=task.date).first()
+    if c:
+        return c.statut == "fait"
+    return bool(task.activity_type_id) and db.query(Activity.id).filter(
+        Activity.user_id == task.user_id, Activity.activity_type_id == task.activity_type_id, Activity.date == task.date,
+    ).first() is not None
+
+
+def remove_done_workouts(api, db: Session, user: User, today) -> int:
+    """Séances envoyées sur la montre et faites depuis : retirées du calendrier et de la bibliothèque Garmin."""
+    sent = (db.query(Task)
+            .filter(Task.user_id == user.id, Task.garmin_workout_id.isnot(None), Task.date <= today)
+            .order_by(Task.date).all())
+    removed = 0
+    for task in sent:
+        if removed >= MAX_CLEANUP:
+            break
+        if is_done(db, task):
+            remove_task(api, db, task)
+            removed += 1
+    return removed
 
 
 def remove_task(api, db: Session, task: Task) -> None:
