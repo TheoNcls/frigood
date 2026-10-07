@@ -126,6 +126,8 @@ class User(Base):
     # Objectif protéines en g par kg de poids : proteines_cible est recalculé à chaque nouvelle pesée
     proteines_g_kg = Column(Float, nullable=True)
     date_naissance = Column(Date, nullable=True)
+    # Partie Nutrition affichée dans l'appli (masquée sinon : les données restent)
+    nutrition_active = Column(Boolean, nullable=False, default=True, server_default=true())
     # Régime alimentaire (transmis au coach) : omnivore, flexitarien, pescetarien, vegetarien, vegan
     regime_alimentaire = Column(String(20), nullable=False, default="vegetarien", server_default="vegetarien")
     # Matériel de renfo disponible (JSON, clés de garmin_workouts.EQUIPMENT) ; vide = pas renseigné

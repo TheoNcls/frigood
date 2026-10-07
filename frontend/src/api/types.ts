@@ -12,6 +12,8 @@ export interface User {
   /** Infos et objectifs en texte libre (futur coaching personnalisé) */
   profil_coaching: string | null;
   regime_alimentaire: RegimeAlimentaire;
+  /** Partie Nutrition affichée (masquée sinon : repas, objectifs, calories ; les données restent) */
+  nutrition_active: boolean;
   /** Matériel de renfo disponible (null : pas renseigné, le coach a tous les exercices) */
   materiel: string[] | null;
   /** Zones cardiaques Garmin (profil course) */

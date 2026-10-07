@@ -278,6 +278,7 @@ class UserUpdate(BaseModel):
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
     regime_alimentaire: str | None = None
+    nutrition_active: bool | None = None
     # Envoyé à null pour revenir à « pas renseigné » (tous les exercices)
     materiel: list[str] | None = None
 
@@ -335,6 +336,7 @@ class UserRead(BaseModel):
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
     regime_alimentaire: str = "vegetarien"
+    nutrition_active: bool = True
     materiel: list[str] | None = None
     zones_fc: dict | None = None
     garmin_connected: bool = False
