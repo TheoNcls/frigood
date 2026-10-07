@@ -10,9 +10,8 @@ class Ingredient(Base):
     __tablename__ = "ingredients"
 
     id = Column(Integer, primary_key=True)
-    nom = Column(String, nullable=False)
-    # Visible par tout le monde une fois validé ; sinon seulement par la personne qui l'a créé.
-    # Un nom peut exister en double (deux comptes ont chacun le leur) : l'appli évite les doublons visibles
+    nom = Column(String, nullable=False, unique=True)
+    # Visible par tout le monde une fois validé ; sinon seulement par la personne qui l'a créé
     valide = Column(Boolean, nullable=False, default=True, server_default=true())
     description = Column(String, nullable=True)
     categorie = Column(String, nullable=True)
@@ -70,9 +69,8 @@ class Recipe(Base):
     __tablename__ = "recipes"
 
     id = Column(Integer, primary_key=True)
-    nom = Column(String, nullable=False)
-    # Visible par tout le monde une fois validé ; sinon seulement par la personne qui l'a créé.
-    # Un nom peut exister en double (deux comptes ont chacun le leur) : l'appli évite les doublons visibles
+    nom = Column(String, nullable=False, unique=True)
+    # Visible par tout le monde une fois validé ; sinon seulement par la personne qui l'a créé
     valide = Column(Boolean, nullable=False, default=True, server_default=true())
     description = Column(String, nullable=True)
     categorie = Column(String, nullable=True)

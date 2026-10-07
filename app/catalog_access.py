@@ -31,9 +31,21 @@ def check_can_edit(obj, principal: Principal, label: str):
 
 
 def check_name_free(db: Session, model, nom: str, principal: Principal, label: str, exclude_id: int | None = None):
-    """Pas deux fois le même nom parmi ce que la personne voit (deux comptes peuvent avoir chacun leur « Nutella »)."""
-    query = db.query(model.id).filter(func.lower(model.nom) == (nom or "").strip().lower())
+    """Un nom n'existe qu'une fois (sans tenir compte des majuscules) : s'il est pris, on dit où le trouver."""
+    clean = (nom or "").strip()
+    query = db.query(model).filter(func.lower(model.nom) == clean.lower())
     if exclude_id:
         query = query.filter(model.id != exclude_id)
-    if visible(query, model, principal).first():
-        raise HTTPException(status_code=400, detail=f"{label} nommé « {nom.strip()} » existe déjà")
+    existing = query.first()
+    if not existing:
+        return
+    fem = label.startswith("Une")   # « Une recette » / « Un ingrédient »
+    le, e = ("la", "e") if fem else ("le", "")
+    if principal.user_id is not None and existing.created_by == principal.user_id and not principal.is_service:
+        where = "dans tes ajouts"
+    elif is_visible(existing, principal):
+        where = f"dans le catalogue : utilise-{le} plutôt que d'en créer un{e} nouve{'lle' if fem else 'au'}"
+    else:
+        where = (f"et attend d'être validé{e} (ajouté{e} par quelqu'un d'autre) : choisis un nom plus précis, "
+                 "par exemple avec la marque")
+    raise HTTPException(status_code=400, detail=f"{label} « {existing.nom} » existe déjà {where}")

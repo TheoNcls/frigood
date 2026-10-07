@@ -136,7 +136,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
       </div>
       {duplicate && (
         <p className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          <AlertTriangle className="h-4 w-4 shrink-0" /> Un ingrédient « {duplicate.nom} » existe déjà.
+          <AlertTriangle className="h-4 w-4 shrink-0" /> Un ingrédient « {duplicate.nom} » existe déjà dans le catalogue : utilise-le plutôt que de le recréer.
         </p>
       )}
       <Field label="Description">
