@@ -265,6 +265,7 @@ class UserCreate(BaseModel):
     lipides_cible: float | None = None
 
 PROFIL_COACHING_MAX = 4000
+PLAN_OBJECTIFS_MAX = 20000
 REGIMES_ALIMENTAIRES = ("omnivore", "flexitarien", "pescetarien", "vegetarien", "vegan")
 
 
@@ -279,6 +280,7 @@ class UserUpdate(BaseModel):
     # Envoyés à null (ou vides) pour effacer
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
+    plan_objectifs: str | None = None
     regime_alimentaire: str | None = None
     nutrition_active: bool | None = None
     # Envoyé à null pour revenir à « pas renseigné » (tous les exercices)
@@ -309,6 +311,14 @@ class UserUpdate(BaseModel):
             raise ValueError("Date de naissance invalide")
         return v
 
+    @field_validator("plan_objectifs")
+    @classmethod
+    def _check_plan(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if len(v) > PLAN_OBJECTIFS_MAX:
+            raise ValueError(f"Plan trop long ({PLAN_OBJECTIFS_MAX} caractères maximum)")
+        return v or None
+
     @field_validator("profil_coaching")
     @classmethod
     def _check_coaching(cls, v: str | None) -> str | None:
@@ -337,6 +347,8 @@ class UserRead(BaseModel):
     proteines_g_kg: float | None = None
     date_naissance: date_type | None = None
     profil_coaching: str | None = None
+    plan_objectifs: str | None = None
+    plan_genere_at: datetime_type | None = None
     regime_alimentaire: str = "vegetarien"
     nutrition_active: bool = True
     materiel: list[str] | None = None

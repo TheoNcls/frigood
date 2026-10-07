@@ -88,7 +88,7 @@ def update_user(id: int, data: UserUpdate, principal: Principal = Depends(get_pr
                 db: Session = Depends(get_db)):
     check_user_access(principal, id)
     user = _get_user(db, id)
-    clearable = {"proteines_g_kg", "date_naissance", "profil_coaching"}
+    clearable = {"proteines_g_kg", "date_naissance", "profil_coaching", "plan_objectifs"}
     for key, value in data.model_dump(exclude_none=True, exclude=clearable | {"materiel"}).items():
         setattr(user, key, value)
     # Champs qu'on peut effacer : envoyés explicitement, même à null (g/kg à null = objectif fixe)

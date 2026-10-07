@@ -138,6 +138,9 @@ class User(Base):
     materiel_sport = Column(Text, nullable=True)
     # Texte libre : infos et objectifs de la personne, pour un futur coaching personnalisé (Claude)
     profil_coaching = Column(Text, nullable=True)
+    # Plan à long terme vers les objectifs (Markdown) : généré une fois par le coach, puis modifiable à la main
+    plan_objectifs = Column(Text, nullable=True)
+    plan_genere_at = Column(DateTime, nullable=True)
     # Accès au coach IA (chaque bilan coûte un appel à Claude) : activé par l'administration
     coach_autorise = Column(Boolean, nullable=False, default=False, server_default=false())
 

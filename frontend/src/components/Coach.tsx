@@ -57,7 +57,7 @@ function inline(text: string): ReactNode[] {
 }
 
 /** Markdown simple renvoyé par le coach : titres ##/###, listes -, * ou 1., paragraphes, gras. */
-function CoachText({ text }: { text: string }) {
+export function CoachText({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let para: string[] = [];

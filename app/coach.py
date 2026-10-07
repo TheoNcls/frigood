@@ -62,6 +62,8 @@ Règles :
 - Appuie chaque remarque sur les données (chiffres, dates, tendances) ; ne devine pas ce qui n'y est pas.
 - Si une donnée manque ou semble incomplète (repas non saisis, montre non portée), dis-le simplement sans en tirer de conclusion.
 - Tiens compte de ses objectifs et contraintes écrits ; s'ils sont absents, base-toi sur ses objectifs nutritionnels.
+- Si « profil.plan_long_terme » est présent (son plan, qu'elle a pu modifier) : aligne les séances de la semaine
+  sur le jalon du mois en cours (volume, sortie longue, séances clés) et dis où elle en est par rapport à ce jalon.
 - Nutrition : respecte strictement son régime alimentaire (profil.regime) ; regarde surtout calories et protéines
   par rapport à ses objectifs, et propose des aliments concrets compatibles avec son régime.
 - Sport : relie charge et récupération ; reste prudent sur l'intensité si la récupération est mauvaise.
@@ -307,6 +309,7 @@ def build_context(db: Session, user: User, today: date) -> dict:
             "regime": REGIME_LABELS.get(user.regime_alimentaire or "vegetarien", "végétarien"),
             "zones_fc_course_garmin": (user.zones_fc or {}).get("zones"),
             "fc_max": (user.zones_fc or {}).get("fc_max"),
+            "plan_long_terme": (user.plan_objectifs or "")[:8000] or None,
             "materiel_renfo_disponible": (["poids du corps"] + [EQUIPMENT[m] for m in user.materiel if m in EQUIPMENT])
                                          if user.materiel is not None else None,
         },

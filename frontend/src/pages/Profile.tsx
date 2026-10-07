@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
-import { Bell, BellOff, LogOut, Send } from "lucide-react";
+import { Bell, BellOff, LogOut, Pencil, Send, Sparkles } from "lucide-react";
 import { currentSubscription, disablePush, enablePush, isIOS, isStandalone, pushSupported } from "../lib/push";
 import { api } from "../api/client";
 import type { RegimeAlimentaire, User } from "../api/types";
@@ -10,9 +10,10 @@ import { useToast } from "../components/Toast";
 import { usePreferences } from "../lib/preferences";
 import { fmt } from "../lib/nutrition";
 import { todayISO } from "../lib/dates";
+import { CoachText } from "../components/Coach";
 import { GarminSettingsCard } from "../components/Garmin";
 import { WeighInsCard, useLatestWeight } from "../components/Body";
-import { Card, Field, PageHeader } from "../components/ui";
+import { Card, Field, PageHeader, Spinner } from "../components/ui";
 
 function numOrNull(v: string): number | null {
   const n = parseFloat(v);
@@ -171,8 +172,8 @@ function CoachingProfileCard() {
   return (
     <Card title="Mes infos & objectifs">
       <p className="mb-2 text-sm text-slate-600">
-        Écris librement ce qui compte pour toi : objectifs, contexte, contraintes. Ce texte servira plus tard à des conseils
-        et un coaching personnalisés.
+        Écris librement ce qui compte pour toi : objectifs (avec une date si possible), contexte, contraintes.
+        Le coach s'en sert pour ses bilans et pour ton plan.
       </p>
       <textarea
         className="input min-h-[10rem]"
@@ -187,7 +188,114 @@ function CoachingProfileCard() {
           Enregistrer
         </button>
       </div>
+      <div className="my-5 border-t border-slate-100" />
+      <PlanSection objectivesReady={!changed && !!user.profil_coaching} />
     </Card>
+  );
+}
+
+const PLAN_MAX = 20000;
+
+/** Plan à long terme vers les objectifs : jalons mois par mois, généré une fois par le coach, puis modifiable. */
+function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(user.plan_objectifs ?? "");
+  const plan = user.plan_objectifs;
+
+  const generate = useMutation({
+    mutationFn: () => api<User>(`/users/${user.id}/plan`, { method: "POST" }),
+    onSuccess: (u) => { setUser(u); setText(u.plan_objectifs ?? ""); toast("Ton plan est prêt : relis-le et ajuste-le si besoin"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+  const save = useMutation({
+    mutationFn: () => api<User>(`/users/${user.id}`, { method: "PUT", body: { plan_objectifs: text.trim() || null } }),
+    onSuccess: (u) => { setUser(u); setText(u.plan_objectifs ?? ""); setEditing(false); toast("Plan enregistré"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  const title = <div className="label mb-1">Mon plan vers mes objectifs</div>;
+  const generatedOn = user.plan_genere_at
+    ? new Date(/[zZ]$/.test(user.plan_genere_at) ? user.plan_genere_at : `${user.plan_genere_at}Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })
+    : null;
+
+  if (editing) {
+    return (
+      <div>
+        {title}
+        <textarea
+          className="input min-h-[24rem] font-mono text-xs leading-relaxed"
+          maxLength={PLAN_MAX}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          aria-label="Mon plan vers mes objectifs"
+          placeholder={"## Objectif\nTrail de 40 km / 2000 m D+ en avril\n\n## Jalons\n### Mois 1\n- **Volume** : 30 km/semaine, 600 m D+\n- **Sortie longue** : 15 km / 400 m D+"}
+        />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-slate-500">Titres ## / ###, listes « - », **gras** · {text.length} / {PLAN_MAX}</span>
+          <div className="flex gap-2">
+            <button type="button" className="btn-secondary" onClick={() => { setText(plan ?? ""); setEditing(false); }}>Annuler</button>
+            <button type="button" className="btn-primary" disabled={save.isPending || text.trim() === (plan ?? "")} onClick={() => save.mutate()}>
+              Enregistrer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (plan) {
+    return (
+      <div>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            {title}
+            <p className="text-xs text-slate-500">
+              {generatedOn ? `Préparé par le coach le ${generatedOn}, modifiable à volonté.` : "Écrit par toi."} Le coach de la semaine s'en sert.
+            </p>
+          </div>
+          <button type="button" className="btn-secondary py-1.5" onClick={() => { setText(plan); setEditing(true); }}>
+            <Pencil className="h-4 w-4" /> Modifier
+          </button>
+        </div>
+        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2"><CoachText text={plan} /></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {title}
+      <p className="text-sm text-slate-600">
+        Les grandes étapes jusqu'à ton objectif, mois par mois : volume (km, D+), sortie longue, séances clés et repères
+        à atteindre. Par exemple pour un trail dans 6 mois : où tu dois en être chaque mois.
+      </p>
+      {generate.isPending ? (
+        <div className="mt-3 rounded-xl bg-violet-50 px-3 py-2"><Spinner label="Le coach prépare ton plan (1 à 2 minutes)…" /></div>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {user.coach_access && !user.plan_genere_at && (
+            <button type="button" className="btn-primary" disabled={!objectivesReady} onClick={() => generate.mutate()}>
+              <Sparkles className="h-4 w-4" /> Générer mon plan avec le coach
+            </button>
+          )}
+          <button type="button" className="btn-secondary" onClick={() => { setText(""); setEditing(true); }}>
+            <Pencil className="h-4 w-4" /> L'écrire moi-même
+          </button>
+        </div>
+      )}
+      <p className="mt-2 text-xs text-slate-500">
+        {!user.coach_access
+          ? "La génération par le coach demande l'accès au coach IA (à demander à l'administrateur)."
+          : user.plan_genere_at
+            ? "Ton plan a déjà été généré une fois : tu peux en réécrire un toi-même."
+            : !objectivesReady
+              ? "Écris et enregistre d'abord tes objectifs ci-dessus."
+              : "Une seule génération possible : vérifie tes objectifs avant. Tu pourras ensuite le modifier à la main."}
+      </p>
+    </div>
   );
 }
 

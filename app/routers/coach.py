@@ -2,13 +2,13 @@ import json
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from app import coach
+from app import coach, plan
 from app.garmin_workouts import exercises_for
 from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
 from app.models import ActivityType, CoachReport, Task, User
 from app.push_service import local_date, now_local
-from app.schemas import CoachActivitiesAdd, CoachReportRead
+from app.schemas import CoachActivitiesAdd, CoachReportRead, UserRead
 
 router = APIRouter(tags=["coach"], dependencies=[Depends(get_principal)])
 
@@ -114,6 +114,26 @@ def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^
     db.commit()
     db.refresh(report)
     return report
+
+
+@router.post("/users/{user_id}/plan", response_model=UserRead)
+def generate_plan(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Plan à long terme vers les objectifs, écrit par le coach. Une seule fois : ensuite on le modifie à la main."""
+    user = _user(db, user_id, principal)
+    if user.plan_genere_at or (user.plan_objectifs or "").strip():
+        raise HTTPException(status_code=409, detail="Ton plan existe déjà : modifie-le directement")
+    if not (user.profil_coaching or "").strip():
+        raise HTTPException(status_code=400, detail="Écris d'abord tes objectifs dans « Mes infos & objectifs »")
+    context = plan.build_plan_context(db, user, now_local().date())
+    try:
+        text, usage = plan.ask_plan(context)
+    except coach.CoachError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    user.plan_objectifs = text
+    user.plan_genere_at = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.post("/coach/{report_id}/activities")

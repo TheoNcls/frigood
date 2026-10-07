@@ -11,6 +11,9 @@ export interface User {
   date_naissance: string | null;
   /** Infos et objectifs en texte libre (futur coaching personnalisé) */
   profil_coaching: string | null;
+  /** Plan à long terme vers les objectifs (Markdown), généré une fois par le coach puis modifiable */
+  plan_objectifs: string | null;
+  plan_genere_at: string | null;
   regime_alimentaire: RegimeAlimentaire;
   /** Partie Nutrition affichée (masquée sinon : repas, objectifs, calories ; les données restent) */
   nutrition_active: boolean;
