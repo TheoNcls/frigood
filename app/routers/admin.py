@@ -11,7 +11,8 @@ router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(requir
 
 def _read(user: User, stats: dict) -> AdminUserRead:
     n, last = stats.get(user.id, (0, None))
-    return AdminUserRead.model_validate(user).model_copy(update={"bilans_coach": n, "dernier_bilan_at": last})
+    return AdminUserRead.model_validate(user).model_copy(update={
+        "bilans_coach": n, "dernier_bilan_at": last, "a_un_plan": bool((user.plan_objectifs or "").strip())})
 
 
 def _coach_stats(db: Session) -> dict:
@@ -33,6 +34,8 @@ def update_user(user_id: int, data: AdminUserUpdate, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if data.coach_autorise is not None:
         user.coach_autorise = data.coach_autorise
+    if data.plan_regenerable:
+        user.plan_genere_at = None
     db.commit()
     db.refresh(user)
     return _read(user, _coach_stats(db))

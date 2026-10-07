@@ -118,10 +118,12 @@ def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^
 
 @router.post("/users/{user_id}/plan", response_model=UserRead)
 def generate_plan(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    """Plan à long terme vers les objectifs, écrit par le coach. Une seule fois : ensuite on le modifie à la main."""
+    """Plan à long terme vers les objectifs, écrit par le coach. Une seule fois (l'administration peut en autoriser
+    une nouvelle) : ensuite on le modifie à la main. Une nouvelle génération remplace le texte."""
     user = _user(db, user_id, principal)
-    if user.plan_genere_at or (user.plan_objectifs or "").strip():
-        raise HTTPException(status_code=409, detail="Ton plan existe déjà : modifie-le directement")
+    if user.plan_genere_at:
+        raise HTTPException(status_code=409, detail="Ton plan a déjà été généré : modifie-le directement "
+                                                    "(ou demande à l'administrateur d'en autoriser un nouveau)")
     if not (user.profil_coaching or "").strip():
         raise HTTPException(status_code=400, detail="Écris d'abord tes objectifs dans « Mes infos & objectifs »")
     context = plan.build_plan_context(db, user, now_local().date())
@@ -134,6 +136,16 @@ def generate_plan(user_id: int, principal: Principal = Depends(get_principal), d
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.get("/users/{user_id}/plan/jalon")
+def plan_milestone(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Jalon du mois en cours (lu dans le plan) et où on en est cette semaine : pour l'accueil."""
+    check_user_access(principal, user_id)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    return plan.current_milestone(db, user, now_local().date())
 
 
 @router.post("/coach/{report_id}/activities")

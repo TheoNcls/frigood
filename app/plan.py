@@ -6,6 +6,7 @@ la personne le modifie ensuite à la main, et le coach de la semaine s'en sert p
 import json
 import logging
 import os
+import re
 from collections import defaultdict
 from datetime import date, timedelta
 
@@ -38,9 +39,10 @@ Si aucune date n'est donnée, choisis un horizon raisonnable et dis-le.
 ## Point de départ
 Son volume actuel (km et D+ par semaine, plus longue sortie), sa régularité, sa forme ; l'écart avec l'objectif.
 ## Jalons
-Un titre ### par mois jusqu'à l'objectif (ex. « ### Mois 1 · 7 oct. → 6 nov. »), puis ces puces :
-- **Volume** : km par semaine (fourchette) et D+ par semaine
-- **Sortie longue** : distance, D+ et durée visés en fin de mois
+Un titre ### par mois jusqu'à l'objectif, avec les dates au format jj/mm (l'appli s'en sert pour suivre le mois
+en cours), par exemple « ### Mois 1 · 08/10 → 07/11 », puis exactement ces puces :
+- **Volume** : 25–30 km/semaine · 400 m D+/semaine   (fourchette de km, puis D+ par semaine)
+- **Sortie longue** : 15 km · 300 m D+ · 1 h 45   (visée en fin de mois)
 - **Séances clés** : 2 ou 3 types de séances (fractionné, côtes, seuil, endurance, renforcement…)
 - **Repère** : ce qu'elle doit être capable de faire en fin de mois (un test simple)
 Prévois une semaine plus légère toutes les 3 à 4 semaines et un affûtage avant l'objectif.
@@ -171,3 +173,159 @@ def ask_plan(context: dict) -> tuple[str, dict]:
         raise CoachError("Le coach n'a rien renvoyé, réessaie")
     usage = {"model": message.model, "input_tokens": message.usage.input_tokens, "output_tokens": message.usage.output_tokens}
     return text[:PLAN_MAX_CHARS], usage
+
+
+# ── Jalon en cours : lu dans le texte du plan (modifiable), comparé aux activités réelles ──────────────
+
+_MONTHS = {"jan": 1, "fév": 2, "fev": 2, "mar": 3, "avr": 4, "mai": 5, "juin": 6, "juil": 7,
+           "aoû": 8, "aou": 8, "sep": 9, "oct": 10, "nov": 11, "déc": 12, "dec": 12}
+_DATE = r"(\d{1,2})\s*(?:/\s*(\d{1,2})|(?:er)?\s+([a-zéûô]+)\.?)"
+_RANGE = re.compile(_DATE + r"\s*(?:→|->|–|—|-|au)\s*" + _DATE, re.I)
+_NUM = r"(\d+(?:[.,]\d+)?)"
+_KM_RANGE = re.compile(_NUM + r"\s*(?:[–—-]|à)\s*" + _NUM + r"\s*km", re.I)
+_KM = re.compile(_NUM + r"\s*km", re.I)
+_DPLUS = re.compile(r"(\d[\d\s\u202f\u00a0.]*)\s*m\s*(?:de\s*)?D\+", re.I)
+
+FAMILIES = {   # sport de l'objectif -> activités qui comptent dans le volume
+    "velo": (("cycling", "biking", "gravel", "mtb"), ("vélo", "velo", "vtt", "cyclisme", "gravel")),
+    "natation": (("swim",), ("natation", "nage")),
+    "pied": (("running", "trail", "hiking", "walking"), ("course", "trail", "rando", "marche", "footing")),
+}
+
+
+def _month(token: str | None, num: str | None) -> int | None:
+    if num:
+        return int(num)
+    t = (token or "").lower()
+    return next((m for k, m in _MONTHS.items() if t.startswith(k)), None)
+
+
+def _float(s: str) -> float:
+    return float(s.replace(",", "."))
+
+
+def _dplus(line: str) -> int | None:
+    m = _DPLUS.search(line)
+    if not m:
+        return None
+    digits = re.sub(r"[^\d]", "", m.group(1))
+    return int(digits) if digits else None
+
+
+def parse_jalons(text: str, ref_year: int) -> list[dict]:
+    """Les sections « ### … jj/mm → jj/mm » du plan, avec leurs cibles (volume, D+, sortie longue)."""
+    jalons, current, year, prev_start = [], None, ref_year, None
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if line.startswith("## "):
+            current = None   # nouvelle partie (Points d'attention…)
+            continue
+        if line.startswith("###"):
+            current = None
+            m = _RANGE.search(line)
+            if not m:
+                continue
+            d1, mo1 = int(m.group(1)), _month(m.group(3), m.group(2))
+            d2, mo2 = int(m.group(4)), _month(m.group(6), m.group(5))
+            if not (mo1 and mo2):
+                continue
+            try:
+                start = date(year, mo1, d1)
+                if prev_start and start < prev_start - timedelta(days=15):
+                    year += 1
+                    start = date(year, mo1, d1)
+                end = date(year, mo2, d2)
+                if end < start:
+                    end = date(year + 1, mo2, d2)
+            except ValueError:
+                continue
+            prev_start = start
+            current = {"titre": line.lstrip("#").strip(), "debut": start, "fin": end, "lignes": [], "cibles": {}}
+            jalons.append(current)
+            continue
+        if current and line:
+            item = re.sub(r"^[-*•]\s*", "", line)
+            current["lignes"].append(item)
+            low = item.lower()
+            c = current["cibles"]
+            if "volume" in low:
+                r = _KM_RANGE.search(item)
+                if r:
+                    c["km_semaine_min"], c["km_semaine_max"] = _float(r.group(1)), _float(r.group(2))
+                elif (k := _KM.search(item)):
+                    c["km_semaine_min"] = c["km_semaine_max"] = _float(k.group(1))
+                if (dp := _dplus(item)) is not None:
+                    c["d_plus_semaine"] = dp
+            elif "sortie longue" in low:
+                if (k := _KM.search(item)):
+                    c["sortie_longue_km"] = _float(k.group(1))
+                if (dp := _dplus(item)) is not None:
+                    c["sortie_longue_d_plus"] = dp
+    return jalons
+
+
+def _family(text: str) -> str:
+    obj = text.split("## Jalons")[0].lower() if text else ""
+    for fam in ("velo", "natation"):
+        if any(w in obj for w in FAMILIES[fam][1]):
+            return fam
+    return "pied"
+
+
+def _counts(activity: Activity, fam: str) -> bool:
+    t = activity.activity_type
+    if not t:
+        return False
+    keys, words = FAMILIES[fam]
+    key, nom = (t.garmin_type_key or "").lower(), (t.nom or "").lower()
+    return any(k in key for k in keys) or any(w in nom for w in words)
+
+
+def _d_plus(activity: Activity) -> int:
+    if not activity.raw_data:
+        return 0
+    try:
+        return int(activity_details(json.loads(activity.raw_data)).get("denivele_pos_m") or 0)
+    except (ValueError, TypeError, KeyError):
+        return 0
+
+
+def current_milestone(db: Session, user: User, today: date) -> dict | None:
+    """Jalon du mois en cours (ou le prochain) et où on en est : km et D+ de la semaine, plus longue sortie du jalon."""
+    if not (user.plan_objectifs or "").strip():
+        return None
+    ref_year = (user.plan_genere_at.date() if user.plan_genere_at else today).year
+    jalons = parse_jalons(user.plan_objectifs, ref_year)
+    if not jalons:
+        return None
+    idx = next((i for i, j in enumerate(jalons) if j["debut"] <= today <= j["fin"]), None)
+    if idx is None:
+        upcoming = [i for i, j in enumerate(jalons) if j["debut"] > today]
+        idx = upcoming[0] if upcoming else len(jalons) - 1
+    j = jalons[idx]
+    fam = _family(user.plan_objectifs)
+    monday = today - timedelta(days=today.weekday())
+    since = min(monday, j["debut"])
+    week = {"km": 0.0, "d_plus_m": 0, "seances": 0}
+    longest = {"km": 0.0, "d_plus_m": 0, "date": None}
+    for a in (db.query(Activity).filter(Activity.user_id == user.id, Activity.date >= since, Activity.date <= today)
+              .order_by(Activity.date)):
+        if not _counts(a, fam):
+            continue
+        dp = _d_plus(a)
+        if a.date >= monday:
+            week["km"] += a.distance_km or 0
+            week["d_plus_m"] += dp
+            week["seances"] += 1
+        if a.date >= j["debut"] and (a.distance_km or 0) > longest["km"]:
+            longest = {"km": a.distance_km or 0, "d_plus_m": dp, "date": a.date.isoformat()}
+    total_days = (j["fin"] - j["debut"]).days + 1
+    status = "en_cours" if j["debut"] <= today <= j["fin"] else ("a_venir" if j["debut"] > today else "termine")
+    return {
+        "numero": idx + 1, "nombre": len(jalons), "titre": j["titre"], "statut": status,
+        "debut": j["debut"].isoformat(), "fin": j["fin"].isoformat(),
+        "jour": max(0, min(total_days, (today - j["debut"]).days + 1)), "jours": total_days,
+        "lignes": j["lignes"][:8], "cibles": j["cibles"], "sport": fam,
+        "semaine": {**week, "km": round(week["km"], 1), "depuis": monday.isoformat()},
+        "plus_longue_sortie": {**longest, "km": round(longest["km"], 1)},
+    }

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CalendarPlus, Check, ChefHat, HeartPulse, Lightbulb, Lock, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Check, ChefHat, HeartPulse, Lightbulb, Lock, Search, Sparkles, Target } from "lucide-react";
 import { api } from "../api/client";
 import { useCurrentUser } from "../auth/AuthContext";
 import type { SeanceStep, StrengthExercise } from "../api/types";
@@ -31,6 +31,10 @@ interface CoachResult {
   remarques: string;
   sante_recuperation: string;
   ameliorations: string;
+  /** Où on en est par rapport au jalon en cours (bilans faits avec un plan) */
+  suivi_plan?: string;
+  /** Ce qu'il faudrait changer dans les jalons, s'ils ne sont plus réalistes */
+  ajuster_jalons?: string | null;
   recettes: CoachRecipe[];
   activites: CoachActivity[];
 }
@@ -257,6 +261,22 @@ function StructuredReport({ report }: { report: CoachReport }) {
       )}
       {d.ameliorations && (
         <Section icon={<Lightbulb className="h-4 w-4" />} title="Pour t'améliorer"><CoachText text={d.ameliorations} /></Section>
+      )}
+      {(d.suivi_plan || d.ajuster_jalons) && (
+        <div className="rounded-xl bg-violet-50/60 px-3 pb-2.5">
+          <Section icon={<Target className="h-4 w-4 text-violet-600" />} title="Ton plan">
+            {d.suivi_plan && <CoachText text={d.suivi_plan} />}
+            {d.ajuster_jalons && (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-amber-900">
+                  <AlertTriangle className="h-4 w-4" /> Le coach propose d'ajuster tes jalons
+                </div>
+                <CoachText text={d.ajuster_jalons} />
+                <Link to="/profil#plan" className="mt-1 inline-block text-sm font-medium text-amber-900 underline">Modifier mon plan</Link>
+              </div>
+            )}
+          </Section>
+        </div>
       )}
       {nutrition && d.recettes.length > 0 && (
         <Section icon={<ChefHat className="h-4 w-4" />} title={d.recettes.length > 1 ? "Recettes" : "Recette"}>

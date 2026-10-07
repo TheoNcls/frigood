@@ -22,6 +22,7 @@ export function useInvalidateSport() {
     queryClient.invalidateQueries({ queryKey: ["tasks"] });  // tâches sportives validées par une activité
     queryClient.invalidateQueries({ queryKey: ["body"] });
     queryClient.invalidateQueries({ queryKey: ["fitness"] });
+    queryClient.invalidateQueries({ queryKey: ["plan_jalon"] });
   };
 }
 

@@ -62,8 +62,14 @@ Règles :
 - Appuie chaque remarque sur les données (chiffres, dates, tendances) ; ne devine pas ce qui n'y est pas.
 - Si une donnée manque ou semble incomplète (repas non saisis, montre non portée), dis-le simplement sans en tirer de conclusion.
 - Tiens compte de ses objectifs et contraintes écrits ; s'ils sont absents, base-toi sur ses objectifs nutritionnels.
-- Si « profil.plan_long_terme » est présent (son plan, qu'elle a pu modifier) : aligne les séances de la semaine
-  sur le jalon du mois en cours (volume, sortie longue, séances clés) et dis où elle en est par rapport à ce jalon.
+- Si « profil.plan_long_terme » est présent (son plan, qu'elle a pu modifier) : respecte les jalons. Les séances
+  de la semaine visent le volume, le D+ et la sortie longue du jalon en cours (« profil.jalon_en_cours » : cibles,
+  où elle en est cette semaine, plus longue sortie depuis le début du jalon), en tenant compte de sa forme
+  (récupération, sommeil, disposition, charge) : si la forme est mauvaise, privilégie la récupération plutôt que le volume.
+  Dans « suivi_plan », dis où elle en est par rapport au jalon (en avance, dans les clous, en retard, chiffres à l'appui).
+  Si les jalons ne sont plus réalistes (retard important, fatigue durable, douleur, ou au contraire objectif déjà
+  dépassé), explique dans « ajuster_jalons » ce qu'il faudrait changer (quel mois, quelles cibles) ; sinon null.
+  Sans plan, « suivi_plan » est vide et « ajuster_jalons » null.
 - Nutrition : respecte strictement son régime alimentaire (profil.regime) ; regarde surtout calories et protéines
   par rapport à ses objectifs, et propose des aliments concrets compatibles avec son régime.
 - Sport : relie charge et récupération ; reste prudent sur l'intensité si la récupération est mauvaise.
@@ -183,6 +189,15 @@ def previous_report(db: Session, user: User, today: date) -> dict | None:
         "recettes_proposees": [r.get("titre") for r in data.get("recettes") or [] if r.get("titre")],
         "seances_proposees": seances,
     }
+
+
+def _milestone(db: Session, user: User, today: date) -> dict | None:
+    from app.plan import current_milestone   # plan importe ce module : import tardif
+    try:
+        return current_milestone(db, user, today)
+    except Exception:
+        log.exception("Jalon en cours illisible (compte %s)", user.id)
+        return None
 
 
 def build_context(db: Session, user: User, today: date) -> dict:
@@ -310,6 +325,7 @@ def build_context(db: Session, user: User, today: date) -> dict:
             "zones_fc_course_garmin": (user.zones_fc or {}).get("zones"),
             "fc_max": (user.zones_fc or {}).get("fc_max"),
             "plan_long_terme": (user.plan_objectifs or "")[:8000] or None,
+            "jalon_en_cours": _milestone(db, user, today),
             "materiel_renfo_disponible": (["poids du corps"] + [EQUIPMENT[m] for m in user.materiel if m in EQUIPMENT])
                                          if user.materiel is not None else None,
         },
@@ -394,6 +410,9 @@ def response_schema(sports: list[str], exercises: list[str] | None = None) -> di
             "remarques": {**markdown, "description": "Ce que je remarque sur les derniers jours"},
             "sante_recuperation": {**markdown, "description": "Récupération, sommeil et santé globale"},
             "ameliorations": {**markdown, "description": "Conseils pour s'améliorer"},
+            "suivi_plan": {**markdown, "description": "Où elle en est par rapport au jalon en cours de son plan (vide sans plan)"},
+            "ajuster_jalons": {"anyOf": [{"type": "string"}, {"type": "null"}],
+                               "description": "Ce qu'il faudrait changer dans ses jalons s'ils ne sont plus réalistes, sinon null"},
             "recettes": {
                 "type": "array",
                 "description": "1 ou 2 petites recettes qui respectent son régime alimentaire",
@@ -436,7 +455,7 @@ def response_schema(sports: list[str], exercises: list[str] | None = None) -> di
                 },
             },
         },
-        "required": ["remarques", "sante_recuperation", "ameliorations", "recettes", "activites"],
+        "required": ["remarques", "sante_recuperation", "ameliorations", "suivi_plan", "ajuster_jalons", "recettes", "activites"],
         "additionalProperties": False,
     }
 
@@ -529,6 +548,8 @@ def clean_result(data: dict, sports: set[str], week: tuple[date, date]) -> dict:
         "remarques": str(data.get("remarques") or "").strip(),
         "sante_recuperation": str(data.get("sante_recuperation") or "").strip(),
         "ameliorations": str(data.get("ameliorations") or "").strip(),
+        "suivi_plan": str(data.get("suivi_plan") or "").strip(),
+        "ajuster_jalons": str(data.get("ajuster_jalons") or "").strip() or None,
         "recettes": [r for r in (data.get("recettes") or [])[:2] if isinstance(r, dict) and r.get("titre")],
         "activites": activites,
     }
@@ -541,6 +562,10 @@ def to_markdown(result: dict) -> str:
         "## Santé & récupération", result["sante_recuperation"],
         "## Pour t'améliorer", result["ameliorations"],
     ]
+    if result.get("suivi_plan"):
+        parts += ["## Ton plan", result["suivi_plan"]]
+    if result.get("ajuster_jalons"):
+        parts += ["## Ajuster tes jalons ?", result["ajuster_jalons"]]
     if result["recettes"]:
         parts.append("## Recettes")
         for r in result["recettes"]:

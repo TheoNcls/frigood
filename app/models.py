@@ -196,8 +196,8 @@ class User(Base):
 
     @property
     def coach_access(self) -> bool:
-        """L'administration a toujours accès au coach ; les autres comptes une fois autorisés."""
-        return bool(self.coach_autorise) or self.is_admin
+        """Activé compte par compte dans l'administration, y compris pour les comptes admin."""
+        return bool(self.coach_autorise)
 
 
 class MealLog(Base):

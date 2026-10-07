@@ -399,3 +399,26 @@ export interface StrengthExercise {
   charge_kg: number | null;
   repos_s: number;
 }
+
+/** Jalon du mois en cours, lu dans le plan, et où on en est (calculé par le serveur). */
+export interface PlanMilestone {
+  numero: number;
+  nombre: number;
+  titre: string;
+  statut: "en_cours" | "a_venir" | "termine";
+  debut: string;
+  fin: string;
+  jour: number;
+  jours: number;
+  lignes: string[];
+  cibles: {
+    km_semaine_min?: number;
+    km_semaine_max?: number;
+    d_plus_semaine?: number;
+    sortie_longue_km?: number;
+    sortie_longue_d_plus?: number;
+  };
+  sport: "pied" | "velo" | "natation";
+  semaine: { km: number; d_plus_m: number; seances: number; depuis: string };
+  plus_longue_sortie: { km: number; d_plus_m: number; date: string | null };
+}

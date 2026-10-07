@@ -699,8 +699,12 @@ class AdminUserRead(BaseModel):
     garmin_last_sync_at: datetime_type | None = None
     bilans_coach: int = 0
     dernier_bilan_at: datetime_type | None = None
+    plan_genere_at: datetime_type | None = None
+    a_un_plan: bool = False
 
     model_config = {"from_attributes": True}
 
 class AdminUserUpdate(BaseModel):
     coach_autorise: bool | None = None
+    # true : le plan peut être généré une nouvelle fois (le texte actuel reste jusqu'à la nouvelle génération)
+    plan_regenerable: bool | None = None

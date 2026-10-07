@@ -4,7 +4,7 @@ import { api } from "./client";
 import { useAuth } from "../auth/AuthContext";
 import type {
   Activity, ActivityType, BodyComposition, DailyStat, FitnessMetric, FridgeHistory, FridgeItem, Ingredient, MealLog, Nutriment, Recipe,
-  TaskOccurrence,
+  PlanMilestone, TaskOccurrence,
 } from "./types";
 
 const CATALOG_STALE = 2 * 60 * 1000;
@@ -96,6 +96,15 @@ export function useDailyStatsRange(date_from: string, date_to: string) {
   return useQuery({
     queryKey: ["daily_stats", uid, "range", date_from, date_to],
     queryFn: () => api<DailyStat[]>(`/users/${uid}/daily_stats/range`, { query: { date_from, date_to } }),
+  });
+}
+
+/** Jalon en cours du plan (null sans plan, ou si ses dates ne sont pas lisibles). */
+export function usePlanMilestone() {
+  const uid = useUserId();
+  return useQuery({
+    queryKey: ["plan_jalon", uid],
+    queryFn: () => api<PlanMilestone | null>(`/users/${uid}/plan/jalon`),
   });
 }
 
