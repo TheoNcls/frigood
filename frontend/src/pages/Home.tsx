@@ -43,7 +43,7 @@ export default function Home() {
         <p className="mt-1 text-sm text-slate-500">{formatLong(today)}</p>
       </header>
 
-      {expiring.length > 0 && (
+      {user.nutrition_active && expiring.length > 0 && (
         <Link to="/frigo" className="flex items-start gap-3 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
           <div>

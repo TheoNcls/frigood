@@ -206,6 +206,7 @@ function PreferencesCard() {
       )}
       <MaterielSetting />
       <div className="my-4 border-t border-slate-100" />
+      {user.nutrition_active && <>
       <label className="flex cursor-pointer items-start justify-between gap-4">
         <span>
           <span className="block text-sm font-medium text-slate-800">Photos des produits</span>
@@ -229,6 +230,7 @@ function PreferencesCard() {
         </span>
       </label>
       <div className="my-4 border-t border-slate-100" />
+      </>}
       <NotificationsSetting />
     </Card>
   );
@@ -241,17 +243,17 @@ function NutritionSetting() {
   const toast = useToast();
   const save = useMutation({
     mutationFn: (nutrition_active: boolean) => api<User>(`/users/${user.id}`, { method: "PUT", body: { nutrition_active } }),
-    onSuccess: (u) => { setUser(u); toast(u.nutrition_active ? "Partie Nutrition affichée" : "Partie Nutrition masquée"); },
+    onSuccess: (u) => { setUser(u); toast(u.nutrition_active ? "Nutrition et frigo affichés" : "Nutrition et frigo masqués"); },
     onError: (e) => toast(e.message, "error"),
   });
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4">
       <span>
-        <span className="block text-sm font-medium text-slate-800">Nutrition</span>
+        <span className="block text-sm font-medium text-slate-800">Nutrition et frigo</span>
         <span className="block text-xs text-slate-500">
           {user.nutrition_active
-            ? "Repas, calories et objectifs nutritionnels. Désactive si tu ne suis pas ton alimentation : c'est seulement masqué, rien n'est supprimé."
-            : "Masquée : pas d'onglet Repas, ni de calories ou d'objectifs nutritionnels. Tes repas déjà notés sont conservés."}
+            ? "Repas, frigo, calories et objectifs nutritionnels. Désactive si tu ne suis pas ton alimentation : c'est seulement masqué, rien n'est supprimé."
+            : "Masqués : pas d'onglets Repas ni Frigo, ni de calories ou d'objectifs nutritionnels. Tes repas et ton frigo sont conservés."}
           {" "}Réglage de ton compte.
         </span>
       </span>
@@ -259,7 +261,7 @@ function NutritionSetting() {
         <input
           type="checkbox"
           role="switch"
-          aria-label="Afficher la partie Nutrition"
+          aria-label="Afficher la nutrition et le frigo"
           className="peer sr-only"
           checked={user.nutrition_active}
           disabled={save.isPending}
