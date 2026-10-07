@@ -456,7 +456,7 @@ def recompute_days(db: Session, user_id: int) -> tuple[int, int]:
     return days, typed
 
 
-# --- Synchronisation complète (bouton « Synchroniser » et synchro automatique du matin) ---
+# --- Synchronisation complète (bouton « Synchroniser » et synchro automatique à l'ouverture de l'appli) ---
 
 class GarminSessionExpired(Exception):
     """La session enregistrée ne passe plus : il faut se reconnecter (mot de passe)."""

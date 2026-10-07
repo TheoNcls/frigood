@@ -38,7 +38,7 @@ export function useGarminSyncOnOpen() {
   const toast = useToast();
   const lastTry = useRef(0);
   const uid = user?.id;
-  const connected = !!user?.garmin_connected;
+  const connected = !!user?.garmin_connected && !!user?.garmin_auto_sync;
   const lastSync = user?.garmin_last_sync_at ?? null;
 
   useEffect(() => {
@@ -102,9 +102,7 @@ function lastSyncSummary(user: User): { at: Date | null; result: string | null }
   return { at, result: result.charAt(0).toUpperCase() + result.slice(1) };
 }
 
-const isAutoError = (user: User) => !!(user.garmin_auto_sync && user.garmin_auto_status && /Erreur|bloque|expirée/.test(user.garmin_auto_status));
-
-/** Dernière mise à jour Garmin (bouton ou synchro du matin) et ce qu'elle a rapporté. */
+/** Dernière mise à jour Garmin (bouton ou synchro à l'ouverture) et ce qu'elle a rapporté. */
 function GarminLastSync() {
   const user = useCurrentUser();
   const today = todayISO();
@@ -211,7 +209,7 @@ export function GarminSettingsCard() {
               <div className="font-medium text-emerald-700">✅ Connecté</div>
               <div className="text-xs text-slate-500">
                 {user.garmin_last_sync_at ? `Mis à jour ${whenLabel(fromUtc(user.garmin_last_sync_at))}` : "Pas encore synchronisé"}
-                {user.garmin_auto_sync ? ` · synchro auto vers ${user.garmin_auto_heure}` : ""}
+                {user.garmin_auto_sync ? " · synchro auto à l'ouverture" : ""}
               </div>
             </div>
             <button className="btn-primary" disabled={sync.isPending} onClick={() => sync.mutate({})}>
@@ -219,9 +217,6 @@ export function GarminSettingsCard() {
               {sync.isPending ? "Synchronisation…" : "Synchroniser"}
             </button>
           </div>
-          {isAutoError(user) && (
-            <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">Synchro auto : {user.garmin_auto_status}</p>
-          )}
           <GarminMoreOptions
             top={<>
               <GarminLastSync />
@@ -454,67 +449,36 @@ function Switch({ checked, disabled, onChange, label }: { checked: boolean; disa
   );
 }
 
-/** Synchro Garmin du matin : réglage du compte (vaut pour tous les appareils). */
+/** Synchro Garmin à l'ouverture de l'appli : réglage du compte (vaut pour tous les appareils). */
 function GarminAutoSetting() {
   const user = useCurrentUser();
   const { setUser } = useAuth();
   const toast = useToast();
-  const [heure, setHeure] = useState(user.garmin_auto_heure || "07:00");
 
   const save = useMutation({
-    mutationFn: (body: { enabled: boolean; heure: string }) => api<User>(`/users/${user.id}/garmin_auto`, { method: "PUT", body }),
+    mutationFn: (enabled: boolean) => api<User>(`/users/${user.id}/garmin_auto`, { method: "PUT", body: { enabled } }),
     onSuccess: (u) => {
       setUser(u);
-      toast(u.garmin_auto_sync ? `Synchro automatique chaque jour vers ${u.garmin_auto_heure}` : "Synchro automatique désactivée");
+      toast(u.garmin_auto_sync ? "Synchro automatique à l'ouverture de l'appli activée" : "Synchro automatique désactivée");
     },
     onError: (e) => toast(e.message, "error"),
   });
 
-  const on = user.garmin_auto_sync;
   return (
-    <div>
-      <div className="flex items-start justify-between gap-4">
-        <span>
-          <span className="flex items-center gap-1.5 text-sm font-medium text-slate-800"><Watch className="h-4 w-4" /> Synchro Garmin automatique</span>
-          <span className="block text-xs text-slate-500">
-            Chaque matin, le serveur récupère tes nuits, tes pas et tes activités, sans que tu ouvres l'app. Réglage de ton compte.
-          </span>
+    <div className="flex items-start justify-between gap-4">
+      <span>
+        <span className="flex items-center gap-1.5 text-sm font-medium text-slate-800"><Watch className="h-4 w-4" /> Synchro Garmin automatique</span>
+        <span className="block text-xs text-slate-500">
+          Quand tu ouvres l'appli, tes nuits, tes pas et tes activités sont récupérés si la dernière synchro date de plus de 2 h.
+          Réglage de ton compte.
         </span>
-        <Switch
-          label="Synchro Garmin automatique"
-          checked={on}
-          disabled={save.isPending}
-          onChange={(enabled) => save.mutate({ enabled, heure })}
-        />
-      </div>
-      {on ? (
-        <div className="mt-3 space-y-2">
-          <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
-            Vers
-            <input
-              type="time"
-              className="input w-32"
-              value={heure}
-              onChange={(e) => setHeure(e.target.value)}
-            />
-            {heure && heure !== user.garmin_auto_heure ? (
-              <button type="button" className="btn-primary py-1.5" disabled={save.isPending} onClick={() => save.mutate({ enabled: true, heure })}>
-                Enregistrer
-              </button>
-            ) : (
-              <span className="text-xs text-slate-500">(à quelques minutes près)</span>
-            )}
-          </label>
-          <p className="text-xs text-slate-500">
-            Conseil : une heure après ton réveil habituel, le temps que la montre envoie la nuit à Garmin.
-          </p>
-          {user.garmin_auto_status && (
-            <p className={`rounded-lg px-2.5 py-1.5 text-xs ${/Erreur|bloque|expirée/.test(user.garmin_auto_status) ? "bg-amber-50 text-amber-800" : "bg-slate-50 text-slate-600"}`}>
-              Dernier passage : {user.garmin_auto_status}
-            </p>
-          )}
-        </div>
-      ) : null}
+      </span>
+      <Switch
+        label="Synchro Garmin automatique"
+        checked={user.garmin_auto_sync}
+        disabled={save.isPending}
+        onChange={(enabled) => save.mutate(enabled)}
+      />
     </div>
   );
 }

@@ -139,14 +139,8 @@ class User(Base):
     # Zones cardiaques Garmin (profil course) : JSON {zones: [{zone, min, max}], fc_max, …}
     garmin_zones_fc = Column(Text, nullable=True)
     garmin_zones_at = Column(DateTime, nullable=True)
-    # Synchro automatique du matin (opt-in) : heure locale, et suivi du jour en cours
-    garmin_auto_sync = Column(Boolean, nullable=False, default=False, server_default=false())
-    garmin_auto_heure = Column(String(5), nullable=False, default="07:00", server_default="07:00")
-    garmin_auto_date = Column(Date, nullable=True)          # dernier jour traité (réussi ou abandonné)
-    garmin_auto_tries = Column(Integer, nullable=False, default=0, server_default="0")
-    garmin_auto_next_at = Column(DateTime, nullable=True)   # prochain essai après un échec (heure locale)
-    garmin_auto_status = Column(String(300), nullable=True)
-    garmin_auto_last_at = Column(DateTime, nullable=True)   # dernière synchro automatique réussie (UTC)
+    # Synchro automatique à l'ouverture de l'appli (si la dernière date de plus de 2 h)
+    garmin_auto_sync = Column(Boolean, nullable=False, default=True, server_default=true())
     # Dernière synchro réussie, manuelle ou automatique : ce qu'elle a rapporté
     garmin_last_sync_at = Column(DateTime, nullable=True)   # UTC
     garmin_last_sync_auto = Column(Boolean, nullable=True)

@@ -2,7 +2,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from app import garmin_auto, push_service
+from app import push_service
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import ingredients, recipes, nutriments, users, meal_logs, activity_types, activities, fridge, tasks, push, body, coach, admin
 
@@ -12,7 +12,6 @@ logging.basicConfig(level=logging.INFO)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     push_service.start_scheduler()  # rappels des tâches importantes
-    garmin_auto.start_scheduler()   # synchro Garmin du matin (comptes volontaires)
     yield
 
 

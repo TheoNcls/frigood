@@ -338,10 +338,7 @@ class UserRead(BaseModel):
     materiel: list[str] | None = None
     zones_fc: dict | None = None
     garmin_connected: bool = False
-    garmin_auto_sync: bool = False
-    garmin_auto_heure: str = "07:00"
-    garmin_auto_status: str | None = None
-    garmin_auto_last_at: datetime_type | None = None
+    garmin_auto_sync: bool = True
     garmin_last_sync_at: datetime_type | None = None
     garmin_last_sync_auto: bool | None = None
     garmin_last_sync_activities: int | None = None
@@ -354,15 +351,6 @@ class UserRead(BaseModel):
 
 class GarminAutoSettings(BaseModel):
     enabled: bool
-    heure: str = "07:00"
-
-    @field_validator("heure")
-    @classmethod
-    def _check_heure(cls, v: str) -> str:
-        hh, _, mm = (v or "").strip().partition(":")
-        if not (hh.isdigit() and mm.isdigit() and 0 <= int(hh) < 24 and 0 <= int(mm) < 60):
-            raise ValueError("Heure invalide (format HH:MM)")
-        return f"{int(hh):02d}:{int(mm):02d}"
 
 class UserWithToken(UserRead):
     access_token: str

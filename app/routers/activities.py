@@ -131,19 +131,12 @@ def garmin_disconnect(user_id: int, principal: Principal = Depends(get_principal
 @router.put("/users/{user_id}/garmin_auto", response_model=UserRead)
 def garmin_auto_settings(user_id: int, data: GarminAutoSettings, principal: Principal = Depends(get_principal),
                          db: Session = Depends(get_db)):
-    """Active / règle la synchro automatique du matin pour ce compte."""
+    """Active / coupe la synchro automatique à l'ouverture de l'appli pour ce compte."""
     check_user_access(principal, user_id)
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    if data.heure != user.garmin_auto_heure or data.enabled != user.garmin_auto_sync:
-        # Nouveau réglage : on repart de zéro (une nouvelle heure plus tard dans la journée compte dès aujourd'hui)
-        user.garmin_auto_date = None
-        user.garmin_auto_tries = 0
-        user.garmin_auto_next_at = None
-        user.garmin_auto_status = None
     user.garmin_auto_sync = data.enabled
-    user.garmin_auto_heure = data.heure
     db.commit()
     db.refresh(user)
     return user
@@ -183,6 +176,8 @@ def garmin_sync_on_open(user_id: int, principal: Principal = Depends(get_princip
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if not user.garmin_tokens:
         return {"status": "non_connecte"}
+    if not user.garmin_auto_sync:
+        return {"status": "desactive"}
     now = datetime.utcnow()
     if user.garmin_last_sync_at and now - user.garmin_last_sync_at < OPEN_SYNC_AFTER:
         return {"status": "a_jour"}

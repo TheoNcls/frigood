@@ -17,11 +17,8 @@ export interface User {
   /** Zones cardiaques Garmin (profil course) */
   zones_fc: { profil: string; fc_max: number | null; fc_repos: number | null; zones: { zone: number; min: number; max: number | null }[] } | null;
   garmin_connected: boolean;
-  /** Synchro Garmin automatique du matin (réglage du compte) */
+  /** Synchro Garmin automatique à l'ouverture de l'appli, si la dernière date de plus de 2 h (réglage du compte) */
   garmin_auto_sync: boolean;
-  garmin_auto_heure: string;
-  garmin_auto_status: string | null;
-  garmin_auto_last_at: string | null;
   /** Dernière synchro réussie (manuelle ou automatique), en UTC */
   garmin_last_sync_at: string | null;
   garmin_last_sync_auto: boolean | null;
