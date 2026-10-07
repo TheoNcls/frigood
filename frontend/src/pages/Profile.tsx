@@ -104,7 +104,7 @@ function ProfileForm() {
         <Field label="Date de naissance" hint={naissance ? `${ageFrom(naissance)} ans` : "Facultatif : servira aux calculs adaptés à l'âge."}>
           <input className="input max-w-[12rem]" type="date" min="1900-01-01" max={todayISO()} value={naissance} onChange={(e) => setNaissance(e.target.value)} />
         </Field>
-        <div>
+        {user.nutrition_active && <div>
           <div className="label">Objectifs nutritionnels (par jour)</div>
           <div className="grid grid-cols-2 gap-3">
             {([["cal", "Calories (kcal)"], ["prot", "Protéines (g)"], ["gluc", "Glucides (g)"], ["lip", "Lipides (g)"]] as const).map(([key, label]) => (
@@ -137,7 +137,7 @@ function ProfileForm() {
               Repère : 1,2 à 1,6 g/kg pour un sportif végétarien. L'objectif suit automatiquement ta dernière pesée.
             </p>
           )}
-        </div>
+        </div>}
         <button type="submit" className="btn-primary" disabled={save.isPending}>Enregistrer</button>
       </form>
     </Card>
@@ -192,11 +192,18 @@ function CoachingProfileCard() {
 }
 
 function PreferencesCard() {
+  const user = useCurrentUser();
   const { showPhotos, setPreference } = usePreferences();
   return (
     <Card title="Préférences">
-      <RegimeSetting />
+      <NutritionSetting />
       <div className="my-4 border-t border-slate-100" />
+      {user.nutrition_active && (
+        <>
+          <RegimeSetting />
+          <div className="my-4 border-t border-slate-100" />
+        </>
+      )}
       <MaterielSetting />
       <div className="my-4 border-t border-slate-100" />
       <label className="flex cursor-pointer items-start justify-between gap-4">
@@ -224,6 +231,44 @@ function PreferencesCard() {
       <div className="my-4 border-t border-slate-100" />
       <NotificationsSetting />
     </Card>
+  );
+}
+
+/** Partie Nutrition : affichée ou masquée (réglage du compte ; rien n'est supprimé). */
+function NutritionSetting() {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const save = useMutation({
+    mutationFn: (nutrition_active: boolean) => api<User>(`/users/${user.id}`, { method: "PUT", body: { nutrition_active } }),
+    onSuccess: (u) => { setUser(u); toast(u.nutrition_active ? "Partie Nutrition affichée" : "Partie Nutrition masquée"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-4">
+      <span>
+        <span className="block text-sm font-medium text-slate-800">Nutrition</span>
+        <span className="block text-xs text-slate-500">
+          {user.nutrition_active
+            ? "Repas, calories et objectifs nutritionnels. Désactive si tu ne suis pas ton alimentation : c'est seulement masqué, rien n'est supprimé."
+            : "Masquée : pas d'onglet Repas, ni de calories ou d'objectifs nutritionnels. Tes repas déjà notés sont conservés."}
+          {" "}Réglage de ton compte.
+        </span>
+      </span>
+      <span className="relative mt-0.5 inline-flex shrink-0">
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Afficher la partie Nutrition"
+          className="peer sr-only"
+          checked={user.nutrition_active}
+          disabled={save.isPending}
+          onChange={(e) => save.mutate(e.target.checked)}
+        />
+        <span className="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-100" />
+        <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+      </span>
+    </label>
   );
 }
 

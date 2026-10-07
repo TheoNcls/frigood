@@ -17,6 +17,7 @@ import { addDays, formatLong, formatShort, todayISO } from "../lib/dates";
 import { MOMENTS, MOMENT_LABELS, describeLog, fmt, logMacros, totalMacros } from "../lib/nutrition";
 
 export default function History() {
+  const user = useCurrentUser();
   const today = todayISO();
   // La date est dans l'adresse (?date=AAAA-MM-JJ) : lien depuis le calendrier, bouton retour, rechargement
   const [params, setParams] = useSearchParams();
@@ -39,7 +40,7 @@ export default function History() {
         <span className="ml-2 hidden text-sm font-medium text-slate-700 sm:inline">{formatLong(date)}</span>
       </div>
 
-      <DayNutrition date={date} />
+      {user.nutrition_active && <DayNutrition date={date} />}
       <DayActivities date={date} />
       <FitnessTodayCard date={date} />
       <SleepCard endDate={date} />
@@ -284,10 +285,11 @@ function Trend({ endDate }: { endDate: string }) {
       const d = addDays(from, i);
       return { date: formatShort(d), calories: Math.round(cal.get(d) ?? 0), sommeil: sleep.get(d) ?? null };
     });
+    // Sans la partie Nutrition : seulement le sommeil
   }, [meals.data, stats.data, ingredients.byId, recipes.byId, from]);
 
   return (
-    <Card title="Tendance sur 14 jours">
+    <Card title={user.nutrition_active ? "Tendance sur 14 jours" : "Sommeil sur 14 jours"}>
       <div className="h-64 w-full">
         <ResponsiveContainer>
           <ComposedChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
@@ -295,6 +297,7 @@ function Trend({ endDate }: { endDate: string }) {
             <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} />
             <YAxis
               yAxisId="cal"
+              hide={!user.nutrition_active}
               domain={[0, (max: number) => Math.ceil(Math.max(max, user.calories_cible ?? 0) * 1.1 / 100) * 100]}
               tick={{ fontSize: 11, fill: "#64748b" }}
               tickLine={false}
@@ -303,9 +306,9 @@ function Trend({ endDate }: { endDate: string }) {
             <YAxis yAxisId="sleep" orientation="right" domain={[0, 100]} tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} />
             <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar yAxisId="cal" dataKey="calories" name="Calories (kcal)" fill="#10b981" radius={[4, 4, 0, 0]} />
+            {user.nutrition_active && <Bar yAxisId="cal" dataKey="calories" name="Calories (kcal)" fill="#10b981" radius={[4, 4, 0, 0]} />}
             <Line yAxisId="sleep" dataKey="sommeil" name="Score sommeil" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} connectNulls />
-            {user.calories_cible ? (
+            {user.nutrition_active && user.calories_cible ? (
               <ReferenceLine yAxisId="cal" y={user.calories_cible} stroke="#94a3b8" strokeDasharray="4 4" label={{ value: "objectif", fontSize: 10, fill: "#64748b", position: "insideTopLeft" }} />
             ) : null}
           </ComposedChart>

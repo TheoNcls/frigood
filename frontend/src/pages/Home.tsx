@@ -59,14 +59,16 @@ export default function Home() {
       <OverdueTasks />
       <UpcomingImportant />
 
-      <Card title="Nutrition du jour" action={<Link to="/repas" className="text-sm font-medium text-brand-700">Ajouter un repas →</Link>}>
-        <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-          <MacroTile label="Calories" value={consumed.cal} target={user.calories_cible} unit="kcal" showRemaining />
-          <MacroTile label="Protéines" value={consumed.prot} target={user.proteines_cible} unit="g" showRemaining />
-          <MacroTile label="Glucides" value={consumed.gluc} target={user.glucides_cible} unit="g" showRemaining />
-          <MacroTile label="Lipides" value={consumed.lip} target={user.lipides_cible} unit="g" showRemaining />
-        </div>
-      </Card>
+      {user.nutrition_active && (
+        <Card title="Nutrition du jour" action={<Link to="/repas" className="text-sm font-medium text-brand-700">Ajouter un repas →</Link>}>
+          <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
+            <MacroTile label="Calories" value={consumed.cal} target={user.calories_cible} unit="kcal" showRemaining />
+            <MacroTile label="Protéines" value={consumed.prot} target={user.proteines_cible} unit="g" showRemaining />
+            <MacroTile label="Glucides" value={consumed.gluc} target={user.glucides_cible} unit="g" showRemaining />
+            <MacroTile label="Lipides" value={consumed.lip} target={user.lipides_cible} unit="g" showRemaining />
+          </div>
+        </Card>
+      )}
 
       <WeekStrip />
 

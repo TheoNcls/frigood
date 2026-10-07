@@ -16,7 +16,9 @@ const ADMIN_NAV = { to: "/admin", label: "Admin", icon: ShieldCheck, end: false 
 export default function Layout() {
   const { user, logout } = useAuth();
   useGarminSyncOnOpen();
-  const NAV = user?.is_admin ? [...BASE_NAV, ADMIN_NAV] : BASE_NAV;
+  // Sans la partie Nutrition : pas d'onglet Repas
+  const base = user?.nutrition_active === false ? BASE_NAV.filter((n) => n.to !== "/repas") : BASE_NAV;
+  const NAV = user?.is_admin ? [...base, ADMIN_NAV] : base;
 
   return (
     <div className="min-h-screen lg:flex">

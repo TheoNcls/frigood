@@ -100,7 +100,7 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
       {loading ? <Spinner /> : (
         <div className="space-y-5">
           {tasksSection}
-          <Section title="Nutrition">
+          {user.nutrition_active && <Section title="Nutrition">
             {!logs.length ? <Empty>Aucun repas enregistré.</Empty> : (
               <>
                 <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -142,7 +142,7 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
                 </ul>
               </>
             )}
-          </Section>
+          </Section>}
 
           <Section
             title="Activités"

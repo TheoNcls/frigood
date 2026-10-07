@@ -1,3 +1,4 @@
+import { useCurrentUser } from "../auth/AuthContext";
 import { useMemo, useState } from "react";
 import { useActivities, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
 import { addDays, parseISODate, todayISO } from "../lib/dates";
@@ -35,6 +36,7 @@ export default function WeekStrip() {
   const lastDay = days[13];
 
   const meals = useMealLogs({ date_from: monday, date_to: today });
+  const nutrition = useCurrentUser().nutrition_active;
   const acts = useActivities({ date_from: monday, date_to: today });
   const tasks = useTasks(monday, lastDay);
   const ingredients = useIngredients();
@@ -91,7 +93,7 @@ export default function WeekStrip() {
                   </span>
                   <span className="text-sm font-semibold leading-tight">{day}</span>
                   <span className="mt-1 flex h-2 items-center gap-0.5">
-                    {info?.meals ? <span className={`h-1.5 w-1.5 rounded-full ${isToday ? "bg-white" : "bg-emerald-500"}`} /> : null}
+                    {nutrition && info?.meals ? <span className={`h-1.5 w-1.5 rounded-full ${isToday ? "bg-white" : "bg-emerald-500"}`} /> : null}
                     {Array.from({ length: Math.min(info?.sport ?? 0, 2) }, (_, k) => (
                       <span key={`s${k}`} className="h-1.5 w-1.5 rounded-full bg-orange-500 ring-1 ring-white/60" />
                     ))}
@@ -108,7 +110,7 @@ export default function WeekStrip() {
                       <span key={`x${k}`} className="h-1.5 w-1.5 rounded-full bg-rose-400 ring-1 ring-white/60" />
                     ))}
                   </span>
-                  {info?.kcal ? (
+                  {nutrition && info?.kcal ? (
                     <span className={`mt-0.5 text-[10px] leading-none ${isToday ? "text-emerald-50" : "text-slate-500"}`}>
                       {shortKcal(info.kcal)}
                     </span>
@@ -120,13 +122,13 @@ export default function WeekStrip() {
         ))}
       </div>
       <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
-        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Repas</span>
+        {nutrition && <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Repas</span>}
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-orange-500" /> Sport</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-600" /> Tâche</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Importante</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-300" /> Faite</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Pas faite</span>
-        <span>· kcal mangées · clic sur un jour pour son résumé et ses tâches</span>
+        <span>{nutrition ? "· kcal mangées " : ""}· clic sur un jour pour son résumé et ses tâches</span>
       </div>
     </Card>
   );

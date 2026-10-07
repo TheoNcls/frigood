@@ -31,7 +31,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Home />} />
-        <Route path="repas" element={<Meals />} />
+        <Route path="repas" element={user.nutrition_active ? <Meals /> : <Navigate to="/" replace />} />
         <Route path="frigo" element={<Fridge />} />
         <Route path="agenda" element={<Suspense fallback={<Spinner />}><Agenda /></Suspense>} />
         <Route path="sport" element={<Navigate to="/agenda" replace />} />

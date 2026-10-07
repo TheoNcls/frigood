@@ -7,6 +7,7 @@ import frLocale from "@fullcalendar/core/locales/fr";
 import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import { useActivities, useActivityTypes, useIngredients, useMealLogs, useRecipes, useTasks } from "../api/queries";
 import type { Activity, TaskOccurrence } from "../api/types";
+import { useCurrentUser } from "../auth/AuthContext";
 import ActivityDetail from "../components/ActivityDetail";
 import DaySummary from "../components/DaySummary";
 import { CoachCard } from "../components/Coach";
@@ -37,6 +38,7 @@ function AgendaCalendar() {
   const recipes = useRecipes();
   const acts = useActivities({ date_from: range.from, date_to: range.to });
   const meals = useMealLogs({ date_from: range.from, date_to: range.to });
+  const nutrition = useCurrentUser().nutrition_active;
   const tasks = useTasks(range.from, range.to);
 
   const events = useMemo<EventInput[]>(() => {
@@ -51,7 +53,7 @@ function AgendaCalendar() {
       };
     });
     const byDate = new Map<string, { count: number; cal: number }>();
-    for (const log of meals.data ?? []) {
+    for (const log of nutrition ? meals.data ?? [] : []) {
       const d = byDate.get(log.date) ?? { count: 0, cal: 0 };
       d.count++;
       d.cal += logMacros(log, ingredients.byId, recipes.byId).cal;
@@ -76,7 +78,7 @@ function AgendaCalendar() {
     }
     // Rang par défaut (repas, sport, tâches normales) : les importantes à faire passent devant
     return out.map((e) => ({ ...e, extendedProps: { rank: 1, ...e.extendedProps } }));
-  }, [acts.data, meals.data, tasks.data, types.byId, ingredients.byId, recipes.byId]);
+  }, [acts.data, meals.data, tasks.data, types.byId, ingredients.byId, recipes.byId, nutrition]);
 
   const [openedDay, setOpenedDay] = useState<string | null>(null);
   const openDay = (iso: string) => setOpenedDay(iso);
@@ -111,7 +113,7 @@ function AgendaCalendar() {
       {openedDay && <DaySummary date={openedDay} onClose={() => setOpenedDay(null)} />}
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600">
         <span className="text-slate-500">Clique sur un événement pour son détail, sur un jour pour son résumé ou ajouter une activité / une tâche ·</span>
-        <Legend color="#059669" label="Repas" />
+        {nutrition && <Legend color="#059669" label="Repas" />}
         <Legend color={SPORT_COLOR} label="Sport" />
         <Legend color={TASK_COLOR} label="Tâche" />
         <Legend color={IMPORTANT_COLOR} label="Importante" />

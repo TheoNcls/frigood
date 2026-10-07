@@ -244,6 +244,7 @@ function Section({ icon, title, children }: { icon: ReactNode; title: string; ch
 
 function StructuredReport({ report }: { report: CoachReport }) {
   const d = report.donnees!;
+  const nutrition = useCurrentUser().nutrition_active;
   return (
     <div className="space-y-3">
       {d.remarques && (
@@ -257,7 +258,7 @@ function StructuredReport({ report }: { report: CoachReport }) {
       {d.ameliorations && (
         <Section icon={<Lightbulb className="h-4 w-4" />} title="Pour t'améliorer"><CoachText text={d.ameliorations} /></Section>
       )}
-      {d.recettes.length > 0 && (
+      {nutrition && d.recettes.length > 0 && (
         <Section icon={<ChefHat className="h-4 w-4" />} title={d.recettes.length > 1 ? "Recettes" : "Recette"}>
           <div className="grid gap-3 md:grid-cols-2">
             {d.recettes.map((rec, i) => (
