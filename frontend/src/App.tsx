@@ -13,6 +13,7 @@ import Profile from "./pages/Profile";
 const Agenda = lazy(() => import("./pages/Agenda"));
 const History = lazy(() => import("./pages/History"));
 const Admin = lazy(() => import("./admin"));
+const Catalog = lazy(() => import("./pages/Catalog"));
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="sport" element={<Navigate to="/agenda" replace />} />
         <Route path="historique" element={<Suspense fallback={<Spinner />}><History /></Suspense>} />
         <Route path="profil" element={<Profile />} />
+        <Route path="catalogue" element={user.nutrition_active ? <Suspense fallback={<Spinner />}><Catalog /></Suspense> : <Navigate to="/" replace />} />
         {user.is_admin && <Route path="admin/*" element={<Suspense fallback={<Spinner />}><Admin /></Suspense>} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

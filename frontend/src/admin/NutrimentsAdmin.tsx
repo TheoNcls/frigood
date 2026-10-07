@@ -9,7 +9,7 @@ import { useInvalidateCatalog } from "./catalog";
 
 export default function NutrimentsAdmin() {
   const nutriments = useNutriments();
-  const ingredients = useIngredients();
+  const ingredients = useIngredients({ tous: true });
   const invalidate = useInvalidateCatalog();
   const toast = useToast();
   const [nom, setNom] = useState("");

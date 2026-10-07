@@ -11,13 +11,16 @@ from app import openfoodfacts as off
 from app.models import Ingredient, IngredientNutriment, IngredientSource, Nutriment
 from app.schemas import IngredientCreate, IngredientRead
 from app.auth import Principal, get_principal, require_admin
+from app.catalog_access import check_can_edit, check_name_free, is_visible, visible
 
 router = APIRouter(prefix="/ingredients", tags=["ingredients"], dependencies=[Depends(get_principal)])
 
 
 @router.get("/", response_model=list[IngredientRead])
-def list_ingredients(db: Session = Depends(get_db)):
-    return db.query(Ingredient).order_by(Ingredient.nom).all()
+def list_ingredients(tous: bool = Query(default=False, description="Administration : tout le catalogue, validé ou non"),
+                     principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Ingrédients validés et ceux de la personne."""
+    return visible(db.query(Ingredient), Ingredient, principal, everything=tous).order_by(Ingredient.nom).all()
 
 
 # Doit être AVANT /{id} pour ne pas être capturé par le param dynamique
@@ -110,12 +113,12 @@ def ingredient_from_claude(nom: str = Query(...)):
 
 
 @router.get("/by_barcode/{code}", response_model=IngredientRead)
-def ingredient_by_barcode(code: str, db: Session = Depends(get_db)):
+def ingredient_by_barcode(code: str, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     """Ingrédient du catalogue déjà créé depuis ce code-barre (EAN-13 et UPC-A comparés sans les zéros de tête)."""
     digits = code.strip().lstrip("0")
     if not digits:
         raise HTTPException(status_code=404, detail="Code-barre inconnu du catalogue")
-    source = (db.query(IngredientSource)
+    source = (visible(db.query(IngredientSource).join(Ingredient), Ingredient, principal)
               .filter(func.ltrim(IngredientSource.code_barre, "0") == digits)
               .order_by(IngredientSource.id.desc())
               .first())
@@ -124,7 +127,7 @@ def ingredient_by_barcode(code: str, db: Session = Depends(get_db)):
     return source.ingredient
 
 
-@router.get("/from_barcode", dependencies=[Depends(require_admin)])
+@router.get("/from_barcode")
 def ingredient_from_barcode(code: str = Query(...)):
     try:
         # categories_tags_fr n'est renvoyé que s'il est demandé explicitement, en plus de "all"
@@ -193,18 +196,20 @@ def enrich_from_sources(db: Session = Depends(get_db)):
 
 
 @router.get("/{id}", response_model=IngredientRead)
-def get_ingredient(id: int, db: Session = Depends(get_db)):
+def get_ingredient(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     ingredient = db.get(Ingredient, id)
-    if not ingredient:
+    if not ingredient or not is_visible(ingredient, principal):
         raise HTTPException(status_code=404, detail="Ingrédient introuvable")
     return ingredient
 
 
-@router.post("/", response_model=IngredientRead, dependencies=[Depends(require_admin)])
+@router.post("/", response_model=IngredientRead)
 def create_ingredient(data: IngredientCreate, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Tout le monde peut ajouter un ingrédient : validé d'office pour l'administration, à valider sinon."""
+    check_name_free(db, Ingredient, data.nom, principal, "Un ingrédient")
     source_fields = {"source_type", "source_code_barre", "source_raw_data"}
     ingredient_data = {k: v for k, v in data.model_dump().items() if k not in source_fields}
-    ingredient = Ingredient(**ingredient_data, created_by=principal.user_id or 0)
+    ingredient = Ingredient(**ingredient_data, created_by=principal.user_id or 0, valide=principal.is_admin)
     db.add(ingredient)
     try:
         db.commit()
@@ -226,11 +231,13 @@ def create_ingredient(data: IngredientCreate, principal: Principal = Depends(get
     return ingredient
 
 
-@router.put("/{id}", response_model=IngredientRead, dependencies=[Depends(require_admin)])
-def update_ingredient(id: int, data: IngredientCreate, db: Session = Depends(get_db)):
+@router.put("/{id}", response_model=IngredientRead)
+def update_ingredient(id: int, data: IngredientCreate, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     ingredient = db.get(Ingredient, id)
-    if not ingredient:
+    if not ingredient or not is_visible(ingredient, principal):
         raise HTTPException(status_code=404, detail="Ingrédient introuvable")
+    check_can_edit(ingredient, principal, "les ingrédients")
+    check_name_free(db, Ingredient, data.nom, principal, "Un ingrédient", exclude_id=id)
     for key, value in data.model_dump(exclude={"source_type", "source_code_barre", "source_raw_data"}).items():
         setattr(ingredient, key, value)
     try:
@@ -242,11 +249,12 @@ def update_ingredient(id: int, data: IngredientCreate, db: Session = Depends(get
     return ingredient
 
 
-@router.delete("/{id}", dependencies=[Depends(require_admin)])
-def delete_ingredient(id: int, db: Session = Depends(get_db)):
+@router.delete("/{id}")
+def delete_ingredient(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     ingredient = db.get(Ingredient, id)
-    if not ingredient:
+    if not ingredient or not is_visible(ingredient, principal):
         raise HTTPException(status_code=404, detail="Ingrédient introuvable")
+    check_can_edit(ingredient, principal, "les ingrédients")
     db.delete(ingredient)
     try:
         db.commit()

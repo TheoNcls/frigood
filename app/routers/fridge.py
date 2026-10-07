@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import FridgeItem, FridgeHistory, Ingredient, MealLog, Recipe, User
 from app.schemas import FridgeItemCreate, FridgeItemUpdate, FridgeItemRead, FridgeHistoryRead
 from app.auth import Principal, get_principal, check_user_access
+from app.catalog_access import is_visible
 from app.fridge_service import (
     MAX_PREP_INGREDIENTS, consume_preparation_ingredients, create_preparation, log_history, remove_item,
 )
@@ -60,13 +61,13 @@ def add_to_fridge(user_id: int, data: FridgeItemCreate, principal: Principal = D
 
     if data.ingredient_id:
         ing = db.get(Ingredient, data.ingredient_id)
-        if not ing:
+        if not ing or not is_visible(ing, principal):
             raise HTTPException(status_code=404, detail="Ingrédient introuvable")
         if date_peremption is None:
             date_peremption = date_achat + timedelta(days=ing.duree_conservation or 7)
     else:
         recipe = db.get(Recipe, data.recipe_id)
-        if not recipe:
+        if not recipe or not is_visible(recipe, principal):
             raise HTTPException(status_code=404, detail="Recette introuvable")
         if date_peremption is None:
             date_peremption = date_achat + timedelta(days=DUREE_RECETTE_DEFAUT)
@@ -75,7 +76,8 @@ def add_to_fridge(user_id: int, data: FridgeItemCreate, principal: Principal = D
             for row in data.ingredients:
                 if row.quantite <= 0:
                     continue
-                if not db.get(Ingredient, row.ingredient_id):
+                row_ing = db.get(Ingredient, row.ingredient_id)
+                if not row_ing or not is_visible(row_ing, principal):
                     raise HTTPException(status_code=404, detail="Ingrédient introuvable")
                 composition[row.ingredient_id] = composition.get(row.ingredient_id, 0) + row.quantite
             if not composition:

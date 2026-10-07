@@ -4,12 +4,14 @@ import { Clock, Plus, Search, Trash2, Users } from "lucide-react";
 import { api } from "../api/client";
 import { useIngredients, useRecipes } from "../api/queries";
 import type { Recipe, RecipeInput, TypeMesure } from "../api/types";
+import { useCurrentUser } from "../auth/AuthContext";
 import FoodPicker from "../components/FoodPicker";
 import Modal from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { Card, ConfirmButton, Empty, Field, Segmented, Spinner, Stat } from "../components/ui";
 import { fmt, recipeMacros } from "../lib/nutrition";
 import { parseNum, useInvalidateCatalog } from "./catalog";
+import { OwnerBadges, ScopeFilter, canEditItem, inScope, type CatalogMode, type CatalogScope } from "./CatalogBits";
 
 const NO_COUNTS = new Map<number, number>();
 
@@ -27,23 +29,31 @@ function recipeExtras(recipe: Recipe) {
   return [...extras.entries()].sort((a, b) => a[0].localeCompare(b[0], "fr"));
 }
 
-export default function RecipesAdmin() {
-  const recipes = useRecipes();
+export default function RecipesAdmin({ mode = "admin" }: { mode?: CatalogMode }) {
+  const me = useCurrentUser();
+  const recipes = useRecipes({ tous: mode === "admin" });
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [scope, setScope] = useState<CatalogScope>("tout");
 
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
     return recipes.list
+      .filter((r) => inScope(r, scope, me.id))
       .filter((r) => !s || r.nom.toLowerCase().includes(s) || (r.categorie ?? "").toLowerCase().includes(s))
       .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
-  }, [recipes.list, search]);
+  }, [recipes.list, search, scope, me.id]);
 
   const editing = editingId ? recipes.byId.get(editingId) : undefined;
+  const emptyText = search ? "Aucune recette ne correspond."
+    : scope === "miens" ? "Tu n'as encore ajouté aucune recette : « Nouvelle recette » pour commencer."
+      : scope === "a_valider" ? "Aucune recette en attente de validation."
+        : "Aucune recette pour l'instant.";
 
   return (
     <div className="space-y-4">
+      <ScopeFilter mode={mode} value={scope} onChange={setScope} mine="Mes recettes" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative min-w-[14rem] flex-1 sm:max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -55,7 +65,7 @@ export default function RecipesAdmin() {
       </div>
 
       {recipes.isLoading ? <Spinner /> : !rows.length ? (
-        <Card><Empty>{search ? "Aucune recette ne correspond." : "Aucune recette pour l'instant."}</Empty></Card>
+        <Card><Empty>{emptyText}</Empty></Card>
       ) : (
         <ul className="grid gap-3 md:grid-cols-2">
           {rows.map((r) => {
@@ -64,7 +74,10 @@ export default function RecipesAdmin() {
             return (
               <li key={r.id}>
                 <button className="card w-full text-left transition hover:border-brand-500" onClick={() => setEditingId(r.id)}>
-                  <div className="font-medium text-slate-900">{r.nom}</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-medium text-slate-900">{r.nom}</span>
+                    <OwnerBadges item={r} mode={mode} meId={me.id} />
+                  </div>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                     {r.categorie && <span>{r.categorie}</span>}
                     <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" /> {portions} portion(s)</span>
@@ -88,7 +101,9 @@ export default function RecipesAdmin() {
       )}
       {editing && (
         <Modal title={editing.nom} onClose={() => setEditingId(null)} wide>
-          <EditRecipe recipe={editing} onDeleted={() => setEditingId(null)} />
+          {canEditItem(editing, mode, me.id)
+            ? <EditRecipe recipe={editing} onDeleted={() => setEditingId(null)} />
+            : <RecipeView recipe={editing} />}
         </Modal>
       )}
     </div>
@@ -152,6 +167,47 @@ function CreateRecipe({ onCreated, onCancel }: { onCreated: (id: number) => void
   return <RecipeForm submitLabel="Créer" pending={create.isPending} onSubmit={(v) => create.mutate(v)} onCancel={onCancel} />;
 }
 
+/** Fiche en lecture seule : une recette du catalogue ajoutée par quelqu'un d'autre. */
+function RecipeView({ recipe }: { recipe: Recipe }) {
+  return (
+    <div className="space-y-5 text-sm">
+      <RecipeNutrition recipe={recipe} />
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+        {recipe.categorie && <span>{recipe.categorie}</span>}
+        <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {recipe.portions || 1} portion(s)</span>
+        {recipe.temps_preparation ? <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {recipe.temps_preparation} min</span> : null}
+      </div>
+      <div>
+        <div className="label">Ingrédients</div>
+        {recipe.ingredients.length ? (
+          <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+            {recipe.ingredients.map((ri) => (
+              <li key={ri.id} className="flex items-center gap-3 px-3 py-2">
+                <span className={`flex-1 ${ri.par_defaut ? "" : "text-slate-500"}`}>
+                  {ri.ingredient.nom}
+                  {!ri.par_defaut && <span className="badge ml-1.5 bg-slate-100 align-middle text-slate-500">option</span>}
+                </span>
+                <span className="text-slate-600">
+                  {ri.type_mesure === "unite" ? `${fmt(ri.quantite, 1)} unité(s)` : `${fmt(ri.quantite, 1)} ${ri.ingredient.unite}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-slate-500">Aucun ingrédient.</p>}
+      </div>
+      {recipe.description && (
+        <div>
+          <div className="label">Description / étapes</div>
+          <p className="whitespace-pre-line text-slate-700">{recipe.description}</p>
+        </div>
+      )}
+      <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+        Recette du catalogue{recipe.created_by_nom ? `, ajoutée par ${recipe.created_by_nom}` : ""} : tu peux la préparer, mais seules tes propres recettes sont modifiables.
+      </p>
+    </div>
+  );
+}
+
 function EditRecipe({ recipe, onDeleted }: { recipe: Recipe; onDeleted: () => void }) {
   const invalidate = useInvalidateCatalog();
   const toast = useToast();
@@ -175,6 +231,11 @@ function EditRecipe({ recipe, onDeleted }: { recipe: Recipe; onDeleted: () => vo
         <div className="label">Informations</div>
         <RecipeForm key={recipe.id} initial={recipe} submitLabel="Enregistrer" pending={save.isPending} onSubmit={(v) => save.mutate(v)} />
       </div>
+      {!recipe.valide && (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          À valider : visible seulement par {recipe.created_by_nom ?? "la personne qui l'a ajoutée"} pour l'instant.
+        </p>
+      )}
       {recipe.created_by_nom && <p className="text-xs text-slate-500">Ajoutée par {recipe.created_by_nom}.</p>}
       <div className="border-t border-slate-200 pt-4">
         <ConfirmButton label="Supprimer la recette" disabled={remove.isPending} onConfirm={() => remove.mutate()} />

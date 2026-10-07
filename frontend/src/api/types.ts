@@ -70,6 +70,8 @@ export interface Ingredient {
   image_url: string | null;
   /** Liste des ingrédients d'un produit transformé */
   composition: string | null;
+  /** Validé : visible par tout le monde ; sinon seulement par la personne qui l'a créé */
+  valide: boolean;
   /** Utilisateur qui l'a ajouté au catalogue (0 = inconnu) */
   created_by: number;
   created_by_nom: string | null;
@@ -154,6 +156,8 @@ export interface Recipe {
   categorie: string | null;
   portions: number | null;
   temps_preparation: number | null;
+  /** Validée : visible par tout le monde ; sinon seulement par la personne qui l'a créée */
+  valide: boolean;
   /** Utilisateur qui l'a ajoutée au catalogue (0 = inconnu) */
   created_by: number;
   created_by_nom: string | null;

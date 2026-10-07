@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import FridgeItem, Ingredient, MealLog, Recipe, User
 from app.schemas import MealLogCreate, MealLogRead
 from app.auth import Principal, get_principal, check_user_access
+from app.catalog_access import is_visible
 from app.fridge_service import consume_dish, consume_for_meal, pick_dish
 
 router = APIRouter(tags=["meal_logs"], dependencies=[Depends(get_principal)])
@@ -17,6 +18,10 @@ def add_meal_log(user_id: int, data: MealLogCreate, principal: Principal = Depen
     if not db.get(User, user_id):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     values = data.model_dump(exclude={"fridge_item_id"})
+    if values["ingredient_id"]:
+        ing = db.get(Ingredient, values["ingredient_id"])
+        if not ing or not is_visible(ing, principal):
+            raise HTTPException(status_code=404, detail="Ingrédient introuvable")
     dish = None
     # Une recette se mange à partir d'un plat préparé (dans le frigo) : on en prend une part
     if data.fridge_item_id or values["recipe_id"]:

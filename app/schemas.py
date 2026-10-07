@@ -122,6 +122,7 @@ class IngredientCreate(IngredientBase):
 
 class IngredientRead(IngredientBase):
     id: int
+    valide: bool = True
     created_by: int = 0
     created_by_nom: str | None = None
     nutriments: list[IngredientNutrimentRead] = []
@@ -162,6 +163,7 @@ class RecipeCreate(BaseModel):
 
 class RecipeRead(RecipeCreate):
     id: int
+    valide: bool = True
     created_by: int = 0
     created_by_nom: str | None = None
     ingredients: list[RecipeIngredientRead] = []

@@ -68,7 +68,7 @@ export default function ScanFoodModal({ onSelect, onClose }: {
     }, nutriments.list),
     onSuccess: ({ ingredient }) => {
       invalidate();
-      toast(`« ${ingredient.nom} » ajouté au catalogue`);
+      toast(user?.is_admin ? `« ${ingredient.nom} » ajouté au catalogue` : `« ${ingredient.nom} » ajouté à tes ingrédients`);
       select(ingredient);
     },
     onError: (e) => toast(e.message, "error"),
@@ -124,8 +124,8 @@ export default function ScanFoodModal({ onSelect, onClose }: {
               <div className="text-xs">Code {phase.code}</div>
             </div>
           </div>
-          {user?.is_admin ? (
-            <>
+          {/* Tout le monde peut l'ajouter : il devient un de ses ingrédients (validé d'office pour l'administration) */}
+          <>
               <div className="flex flex-wrap gap-2">
                 <button className="btn-primary" disabled={fetchOff.isPending} onClick={() => fetchOff.mutate(phase.code)}>
                   {fetchOff.isPending ? "Recherche sur OpenFoodFacts…" : "L'ajouter depuis OpenFoodFacts"}
@@ -136,15 +136,10 @@ export default function ScanFoodModal({ onSelect, onClose }: {
                 <button className="btn-ghost" onClick={restart}>Scanner un autre produit</button>
               </div>
               {fetchOff.isError && <ErrorMessage error={fetchOff.error} />}
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-slate-600">
-                Demande à l'administrateur de l'ajouter, ou choisis un ingrédient équivalent dans la liste.
-              </p>
-              <button className="btn-secondary" onClick={restart}>Scanner un autre produit</button>
-            </>
-          )}
+              {!user?.is_admin && (
+                <p className="text-xs text-slate-500">Il sera ajouté à tes ingrédients (visible par toi seul en attendant sa validation).</p>
+              )}
+          </>
         </div>
       )}
 
@@ -157,7 +152,7 @@ export default function ScanFoodModal({ onSelect, onClose }: {
           </p>
           <IngredientForm
             initial={phase.suggestion ?? {}}
-            submitLabel="Ajouter au catalogue et sélectionner"
+            submitLabel="Ajouter et sélectionner"
             pending={save.isPending}
             onSubmit={(values, nuts) => save.mutate({ values, nuts, code: phase.code, suggestion: phase.suggestion })}
             onCancel={restart}

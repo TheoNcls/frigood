@@ -14,20 +14,22 @@ function useById<T extends { id: number }>(data: T[] | undefined): Map<number, T
   return useMemo(() => new Map((data ?? []).map((x) => [x.id, x])), [data]);
 }
 
-export function useIngredients() {
+/** Ingrédients validés et ceux de la personne ; `tous` (administration) : tout le catalogue. */
+export function useIngredients({ tous = false }: { tous?: boolean } = {}) {
   const query = useQuery({
-    queryKey: ["ingredients"],
-    queryFn: () => api<Ingredient[]>("/ingredients/"),
+    queryKey: tous ? ["ingredients", "tous"] : ["ingredients"],
+    queryFn: () => api<Ingredient[]>("/ingredients/", { query: tous ? { tous: true } : {} }),
     staleTime: CATALOG_STALE,
   });
   const byId = useById(query.data);
   return { ...query, list: query.data ?? EMPTY, byId };
 }
 
-export function useRecipes() {
+/** Recettes validées et celles de la personne ; `tous` (administration) : toutes. */
+export function useRecipes({ tous = false }: { tous?: boolean } = {}) {
   const query = useQuery({
-    queryKey: ["recipes"],
-    queryFn: () => api<Recipe[]>("/recipes/"),
+    queryKey: tous ? ["recipes", "tous"] : ["recipes"],
+    queryFn: () => api<Recipe[]>("/recipes/", { query: tous ? { tous: true } : {} }),
     staleTime: CATALOG_STALE,
   });
   const byId = useById(query.data);

@@ -19,8 +19,8 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
 
 async function fetchCatalog() {
   const [ingredients, recipes, nutriments] = await Promise.all([
-    api<Ingredient[]>("/ingredients/"),
-    api<Recipe[]>("/recipes/"),
+    api<Ingredient[]>("/ingredients/", { query: { tous: true } }),
+    api<Recipe[]>("/recipes/", { query: { tous: true } }),
     api<Nutriment[]>("/nutriments/"),
   ]);
   return { ingredients, recipes, nutriments };

@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
-from app.models import Nutriment, IngredientNutriment
+from app.models import Ingredient, Nutriment, IngredientNutriment
 from app.schemas import NutrimentCreate, NutrimentRead, IngredientNutrimentCreate, IngredientNutrimentRead
-from app.auth import get_principal, require_admin
+from app.auth import Principal, get_principal, require_admin
+from app.catalog_access import check_can_edit, is_visible
 
 router = APIRouter(tags=["nutriments"], dependencies=[Depends(get_principal)])
 
@@ -14,7 +15,7 @@ def list_nutriments(db: Session = Depends(get_db)):
     return db.query(Nutriment).all()
 
 
-@router.post("/nutriments/", response_model=NutrimentRead, dependencies=[Depends(require_admin)])
+@router.post("/nutriments/", response_model=NutrimentRead)
 def create_nutriment(data: NutrimentCreate, db: Session = Depends(get_db)):
     nutriment = Nutriment(**data.model_dump())
     db.add(nutriment)
@@ -41,8 +42,18 @@ def delete_nutriment(id: int, db: Session = Depends(get_db)):
     return {"message": "Nutriment supprimé"}
 
 
-@router.post("/ingredients/{ingredient_id}/nutriments/", response_model=IngredientNutrimentRead, dependencies=[Depends(require_admin)])
-def add_nutriment_to_ingredient(ingredient_id: int, data: IngredientNutrimentCreate, db: Session = Depends(get_db)):
+def _own_ingredient(db: Session, ingredient_id: int, principal: Principal) -> Ingredient:
+    ingredient = db.get(Ingredient, ingredient_id)
+    if not ingredient or not is_visible(ingredient, principal):
+        raise HTTPException(status_code=404, detail="Ingrédient introuvable")
+    check_can_edit(ingredient, principal, "les ingrédients")
+    return ingredient
+
+
+@router.post("/ingredients/{ingredient_id}/nutriments/", response_model=IngredientNutrimentRead)
+def add_nutriment_to_ingredient(ingredient_id: int, data: IngredientNutrimentCreate,
+                                principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    _own_ingredient(db, ingredient_id, principal)
     # Déjà associé : on met à jour la valeur plutôt que de créer un doublon
     lien = db.query(IngredientNutriment).filter_by(ingredient_id=ingredient_id, nutriment_id=data.nutriment_id).first()
     if lien:
@@ -56,8 +67,10 @@ def add_nutriment_to_ingredient(ingredient_id: int, data: IngredientNutrimentCre
     return lien
 
 
-@router.delete("/ingredients/{ingredient_id}/nutriments/{nutriment_id}", dependencies=[Depends(require_admin)])
-def remove_nutriment_from_ingredient(ingredient_id: int, nutriment_id: int, db: Session = Depends(get_db)):
+@router.delete("/ingredients/{ingredient_id}/nutriments/{nutriment_id}")
+def remove_nutriment_from_ingredient(ingredient_id: int, nutriment_id: int,
+                                     principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    _own_ingredient(db, ingredient_id, principal)
     lien = db.query(IngredientNutriment).filter_by(
         ingredient_id=ingredient_id, nutriment_id=nutriment_id
     ).first()
