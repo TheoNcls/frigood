@@ -428,6 +428,9 @@ export interface PlanMilestone {
     sortie_longue_d_plus?: number;
   };
   sport: "pied" | "velo" | "natation";
+  /** Sports écrits dans le plan (« Sports comptés »), sinon null et sports_auto décrit ceux pris par défaut */
+  sports_comptes: string[] | null;
+  sports_auto: string | null;
   semaine: { km: number; d_plus_m: number; seances: number; depuis: string };
   plus_longue_sortie: { km: number; d_plus_m: number; date: string | null };
 }

@@ -164,6 +164,11 @@ function MilestoneProgress({ jalon }: { jalon: PlanMilestone }) {
           {jalon.statut === "a_venir" ? `Commence le ${formatShort(jalon.debut)}` : `Terminé le ${formatShort(jalon.fin)} : dernier jalon du plan`}
         </div>
       )}
+      <div className="text-xs text-slate-500">
+        {jalon.sports_comptes
+          ? <>Sports comptés : {jalon.sports_comptes.join(", ")}</>
+          : <>Sports comptés : {jalon.sports_auto} (par défaut : précise-les dans ton plan avec « Sports comptés »)</>}
+      </div>
       {rows.length ? rows.map((r) => (
         <div key={r.label}>
           <div className="mb-1 flex justify-between gap-2 text-sm">

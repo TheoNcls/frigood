@@ -338,7 +338,8 @@ function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
         />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-slate-500">
-            Pour suivre le mois en cours sur l'accueil : « ### Mois 1 · 08/10 → 07/11 », puis « - **Volume** : 25–30 km/semaine · 400 m D+ »
+            Pour suivre le mois en cours sur l'accueil : « **Sports comptés** : Course à pied, Trail » (dans Objectif, ou dans un jalon
+            pour ce mois-là), « ### Mois 1 · 08/10 → 07/11 », puis « - **Volume** : 25–30 km/semaine · 400 m D+ »
             et « - **Sortie longue** : 15 km · 300 m D+ » · {text.length} / {PLAN_MAX}
           </span>
           <div className="flex gap-2">
