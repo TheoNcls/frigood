@@ -2,7 +2,7 @@ import { lazy, Suspense, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Repeat2, Trash2 } from "lucide-react";
 import { api } from "../api/client";
-import { useFridge, useFridgeHistory, useIngredients, useMealLogs, useRecipes } from "../api/queries";
+import { useFridge, useIngredients, useMealLogs, useRecipes } from "../api/queries";
 import type { MealLog, MealLogCreate, Moment, TypeMesure } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import FoodPicker from "../components/FoodPicker";
@@ -15,7 +15,7 @@ import { formatLong, todayISO } from "../lib/dates";
 import {
   MOMENTS, MOMENT_LABELS, defaultMoment, describeLog, fmt, logMacros, totalMacros,
 } from "../lib/nutrition";
-import { useUsageCounts } from "../lib/usage";
+import { usePickerIngredients, useUsageCounts } from "../lib/usage";
 
 // Caméra et lecteur de code-barre chargés seulement au premier scan
 const ScanFoodModal = lazy(() => import("../components/ScanFoodModal"));
@@ -48,15 +48,7 @@ export default function Meals() {
 
   const fridgeIngIds = useMemo(() => new Set((fridge.data ?? []).flatMap((f) => (f.ingredient_id ? [f.ingredient_id] : []))), [fridge.data]);
   // Option du profil : seulement ses ingrédients, ceux déjà mangés ou passés par le frigo (+ celui qu'on vient de scanner)
-  const persoOnly = user.ingredients_perso_seulement;
-  const fridgeHistory = useFridgeHistory();
-  const pickerIngredients = useMemo(() => {
-    if (!persoOnly) return ingredients.list;
-    const keep = new Set<number>([...usage.ingredients.keys(), ...fridgeIngIds]);
-    for (const h of fridgeHistory.data ?? []) if (h.ingredient_id) keep.add(h.ingredient_id);
-    if (ingredientId) keep.add(ingredientId);
-    return ingredients.list.filter((i) => i.created_by === user.id || keep.has(i.id));
-  }, [persoOnly, ingredients.list, usage.ingredients, fridgeIngIds, fridgeHistory.data, ingredientId, user.id]);
+  const { list: pickerIngredients, persoOnly } = usePickerIngredients(ingredientId);
   const fridgeRecIds = useMemo(() => new Set((fridge.data ?? []).flatMap((f) => (f.recipe_id ? [f.recipe_id] : []))), [fridge.data]);
 
   // L'ingrédient scanné est passé directement : il peut venir d'être créé et ne pas encore être dans la liste

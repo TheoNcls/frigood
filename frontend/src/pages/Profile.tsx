@@ -478,16 +478,16 @@ function PersoIngredientsSetting() {
     mutationFn: (v: boolean) => api<User>(`/users/${user.id}`, { method: "PUT", body: { ingredients_perso_seulement: v } }),
     onSuccess: (u) => {
       setUser(u);
-      toast(u.ingredients_perso_seulement ? "Repas : seulement tes ingrédients" : "Repas : tout le catalogue");
+      toast(u.ingredients_perso_seulement ? "Repas et Frigo : seulement tes ingrédients" : "Repas et Frigo : tout le catalogue");
     },
     onError: (e) => toast(e.message, "error"),
   });
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4">
       <span>
-        <span className="block text-sm font-medium text-slate-800">Seulement mes ingrédients dans Repas</span>
+        <span className="block text-sm font-medium text-slate-800">Seulement mes ingrédients dans Repas et Frigo</span>
         <span className="block text-xs text-slate-500">
-          La liste ne montre que tes ingrédients et ceux du catalogue que tu as déjà mangés ou mis au frigo.
+          Les listes d'ingrédients ne montrent que les tiens et ceux du catalogue que tu as déjà mangés ou mis au frigo.
           Pour un nouveau produit, le scan reste possible. Réglage de ton compte.
         </span>
       </span>
@@ -495,7 +495,7 @@ function PersoIngredientsSetting() {
         <input
           type="checkbox"
           role="switch"
-          aria-label="Seulement mes ingrédients dans Repas"
+          aria-label="Seulement mes ingrédients dans Repas et Frigo"
           className="peer sr-only"
           checked={user.ingredients_perso_seulement}
           disabled={save.isPending}

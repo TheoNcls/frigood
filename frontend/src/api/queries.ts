@@ -116,11 +116,12 @@ export function useFridge() {
   });
 }
 
-export function useFridgeHistory() {
+export function useFridgeHistory({ enabled = true }: { enabled?: boolean } = {}) {
   const uid = useUserId();
   return useQuery({
     queryKey: ["fridge_history", uid],
     queryFn: () => api<FridgeHistory[]>(`/users/${uid}/fridge/history`, { query: { limit: 200 } }),
+    enabled,
   });
 }
 

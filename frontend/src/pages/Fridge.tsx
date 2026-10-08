@@ -16,7 +16,7 @@ import {
   ACTION_LABELS, EXPIRY_STYLES, expiryInfo, fridgeItemName, fridgeItemQty,
 } from "../lib/fridge";
 import { fmt } from "../lib/nutrition";
-import { useUsageCounts } from "../lib/usage";
+import { usePickerIngredients, useUsageCounts } from "../lib/usage";
 
 type Tab = "contenu" | "ajouter" | "historique";
 
@@ -219,6 +219,8 @@ function AddIngredientForm({ onDone }: { onDone: () => void }) {
   const [dateAchat, setDateAchat] = useState(todayISO());
   const [peremption, setPeremption] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  // Option du profil : seulement ses ingrédients (+ celui qu'on vient de scanner)
+  const picker = usePickerIngredients(ingredientId);
 
   // L'ingrédient scanné est passé directement : il peut venir d'être créé et ne pas encore être dans la liste
   function chooseIngredient(id: number, ing = ingredients.byId.get(id)) {
@@ -268,14 +270,21 @@ function AddIngredientForm({ onDone }: { onDone: () => void }) {
           <ScanFoodModal onSelect={(ing) => chooseIngredient(ing.id, ing)} onClose={() => setScanning(false)} />
         </Suspense>
       )}
-      <FoodPicker
-        label="Ingrédient"
-        items={ingredients.list}
-        counts={usage.ingredients}
-        value={ingredientId}
-        onChange={chooseIngredient}
-        onScan={() => setScanning(true)}
-      />
+      <div>
+        <FoodPicker
+          label="Ingrédient"
+          items={picker.list}
+          counts={usage.ingredients}
+          value={ingredientId}
+          onChange={chooseIngredient}
+          onScan={() => setScanning(true)}
+        />
+        {picker.persoOnly && (
+          <p className="mt-1 text-xs text-slate-500">
+            Tes ingrédients et ceux que tu as déjà mangés ou mis au frigo. Un nouveau produit : scanne-le.
+          </p>
+        )}
+      </div>
       {ingredient?.quantite_defaut ? (
         <Segmented
           value={mesure}

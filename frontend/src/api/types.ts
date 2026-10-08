@@ -17,7 +17,7 @@ export interface User {
   regime_alimentaire: RegimeAlimentaire;
   /** Partie Nutrition affichée (masquée sinon : repas, objectifs, calories ; les données restent) */
   nutrition_active: boolean;
-  /** Repas : seulement ses ingrédients, ceux déjà mangés ou au frigo (le scan reste possible) */
+  /** Repas et Frigo : seulement ses ingrédients, ceux déjà mangés ou au frigo (le scan reste possible) */
   ingredients_perso_seulement: boolean;
   /** Nutriments suivis sur l'accueil, avec la valeur visée */
   nutriments_suivis: NutrimentSuivi[];
