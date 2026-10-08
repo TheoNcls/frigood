@@ -17,6 +17,8 @@ export interface User {
   regime_alimentaire: RegimeAlimentaire;
   /** Partie Nutrition affichée (masquée sinon : repas, objectifs, calories ; les données restent) */
   nutrition_active: boolean;
+  /** Nutriments suivis sur l'accueil, avec la valeur visée */
+  nutriments_suivis: NutrimentSuivi[];
   /** Matériel de renfo disponible (null : pas renseigné, le coach a tous les exercices) */
   materiel: string[] | null;
   /** Zones cardiaques Garmin (profil course) */
@@ -33,6 +35,13 @@ export interface User {
   /** Coach IA activé par l'administration (l'administration y a toujours accès) */
   coach_autorise: boolean;
   coach_access: boolean;
+}
+
+export interface NutrimentSuivi {
+  nutriment_id: number;
+  cible: number | null;
+  /** « min » : à atteindre ; « max » : à ne pas dépasser */
+  sens: "min" | "max";
 }
 
 export interface AuthResponse extends User {

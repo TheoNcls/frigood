@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 import bcrypt
 from app.database import get_db
-from app.models import User
+from app.models import Nutriment, User
 from app.schemas import UserCreate, UserUpdate, UserRead, UserWithToken, UserLogin, ChangePassword
 from app.auth import Principal, get_principal, require_service, check_user_access, create_token
 
@@ -89,11 +89,16 @@ def update_user(id: int, data: UserUpdate, principal: Principal = Depends(get_pr
     check_user_access(principal, id)
     user = _get_user(db, id)
     clearable = {"proteines_g_kg", "date_naissance", "profil_coaching", "plan_objectifs"}
-    for key, value in data.model_dump(exclude_none=True, exclude=clearable | {"materiel"}).items():
+    for key, value in data.model_dump(exclude_none=True, exclude=clearable | {"materiel", "nutriments_suivis"}).items():
         setattr(user, key, value)
     # Champs qu'on peut effacer : envoyés explicitement, même à null (g/kg à null = objectif fixe)
     for key in clearable & data.model_fields_set:
         setattr(user, key, getattr(data, key))
+    if data.nutriments_suivis is not None:
+        known = {n.id for n in db.query(Nutriment.id)}
+        if any(n.nutriment_id not in known for n in data.nutriments_suivis):
+            raise HTTPException(status_code=400, detail="Nutriment inconnu")
+        user.nutriments_suivis_json = json.dumps([n.model_dump() for n in data.nutriments_suivis]) if data.nutriments_suivis else None
     if "materiel" in data.model_fields_set:
         user.materiel_sport = json.dumps(data.materiel) if data.materiel is not None else None
     db.commit()

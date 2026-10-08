@@ -5,8 +5,9 @@ import WeekStrip from "../components/WeekStrip";
 import { AlertTriangle, Footprints, Target } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
 import {
-  useDailyStat, useFridge, useIngredients, useMealLogs, usePlanMilestone, useRecipes,
+  useDailyStat, useFridge, useIngredients, useMealLogs, useNutriments, usePlanMilestone, useRecipes,
 } from "../api/queries";
+import { dayNutrients, foodsWithout, nutrientDecimals } from "../lib/nutrients";
 import type { PlanMilestone } from "../api/types";
 import { Card, MacroTile, ProgressBar } from "../components/ui";
 import { formatLong, formatShort, todayISO } from "../lib/dates";
@@ -29,6 +30,9 @@ export default function Home() {
   const openedDay = /^\d{4}-\d{2}-\d{2}$/.test(params.get("jour") ?? "") ? params.get("jour") : null;
 
   const consumed = totalMacros(meals.data ?? [], ingredients.byId, recipes.byId);
+  const nutriments = useNutriments();
+  const suivis = user.nutriments_suivis ?? [];
+  const day = dayNutrients(meals.data ?? [], ingredients.byId, recipes.byId);
 
   const expiring = (fridge.data ?? []).filter((f) => {
     const { days } = expiryInfo(f.date_peremption);
@@ -70,6 +74,32 @@ export default function Home() {
             <MacroTile label="Glucides" value={consumed.gluc} target={user.glucides_cible} unit="g" showRemaining />
             <MacroTile label="Lipides" value={consumed.lip} target={user.lipides_cible} unit="g" showRemaining />
           </div>
+          {suivis.length > 0 && (
+            <div className="mt-5 grid grid-cols-2 gap-5 border-t border-slate-100 pt-4 md:grid-cols-4">
+              {suivis.map((s) => {
+                const n = nutriments.list.find((x) => x.id === s.nutriment_id);
+                if (!n) return null;
+                const missing = foodsWithout(day.foods, n.id);
+                return (
+                  <MacroTile
+                    key={n.id}
+                    label={n.nom}
+                    value={day.amounts.get(n.id) ?? 0}
+                    target={s.cible}
+                    unit={n.unite}
+                    decimals={nutrientDecimals(n.unite, s.cible)}
+                    goal={s.sens}
+                    showRemaining
+                    note={missing.length ? (
+                      <span title={`Sans valeur connue : ${missing.map((m) => m.nom).join(", ")}`}>
+                        partiel : {missing.length} aliment{missing.length > 1 ? "s" : ""} sans valeur
+                      </span>
+                    ) : undefined}
+                  />
+                );
+              })}
+            </div>
+          )}
         </Card>
       )}
 

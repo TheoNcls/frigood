@@ -45,12 +45,16 @@ export function ProgressBar({ value, max, over = false }: { value: number; max: 
   );
 }
 
-export function MacroTile({ label, value, target, unit, showRemaining = false }: {
+/** goal « max » : objectif à ne pas dépasser (calories, sel…) ; « min » : à atteindre (protéines du jour, fer, fibres…). */
+export function MacroTile({ label, value, target, unit, showRemaining = false, decimals = 0, goal = "max", note }: {
   label: string;
   value: number;
   target: number | null;
   unit: string;
   showRemaining?: boolean;
+  decimals?: number;
+  goal?: "min" | "max";
+  note?: ReactNode;
 }) {
   const hasTarget = !!target && target > 0;
   const remaining = hasTarget ? target - value : 0;
@@ -59,16 +63,21 @@ export function MacroTile({ label, value, target, unit, showRemaining = false }:
     <div className="space-y-1.5">
       <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
       <div className="text-slate-900">
-        <span className="text-xl font-semibold">{fmt(value)}</span>
-        {hasTarget && <span className="text-sm text-slate-500"> / {fmt(target)} {unit}</span>}
+        <span className="text-xl font-semibold">{fmt(value, decimals)}</span>
+        {hasTarget && <span className="text-sm text-slate-500"> / {fmt(target, decimals)} {unit}</span>}
         {!hasTarget && <span className="text-sm text-slate-500"> {unit}</span>}
       </div>
-      {hasTarget && <ProgressBar value={value} max={target} over={over} />}
-      {hasTarget && showRemaining && (
-        <div className={`text-xs ${over ? "text-red-600" : "text-emerald-600"}`}>
-          {fmt(Math.abs(remaining))} {unit} {over ? "de trop" : "restant(e)s"}
+      {hasTarget && <ProgressBar value={value} max={target} over={goal === "max" && over} />}
+      {hasTarget && showRemaining && (goal === "min" ? (
+        <div className={`text-xs ${remaining <= 0 ? "text-emerald-600" : "text-slate-500"}`}>
+          {remaining <= 0 ? "✓ objectif atteint" : `${fmt(remaining, decimals)} ${unit} pour l'objectif`}
         </div>
-      )}
+      ) : (
+        <div className={`text-xs ${over ? "text-red-600" : "text-emerald-600"}`}>
+          {fmt(Math.abs(remaining), decimals)} {unit} {over ? "de trop" : "restant(e)s"}
+        </div>
+      ))}
+      {note && <div className="text-[11px] leading-tight text-slate-400">{note}</div>}
     </div>
   );
 }

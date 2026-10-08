@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
-import { Bell, BellOff, LogOut, Pencil, Send, Sparkles } from "lucide-react";
+import { Bell, BellOff, LogOut, Pencil, Plus, Send, Sparkles, X } from "lucide-react";
 import { currentSubscription, disablePush, enablePush, isIOS, isStandalone, pushSupported } from "../lib/push";
 import { api } from "../api/client";
-import type { RegimeAlimentaire, User } from "../api/types";
+import type { NutrimentSuivi, RegimeAlimentaire, User } from "../api/types";
+import { useNutriments } from "../api/queries";
+import { nutrientReference } from "../lib/nutrients";
 import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import { useToast } from "../components/Toast";
 import { usePreferences } from "../lib/preferences";
@@ -76,6 +78,7 @@ function ProfileForm() {
   const [parKg, setParKg] = useState(user.proteines_g_kg !== null);
   const [gKg, setGKg] = useState(String(user.proteines_g_kg ?? "1.4"));
   const gKgNum = parseFloat(gKg.replace(",", "."));
+  const [suivis, setSuivis] = useState(() => toRows(user.nutriments_suivis));
   const protFromKg = poids && gKgNum > 0 ? Math.round(gKgNum * poids) : null;
 
   const save = useMutation({
@@ -89,9 +92,15 @@ function ProfileForm() {
         glucides_cible: numOrNull(t.gluc),
         lipides_cible: numOrNull(t.lip),
         proteines_g_kg: parKg && gKgNum > 0 ? gKgNum : null,
+        nutriments_suivis: suivis.map((s) => ({ nutriment_id: s.nutriment_id, cible: numOrNull(s.cible), sens: s.sens })),
       },
     }),
-    onSuccess: (u) => { setUser(u); setT((x) => ({ ...x, prot: String(u.proteines_cible ?? "") })); toast("Profil mis à jour !"); },
+    onSuccess: (u) => {
+      setUser(u);
+      setT((x) => ({ ...x, prot: String(u.proteines_cible ?? "") }));
+      setSuivis(toRows(u.nutriments_suivis));
+      toast("Profil mis à jour !");
+    },
     onError: (e) => toast(e.message, "error"),
   });
 
@@ -138,10 +147,100 @@ function ProfileForm() {
               Repère : 1,2 à 1,6 g/kg pour un sportif végétarien. L'objectif suit automatiquement ta dernière pesée.
             </p>
           )}
+          <TrackedNutrients rows={suivis} onChange={setSuivis} />
         </div>}
         <button type="submit" className="btn-primary" disabled={save.isPending}>Enregistrer</button>
       </form>
     </Card>
+  );
+}
+
+interface SuiviRow {
+  nutriment_id: number;
+  cible: string;
+  sens: "min" | "max";
+}
+
+const toRows = (list: NutrimentSuivi[] | undefined): SuiviRow[] =>
+  (list ?? []).map((s) => ({ nutriment_id: s.nutriment_id, cible: s.cible !== null ? String(s.cible) : "", sens: s.sens }));
+
+const SUIVIS_MAX = 8;
+
+/** Nutriments affichés sur l'accueil (Nutrition du jour), avec la valeur visée : enregistrés avec les objectifs. */
+function TrackedNutrients({ rows, onChange }: { rows: SuiviRow[]; onChange: (rows: SuiviRow[]) => void }) {
+  const nutriments = useNutriments();
+  const [adding, setAdding] = useState("");
+  const byId = new Map(nutriments.list.map((n) => [n.id, n]));
+  const available = [...nutriments.list]
+    .filter((n) => !rows.some((r) => r.nutriment_id === n.id))
+    .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+  const set = (i: number, patch: Partial<SuiviRow>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  function add() {
+    const n = byId.get(Number(adding));
+    if (!n) return;
+    const ref = nutrientReference(n.nom);
+    onChange([...rows, { nutriment_id: n.id, cible: ref ? String(ref.cible) : "", sens: ref?.sens ?? "min" }]);
+    setAdding("");
+  }
+
+  return (
+    <div className="mt-4">
+      <div className="label mb-0.5">Nutriments suivis</div>
+      <p className="mb-2 text-xs text-slate-500">
+        Affichés sur l'accueil, dans « Nutrition du jour ». La valeur proposée est un repère pour un adulte : adapte-la.
+      </p>
+      {rows.length > 0 && (
+        <ul className="mb-2 space-y-2">
+          {rows.map((r, i) => {
+            const n = byId.get(r.nutriment_id);
+            const note = n ? nutrientReference(n.nom)?.note : undefined;
+            return (
+              <li key={r.nutriment_id} className="rounded-xl border border-slate-200 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-[7rem] flex-1 text-sm font-medium text-slate-800">{n?.nom ?? "?"}</span>
+                  <select
+                    className="input w-auto py-1 text-sm"
+                    aria-label={`Sens de l'objectif pour ${n?.nom ?? ""}`}
+                    value={r.sens}
+                    onChange={(e) => set(i, { sens: e.target.value as "min" | "max" })}
+                  >
+                    <option value="min">à atteindre</option>
+                    <option value="max">maximum</option>
+                  </select>
+                  <span className="inline-flex items-center gap-1">
+                    <input
+                      className="input w-24 py-1 text-right"
+                      inputMode="decimal"
+                      aria-label={`Valeur visée pour ${n?.nom ?? ""}`}
+                      placeholder="—"
+                      value={r.cible}
+                      onChange={(e) => set(i, { cible: e.target.value })}
+                    />
+                    <span className="w-6 text-xs text-slate-500">{n?.unite}</span>
+                  </span>
+                  <button type="button" className="btn-ghost px-1" aria-label={`Ne plus suivre ${n?.nom ?? ""}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {rows.length < SUIVIS_MAX && available.length > 0 && (
+        <div className="flex gap-2">
+          <select className="input py-1.5 text-sm" aria-label="Nutriment à suivre" value={adding} onChange={(e) => setAdding(e.target.value)}>
+            <option value="">Suivre un nutriment…</option>
+            {available.map((n) => <option key={n.id} value={n.id}>{n.nom} ({n.unite})</option>)}
+          </select>
+          <button type="button" className="btn-secondary shrink-0" disabled={!adding} onClick={add}>
+            <Plus className="h-4 w-4" /> Ajouter
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

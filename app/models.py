@@ -134,6 +134,8 @@ class User(Base):
     nutrition_active = Column(Boolean, nullable=False, default=True, server_default=true())
     # Régime alimentaire (transmis au coach) : omnivore, flexitarien, pescetarien, vegetarien, vegan
     regime_alimentaire = Column(String(20), nullable=False, default="vegetarien", server_default="vegetarien")
+    # Nutriments suivis sur l'accueil (JSON) : [{nutriment_id, cible, sens: "min" à atteindre | "max" à ne pas dépasser}]
+    nutriments_suivis_json = Column("nutriments_suivis", Text, nullable=True)
     # Matériel de renfo disponible (JSON, clés de garmin_workouts.EQUIPMENT) ; vide = pas renseigné
     materiel_sport = Column(Text, nullable=True)
     # Texte libre : infos et objectifs de la personne, pour un futur coaching personnalisé (Claude)
@@ -177,6 +179,13 @@ class User(Base):
             return json.loads(self.garmin_zones_fc) if self.garmin_zones_fc else None
         except ValueError:
             return None
+
+    @property
+    def nutriments_suivis(self) -> list[dict]:
+        try:
+            return json.loads(self.nutriments_suivis_json) if self.nutriments_suivis_json else []
+        except ValueError:
+            return []
 
     @property
     def materiel(self) -> list[str] | None:

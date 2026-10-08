@@ -265,6 +265,26 @@ class UserCreate(BaseModel):
     lipides_cible: float | None = None
 
 PROFIL_COACHING_MAX = 4000
+NUTRIMENTS_SUIVIS_MAX = 8
+
+
+class NutrimentSuivi(BaseModel):
+    nutriment_id: int
+    cible: float | None = None
+    # « min » : valeur à atteindre (fer, fibres…) ; « max » : à ne pas dépasser (sel, sucres…)
+    sens: str = "min"
+
+    @field_validator("cible")
+    @classmethod
+    def _check_cible(cls, v: float | None) -> float | None:
+        return round(v, 3) if v is not None and v > 0 else None
+
+    @field_validator("sens")
+    @classmethod
+    def _check_sens(cls, v: str) -> str:
+        if v not in ("min", "max"):
+            raise ValueError("Sens inconnu (min ou max)")
+        return v
 PLAN_OBJECTIFS_MAX = 20000
 REGIMES_ALIMENTAIRES = ("omnivore", "flexitarien", "pescetarien", "vegetarien", "vegan")
 
@@ -285,6 +305,19 @@ class UserUpdate(BaseModel):
     nutrition_active: bool | None = None
     # Envoyé à null pour revenir à « pas renseigné » (tous les exercices)
     materiel: list[str] | None = None
+    nutriments_suivis: list[NutrimentSuivi] | None = None
+
+    @field_validator("nutriments_suivis")
+    @classmethod
+    def _check_suivis(cls, v: list[NutrimentSuivi] | None) -> list[NutrimentSuivi] | None:
+        if v is None:
+            return None
+        ids = [n.nutriment_id for n in v]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Un nutriment n'est suivi qu'une fois")
+        if len(v) > NUTRIMENTS_SUIVIS_MAX:
+            raise ValueError(f"{NUTRIMENTS_SUIVIS_MAX} nutriments suivis au maximum")
+        return v
 
     @field_validator("materiel")
     @classmethod
@@ -351,6 +384,7 @@ class UserRead(BaseModel):
     plan_genere_at: datetime_type | None = None
     regime_alimentaire: str = "vegetarien"
     nutrition_active: bool = True
+    nutriments_suivis: list[NutrimentSuivi] = []
     materiel: list[str] | None = None
     zones_fc: dict | None = None
     garmin_connected: bool = False
