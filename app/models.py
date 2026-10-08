@@ -21,6 +21,8 @@ class Ingredient(Base):
     lipides = Column(Float, nullable=True)
     unite = Column(String, default="g")
     quantite_defaut = Column(Float, nullable=True)
+    # Poids (g) ou volume (ml) total à l'achat : un tofu vendu 2 × 90 g -> 180 (le frigo propose « 1 paquet »)
+    poids_paquet = Column(Float, nullable=True)
     duree_conservation = Column(Integer, nullable=True, default=7, server_default="7")
     nutriscore = Column(String(1), nullable=True)   # a à e
     greenscore = Column(String(6), nullable=True)   # a-plus, a à f (impact environnemental)

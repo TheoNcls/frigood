@@ -206,6 +206,8 @@ function AddForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+type MesureFrigo = TypeMesure | "paquet";
+
 function AddIngredientForm({ onDone }: { onDone: () => void }) {
   const user = useCurrentUser();
   const ingredients = useIngredients();
@@ -214,7 +216,7 @@ function AddIngredientForm({ onDone }: { onDone: () => void }) {
   const toast = useToast();
 
   const [ingredientId, setIngredientId] = useState<number | null>(null);
-  const [mesure, setMesure] = useState<TypeMesure>("poids");
+  const [mesure, setMesure] = useState<MesureFrigo>("poids");
   const [quantite, setQuantite] = useState("100");
   const [dateAchat, setDateAchat] = useState(todayISO());
   const [peremption, setPeremption] = useState<string | null>(null);
@@ -226,8 +228,19 @@ function AddIngredientForm({ onDone }: { onDone: () => void }) {
   function chooseIngredient(id: number, ing = ingredients.byId.get(id)) {
     setIngredientId(id);
     setPeremption(null);
-    setMesure("poids");
-    setQuantite(String(ing?.quantite_defaut ?? 100));
+    // Poids total connu : « 1 paquet » par défaut (ex. tofu 180 g)
+    if (ing?.poids_paquet) {
+      setMesure("paquet");
+      setQuantite("1");
+    } else {
+      setMesure("poids");
+      setQuantite(String(ing?.quantite_defaut ?? 100));
+    }
+  }
+
+  function chooseMesure(m: MesureFrigo) {
+    setMesure(m);
+    setQuantite(m === "poids" ? String(ingredient?.quantite_defaut ?? ingredient?.poids_paquet ?? 100) : "1");
   }
 
   const ingredient = ingredientId ? ingredients.byId.get(ingredientId) : undefined;
@@ -236,7 +249,13 @@ function AddIngredientForm({ onDone }: { onDone: () => void }) {
   const peremptionEffective = peremption ?? addDays(dateAchat, duree);
 
   const qNum = parseFloat(quantite) || 0;
-  const baseQty = mesure === "unite" ? qNum * (ingredient?.quantite_defaut ?? 0) : qNum;
+  const baseQty = mesure === "unite" ? qNum * (ingredient?.quantite_defaut ?? 0)
+    : mesure === "paquet" ? qNum * (ingredient?.poids_paquet ?? 0) : qNum;
+  const mesures: { value: MesureFrigo; label: string }[] = [
+    ...(ingredient?.poids_paquet ? [{ value: "paquet" as MesureFrigo, label: `Paquet (${fmt(ingredient.poids_paquet)} ${ingredient.unite})` }] : []),
+    { value: "poids", label: `Poids (${ingredient?.unite ?? "g"})` },
+    ...(ingredient?.quantite_defaut ? [{ value: "unite" as MesureFrigo, label: "Unité" }] : []),
+  ];
 
   const add = useMutation({
     mutationFn: () => api(`/users/${user.id}/fridge/`, {
@@ -285,16 +304,10 @@ function AddIngredientForm({ onDone }: { onDone: () => void }) {
           </p>
         )}
       </div>
-      {ingredient?.quantite_defaut ? (
-        <Segmented
-          value={mesure}
-          onChange={(m) => { setMesure(m); setQuantite(m === "unite" ? "1" : String(ingredient.quantite_defaut ?? 100)); }}
-          options={[{ value: "poids", label: `Poids (${ingredient.unite})` }, { value: "unite", label: "Unité" }]}
-        />
-      ) : null}
+      {mesures.length > 1 ? <Segmented value={mesure} onChange={chooseMesure} options={mesures} /> : null}
       <Field
-        label={mesure === "unite" ? "Nombre d'unités" : `Quantité (${ingredient?.unite ?? "g"})`}
-        hint={mesure === "unite" && ingredient ? `≈ ${fmt(baseQty)} ${ingredient.unite}` : undefined}
+        label={mesure === "unite" ? "Nombre d'unités" : mesure === "paquet" ? "Nombre de paquets" : `Quantité (${ingredient?.unite ?? "g"})`}
+        hint={mesure !== "poids" && ingredient ? `≈ ${fmt(baseQty)} ${ingredient.unite}` : undefined}
       >
         <input className="input" type="number" min={0} step="any" value={quantite} onChange={(e) => setQuantite(e.target.value)} />
       </Field>

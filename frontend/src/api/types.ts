@@ -76,6 +76,8 @@ export interface Ingredient {
   lipides: number | null;
   unite: string;
   quantite_defaut: number | null;
+  /** Poids (g) ou volume (ml) total à l'achat : 1 paquet au frigo */
+  poids_paquet: number | null;
   duree_conservation: number | null;
   nutriscore: NutriScore | null;
   greenscore: GreenScore | null;
@@ -117,6 +119,8 @@ export interface IngredientInput {
   lipides: number | null;
   unite: string;
   quantite_defaut: number | null;
+  /** Poids (g) ou volume (ml) total à l'achat : 1 paquet au frigo */
+  poids_paquet: number | null;
   duree_conservation: number | null;
   nutriscore: NutriScore | null;
   greenscore: GreenScore | null;

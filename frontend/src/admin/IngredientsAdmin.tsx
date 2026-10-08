@@ -312,6 +312,7 @@ function IngredientView({ ingredient: i }: { ingredient: Ingredient }) {
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
         <span>Unité : {i.unite}{i.quantite_defaut ? ` · 1 unité ≈ ${fmt(i.quantite_defaut)} ${i.unite}` : ""}</span>
+        {i.poids_paquet ? <span>Paquet : {fmt(i.poids_paquet)} {i.unite}</span> : null}
         {i.duree_conservation ? <span>Conservation : {i.duree_conservation} j</span> : null}
       </div>
       {i.nutriments.length > 0 && (
@@ -362,6 +363,7 @@ function EditIngredient({ ingredient, onDeleted }: { ingredient: Ingredient; onD
           lipides: ingredient.lipides,
           unite: ingredient.unite,
           quantite_defaut: ingredient.quantite_defaut,
+          poids_paquet: ingredient.poids_paquet,
           duree_conservation: ingredient.duree_conservation,
           nutriscore: ingredient.nutriscore,
           greenscore: ingredient.greenscore,

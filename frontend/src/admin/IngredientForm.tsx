@@ -29,6 +29,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
     lipides: str(initial.lipides),
     unite: initial.unite || "g",
     quantite_defaut: str(initial.quantite_defaut),
+    poids_paquet: str(initial.poids_paquet),
     duree_conservation: str(initial.duree_conservation ?? 7),
     nutriscore: initial.nutriscore ?? "",
     greenscore: initial.greenscore ?? "",
@@ -55,6 +56,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
   function submit(e: FormEvent) {
     e.preventDefault();
     const qd = parseNum(f.quantite_defaut);
+    const pp = parseNum(f.poids_paquet);
     const duree = parseNum(f.duree_conservation);
     onSubmit(
       {
@@ -67,6 +69,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         lipides: parseNum(f.lipides),
         unite: f.unite.trim() || "g",
         quantite_defaut: qd && qd > 0 ? qd : null,
+        poids_paquet: pp && pp > 0 ? pp : null,
         duree_conservation: duree && duree > 0 ? Math.round(duree) : 7,
         nutriscore: (f.nutriscore || null) as NutriScore | null,
         greenscore: (f.greenscore || null) as GreenScore | null,
@@ -161,7 +164,7 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="Unité" hint={f.unite === "ml" ? "liquide" : "solide"}>
           <select className="input" value={f.unite} onChange={set("unite")}>
             <option value="g">g</option>
@@ -174,6 +177,12 @@ export default function IngredientForm({ initial = {}, currentId, submitLabel, p
           hint={f.unite === "ml" ? "ex. 250 pour un verre" : "ex. 130 pour une pomme"}
         >
           <input className="input" type="number" min={0} step="any" value={f.quantite_defaut} onChange={set("quantite_defaut")} />
+        </Field>
+        <Field
+          label={f.unite === "ml" ? "Volume total à l'achat (ml)" : "Poids total à l'achat (g)"}
+          hint="Le paquet entier : ex. 180 pour un tofu de 2 × 90 g"
+        >
+          <input className="input" type="number" min={0} step="any" value={f.poids_paquet} onChange={set("poids_paquet")} />
         </Field>
         <Field label="Conservation (jours)">
           <input className="input" type="number" min={1} step={1} value={f.duree_conservation} onChange={set("duree_conservation")} />

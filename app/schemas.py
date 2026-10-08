@@ -57,6 +57,7 @@ class IngredientBase(BaseModel):
     lipides: float | None = None
     unite: str = "g"
     quantite_defaut: float | None = None
+    poids_paquet: float | None = None
     duree_conservation: int | None = 7
     nutriscore: str | None = None
     greenscore: str | None = None
@@ -111,6 +112,10 @@ class IngredientBase(BaseModel):
             unit = "g" if unit == "kg" else "ml"
             if self.quantite_defaut:
                 self.quantite_defaut = round(self.quantite_defaut * factor, 2)
+            if self.poids_paquet:
+                self.poids_paquet = round(self.poids_paquet * factor, 2)
+        if self.poids_paquet is not None and self.poids_paquet <= 0:
+            self.poids_paquet = None
         self.unite = unit
         return self
 

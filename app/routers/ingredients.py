@@ -48,6 +48,7 @@ def ingredient_from_claude(nom: str = Query(...)):
                     "lipides": {"type": "number", "description": "g pour 100g"},
                     "unite": {"type": "string", "enum": ["g", "ml"], "description": "g pour les solides, ml pour les liquides (valeurs alors pour 100 ml)"},
                     "quantite_defaut": {"type": "number", "description": "Poids en g (ou volume en ml pour un liquide) d'une unité typique : 130 pour une pomme, 250 pour un verre de jus. Null si pas d'unité naturelle."},
+                    "poids_paquet": {"type": "number", "description": "Poids en g (ou volume en ml) d'un paquet du commerce habituel : 200 pour un bloc de tofu, 1000 pour une brique de lait, 500 pour un paquet de pâtes. Null pour un produit vendu à la pièce ou au poids (fruits, légumes en vrac)."},
                     "duree_conservation": {"type": "integer", "description": "Durée de conservation typique en jours après achat, dans les conditions habituelles (frigo pour le frais, placard pour le sec)"},
                     "regime": {"type": "string", "enum": ["vegan", "vegetarien", "non_vegetarien"], "description": "vegan : aucun produit animal ; vegetarien : produits laitiers, œufs ou miel mais ni viande ni poisson ; non_vegetarien : viande, poisson, gélatine, présure animale…"},
                     "nova": {"type": "integer", "enum": [1, 2, 3, 4], "description": "Groupe NOVA : 1 brut ou peu transformé, 2 ingrédient culinaire (huile, sucre…), 3 transformé, 4 ultra-transformé"},
@@ -173,7 +174,7 @@ def enrich_from_sources(db: Session = Depends(get_db)):
         parsed = off.parse(product)
         ing = source.ingredient
         changed = False
-        for field in ("nutriscore", "greenscore", "nova", "regime", "image_url", "composition"):
+        for field in ("nutriscore", "greenscore", "nova", "regime", "image_url", "composition", "poids_paquet"):
             if getattr(ing, field) is None and parsed[field] is not None:
                 setattr(ing, field, parsed[field])
                 changed = True

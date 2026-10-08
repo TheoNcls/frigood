@@ -67,6 +67,32 @@ def serving(product: dict) -> float | None:
     return None
 
 
+_QTY_UNITS = {"g": 1, "gr": 1, "kg": 1000, "mg": 0.001, "ml": 1, "cl": 10, "dl": 100, "l": 1000}
+_QTY = r"(\d+(?:\.\d+)?)\s*(kg|gr|g|mg|ml|cl|dl|l)\b"
+
+
+def package(product: dict) -> float | None:
+    """Poids (g) ou volume (ml) total du produit, depuis product_quantity ou le texte quantity (« 2 x 90 g », « 1 kg »)."""
+    qty_unit = (product.get("product_quantity_unit") or "g").strip().lower()
+    try:
+        qty = float(str(product.get("product_quantity") or 0).replace(",", "."))
+    except (ValueError, TypeError):
+        qty = 0
+    if qty > 0 and qty_unit in _QTY_UNITS:
+        total = qty * _QTY_UNITS[qty_unit]
+    else:
+        text = (product.get("quantity") or "").lower().replace(",", ".")
+        multi = re.search(r"(\d+)\s*[x×]\s*" + _QTY, text)
+        single = re.search(_QTY, text)
+        if multi:
+            total = int(multi.group(1)) * float(multi.group(2)) * _QTY_UNITS[multi.group(3)]
+        elif single:
+            total = float(single.group(1)) * _QTY_UNITS[single.group(2)]
+        else:
+            return None
+    return round(total, 1) if 0 < total < 100_000 else None
+
+
 def nutriments(product: dict) -> list[dict]:
     values = product.get("nutriments") or {}
     found = []
@@ -183,6 +209,7 @@ def parse(product: dict) -> dict:
         "lipides": _float(values.get("fat_100g")),
         "unite": unit(product),
         "quantite_defaut": serving(product),
+        "poids_paquet": package(product),
         "duree_conservation": 7,
         "nutriscore": nutriscore(product),
         "greenscore": greenscore(product),

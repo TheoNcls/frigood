@@ -35,11 +35,11 @@ async function exportAll() {
 
   sheet(ingredients.map((i) => ({
     Nom: i.nom, Description: i.description, "Catégorie": i.categorie, Calories: i.calories, "Protéines": i.proteines,
-    Glucides: i.glucides, Lipides: i.lipides, "Unité": i.unite, "Quantité défaut": i.quantite_defaut,
+    Glucides: i.glucides, Lipides: i.lipides, "Unité": i.unite, "Quantité défaut": i.quantite_defaut, "Poids total": i.poids_paquet,
     "Conservation (jours)": i.duree_conservation, "Nutri-Score": i.nutriscore?.toUpperCase() ?? null,
     "Green-Score": i.greenscore ? GREENSCORE_LABELS[i.greenscore] : null, NOVA: i.nova, "Régime": i.regime,
     Composition: i.composition, "Créé par": i.created_by_nom,
-  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Conservation (jours)", "Nutri-Score", "Green-Score", "NOVA", "Régime", "Composition", "Créé par"]);
+  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Poids total", "Conservation (jours)", "Nutri-Score", "Green-Score", "NOVA", "Régime", "Composition", "Créé par"]);
 
   sheet(recipes.flatMap((r) => {
     const base = { Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation, "Créé par": r.created_by_nom };
@@ -84,7 +84,7 @@ const IMPORTS: ImportKind[] = [
     key: "ingredients",
     title: "Ingrédients",
     sheet: "Ingrédients",
-    columns: "Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut, Conservation (jours), Nutri-Score, Green-Score, NOVA, Régime, Composition",
+    columns: "Nom, Description, Catégorie, Calories, Protéines, Glucides, Lipides, Unité, Quantité défaut, Poids total (paquet), Conservation (jours), Nutri-Score, Green-Score, NOVA, Régime, Composition",
     run: async (rows, progress) => {
       const res: Result = { ok: 0, skipped: [] };
       for (const [i, r] of rows.entries()) {
@@ -92,7 +92,7 @@ const IMPORTS: ImportKind[] = [
         if (nom && await tryPost("/ingredients/", {
           nom, description: s(r["Description"]), categorie: s(r["Catégorie"]),
           calories: n(r["Calories"]), proteines: n(r["Protéines"]), glucides: n(r["Glucides"]), lipides: n(r["Lipides"]),
-          unite: s(r["Unité"]) ?? "g", quantite_defaut: n(r["Quantité défaut"]),
+          unite: s(r["Unité"]) ?? "g", quantite_defaut: n(r["Quantité défaut"]), poids_paquet: n(r["Poids total"]),
           duree_conservation: Math.round(n(r["Conservation (jours)"]) ?? 7), source_type: "import",
           nutriscore: s(r["Nutri-Score"]), greenscore: s(r["Green-Score"]), nova: n(r["NOVA"]), regime: s(r["Régime"]),
           composition: s(r["Composition"]),
