@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import date, timedelta
 
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.coach import MODEL, CoachError, REGIME_LABELS, context_today
 from app.garmin_service import activity_details
-from app.models import Activity, BodyComposition, FitnessMetric, User
+from app.models import Activity, ActivityType, BodyComposition, FitnessMetric, User
 
 log = logging.getLogger("frigood.plan")
 
@@ -36,6 +37,10 @@ Format : Markdown simple, sans tableau, avec exactement ces sections :
 ## Objectif
 2 ou 3 lignes : l'objectif principal reformulé (épreuve, distance, dénivelé, date) et les objectifs secondaires.
 Si aucune date n'est donnée, choisis un horizon raisonnable et dis-le.
+Termine par la ligne « **Sports comptés** : … » : les sports dont les km et le D+ comptent dans les jalons,
+choisis parmi « sports_disponibles » et écrits exactement comme dans cette liste, séparés par des virgules
+(ex. pour un trail : « **Sports comptés** : Course à pied, Trail »). N'y mets pas les sports d'appoint
+(vélo de récupération, natation…) qui ne préparent pas directement l'objectif.
 ## Point de départ
 Son volume actuel (km et D+ par semaine, plus longue sortie), sa régularité, sa forme ; l'écart avec l'objectif.
 ## Jalons
@@ -119,6 +124,7 @@ def build_plan_context(db: Session, user: User, today: date) -> dict:
             "zones_fc_course_garmin": (user.zones_fc or {}).get("zones"),
             "fc_max": (user.zones_fc or {}).get("fc_max"),
         },
+        "sports_disponibles": sorted(n for (n,) in db.query(ActivityType.nom)),
         f"volume_{HISTORY_WEEKS}_semaines": volume,
         "plus_longues_sorties": longest,
         "forme_garmin": forme,
@@ -186,6 +192,7 @@ _KM_RANGE = re.compile(_NUM + r"\s*(?:[–—-]|à)\s*" + _NUM + r"\s*km", re.I)
 _KM = re.compile(_NUM + r"\s*km", re.I)
 _DPLUS = re.compile(r"(\d[\d\s\u202f\u00a0.]*)\s*m\s*(?:de\s*)?D\+", re.I)
 
+FAMILY_LABELS = {"pied": "course, trail, randonnée, marche", "velo": "vélo", "natation": "natation"}
 FAMILIES = {   # sport de l'objectif -> activités qui comptent dans le volume
     "velo": (("cycling", "biking", "gravel", "mtb"), ("vélo", "velo", "vtt", "cyclisme", "gravel")),
     "natation": (("swim",), ("natation", "nage")),
@@ -245,6 +252,9 @@ def parse_jalons(text: str, ref_year: int) -> list[dict]:
             continue
         if current and line:
             item = re.sub(r"^[-*•]\s*", "", line)
+            if (found := sports_of(item)):
+                current["sports"] = found
+                continue
             current["lignes"].append(item)
             low = item.lower()
             c = current["cibles"]
@@ -264,18 +274,56 @@ def parse_jalons(text: str, ref_year: int) -> list[dict]:
     return jalons
 
 
+_SPORTS_LINE = re.compile(r"sports?\s+compt[ée]s?\s*\**\s*:\s*\**\s*(.+)$", re.I)
+
+
+def _norm(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", (s or "").lower()) if unicodedata.category(c) != "Mn").strip()
+
+
+def sports_of(line: str) -> list[str] | None:
+    """« **Sports comptés** : Course à pied, Trail » -> ["Course à pied", "Trail"]."""
+    m = _SPORTS_LINE.search(re.sub(r"^[-*•]\s*", "", line.strip()))
+    if not m:
+        return None
+    parts = re.split(r"\s*(?:,|;|/|·|\bet\b)\s*", m.group(1).replace("*", ""))
+    names = [p.strip(" .") for p in parts if p.strip(" .")]
+    return names or None
+
+
+def plan_sports(text: str) -> list[str] | None:
+    """Sports comptés pour tout le plan : la ligne hors des jalons (en général dans « Objectif »)."""
+    in_jalon = False
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if line.startswith("###"):
+            in_jalon = True
+        elif line.startswith("## "):
+            in_jalon = False
+        elif not in_jalon and (found := sports_of(line)):
+            return found
+    return None
+
+
 def _family(text: str) -> str:
-    obj = text.split("## Jalons")[0].lower() if text else ""
+    """Sans « Sports comptés » : sport deviné dans la seule partie « Objectif » (course / trail par défaut)."""
+    obj = ""
+    if text:
+        m = re.search(r"##\s*Objectif(.*?)(?=\n##\s)", text + "\n## ", re.S | re.I)
+        obj = (m.group(1) if m else "").lower()
     for fam in ("velo", "natation"):
         if any(w in obj for w in FAMILIES[fam][1]):
             return fam
     return "pied"
 
 
-def _counts(activity: Activity, fam: str) -> bool:
+def _counts(activity: Activity, fam: str, sports: list[str] | None = None) -> bool:
     t = activity.activity_type
     if not t:
         return False
+    if sports:
+        nom = _norm(t.nom)
+        return any((tok := _norm(s)) and (tok == nom or tok in nom or nom in tok) for s in sports)
     keys, words = FAMILIES[fam]
     key, nom = (t.garmin_type_key or "").lower(), (t.nom or "").lower()
     return any(k in key for k in keys) or any(w in nom for w in words)
@@ -304,13 +352,14 @@ def current_milestone(db: Session, user: User, today: date) -> dict | None:
         idx = upcoming[0] if upcoming else len(jalons) - 1
     j = jalons[idx]
     fam = _family(user.plan_objectifs)
+    sports = j.get("sports") or plan_sports(user.plan_objectifs)
     monday = today - timedelta(days=today.weekday())
     since = min(monday, j["debut"])
     week = {"km": 0.0, "d_plus_m": 0, "seances": 0}
     longest = {"km": 0.0, "d_plus_m": 0, "date": None}
     for a in (db.query(Activity).filter(Activity.user_id == user.id, Activity.date >= since, Activity.date <= today)
               .order_by(Activity.date)):
-        if not _counts(a, fam):
+        if not _counts(a, fam, sports):
             continue
         dp = _d_plus(a)
         if a.date >= monday:
@@ -326,6 +375,8 @@ def current_milestone(db: Session, user: User, today: date) -> dict | None:
         "debut": j["debut"].isoformat(), "fin": j["fin"].isoformat(),
         "jour": max(0, min(total_days, (today - j["debut"]).days + 1)), "jours": total_days,
         "lignes": j["lignes"][:8], "cibles": j["cibles"], "sport": fam,
+        # Sports pris en compte : ceux écrits dans le plan, sinon ceux devinés (sports_auto)
+        "sports_comptes": sports, "sports_auto": None if sports else FAMILY_LABELS[fam],
         "semaine": {**week, "km": round(week["km"], 1), "depuis": monday.isoformat()},
         "plus_longue_sortie": {**longest, "km": round(longest["km"], 1)},
     }
