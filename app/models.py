@@ -130,6 +130,8 @@ class User(Base):
     # Objectif protéines en g par kg de poids : proteines_cible est recalculé à chaque nouvelle pesée
     proteines_g_kg = Column(Float, nullable=True)
     date_naissance = Column(Date, nullable=True)
+    # Repas : la liste d'ingrédients ne montre que les siens, ceux déjà mangés ou au frigo (le scan reste possible)
+    ingredients_perso_seulement = Column(Boolean, nullable=False, default=False, server_default=false())
     # Partie Nutrition affichée dans l'appli (masquée sinon : les données restent)
     nutrition_active = Column(Boolean, nullable=False, default=True, server_default=true())
     # Régime alimentaire (transmis au coach) : omnivore, flexitarien, pescetarien, vegetarien, vegan

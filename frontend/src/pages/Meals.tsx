@@ -2,7 +2,7 @@ import { lazy, Suspense, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Repeat2, Trash2 } from "lucide-react";
 import { api } from "../api/client";
-import { useFridge, useIngredients, useMealLogs, useRecipes } from "../api/queries";
+import { useFridge, useFridgeHistory, useIngredients, useMealLogs, useRecipes } from "../api/queries";
 import type { MealLog, MealLogCreate, Moment, TypeMesure } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import FoodPicker from "../components/FoodPicker";
@@ -47,6 +47,16 @@ export default function Meals() {
   const ingredient = ingredientId ? ingredients.byId.get(ingredientId) : undefined;
 
   const fridgeIngIds = useMemo(() => new Set((fridge.data ?? []).flatMap((f) => (f.ingredient_id ? [f.ingredient_id] : []))), [fridge.data]);
+  // Option du profil : seulement ses ingrédients, ceux déjà mangés ou passés par le frigo (+ celui qu'on vient de scanner)
+  const persoOnly = user.ingredients_perso_seulement;
+  const fridgeHistory = useFridgeHistory();
+  const pickerIngredients = useMemo(() => {
+    if (!persoOnly) return ingredients.list;
+    const keep = new Set<number>([...usage.ingredients.keys(), ...fridgeIngIds]);
+    for (const h of fridgeHistory.data ?? []) if (h.ingredient_id) keep.add(h.ingredient_id);
+    if (ingredientId) keep.add(ingredientId);
+    return ingredients.list.filter((i) => i.created_by === user.id || keep.has(i.id));
+  }, [persoOnly, ingredients.list, usage.ingredients, fridgeIngIds, fridgeHistory.data, ingredientId, user.id]);
   const fridgeRecIds = useMemo(() => new Set((fridge.data ?? []).flatMap((f) => (f.recipe_id ? [f.recipe_id] : []))), [fridge.data]);
 
   // L'ingrédient scanné est passé directement : il peut venir d'être créé et ne pas encore être dans la liste
@@ -171,15 +181,22 @@ export default function Meals() {
             {kind === "recette" ? (
               <DishPicker value={dish?.id ?? null} onChange={chooseDish} onPrepare={() => setPreparing(true)} />
             ) : (
-              <FoodPicker
-                label="Ingrédient"
-                items={ingredients.list}
-                counts={usage.ingredients}
-                inFridge={fridgeIngIds}
-                value={ingredientId}
-                onChange={chooseIngredient}
-                onScan={() => setScanning(true)}
-              />
+              <div>
+                <FoodPicker
+                  label="Ingrédient"
+                  items={pickerIngredients}
+                  counts={usage.ingredients}
+                  inFridge={fridgeIngIds}
+                  value={ingredientId}
+                  onChange={chooseIngredient}
+                  onScan={() => setScanning(true)}
+                />
+                {persoOnly && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Tes ingrédients et ceux que tu as déjà mangés ou mis au frigo. Un nouveau produit : scanne-le.
+                  </p>
+                )}
+              </div>
             )}
 
             {kind === "ingredient" && ingredient?.quantite_defaut ? (

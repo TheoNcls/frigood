@@ -15,10 +15,10 @@ export const MOMENT_LABELS: Record<Moment, string> = {
   matin: "Matin", midi: "Midi", soir: "Soir", snack: "Snack",
 };
 
+/** Moment proposé par défaut : matin avant 11 h, midi jusqu'à 16 h, soir ensuite (le snack se choisit à la main). */
 export function defaultMoment(hour = new Date().getHours()): Moment {
-  if (hour >= 5 && hour < 10) return "matin";
-  if (hour >= 10 && hour < 14) return "midi";
-  if (hour >= 14 && hour < 19) return "snack";
+  if (hour >= 4 && hour < 11) return "matin";
+  if (hour >= 11 && hour < 16) return "midi";
   return "soir";
 }
 

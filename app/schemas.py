@@ -303,6 +303,7 @@ class UserUpdate(BaseModel):
     plan_objectifs: str | None = None
     regime_alimentaire: str | None = None
     nutrition_active: bool | None = None
+    ingredients_perso_seulement: bool | None = None
     # Envoyé à null pour revenir à « pas renseigné » (tous les exercices)
     materiel: list[str] | None = None
     nutriments_suivis: list[NutrimentSuivi] | None = None
@@ -384,6 +385,7 @@ class UserRead(BaseModel):
     plan_genere_at: datetime_type | None = None
     regime_alimentaire: str = "vegetarien"
     nutrition_active: bool = True
+    ingredients_perso_seulement: bool = False
     nutriments_suivis: list[NutrimentSuivi] = []
     materiel: list[str] | None = None
     zones_fc: dict | None = None

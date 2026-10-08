@@ -433,6 +433,8 @@ function PreferencesCard() {
         <>
           <RegimeSetting />
           <div className="my-4 border-t border-slate-100" />
+          <PersoIngredientsSetting />
+          <div className="my-4 border-t border-slate-100" />
         </>
       )}
       <MaterielSetting />
@@ -464,6 +466,45 @@ function PreferencesCard() {
       </>}
       <NotificationsSetting />
     </Card>
+  );
+}
+
+/** Repas : seulement ses ingrédients (créés, déjà mangés, au frigo) au lieu de tout le catalogue. */
+function PersoIngredientsSetting() {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const save = useMutation({
+    mutationFn: (v: boolean) => api<User>(`/users/${user.id}`, { method: "PUT", body: { ingredients_perso_seulement: v } }),
+    onSuccess: (u) => {
+      setUser(u);
+      toast(u.ingredients_perso_seulement ? "Repas : seulement tes ingrédients" : "Repas : tout le catalogue");
+    },
+    onError: (e) => toast(e.message, "error"),
+  });
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-4">
+      <span>
+        <span className="block text-sm font-medium text-slate-800">Seulement mes ingrédients dans Repas</span>
+        <span className="block text-xs text-slate-500">
+          La liste ne montre que tes ingrédients et ceux du catalogue que tu as déjà mangés ou mis au frigo.
+          Pour un nouveau produit, le scan reste possible. Réglage de ton compte.
+        </span>
+      </span>
+      <span className="relative mt-0.5 inline-flex shrink-0">
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Seulement mes ingrédients dans Repas"
+          className="peer sr-only"
+          checked={user.ingredients_perso_seulement}
+          disabled={save.isPending}
+          onChange={(e) => save.mutate(e.target.checked)}
+        />
+        <span className="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-100" />
+        <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+      </span>
+    </label>
   );
 }
 
