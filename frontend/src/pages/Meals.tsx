@@ -132,7 +132,7 @@ export default function Meals() {
           <ScanFoodModal onSelect={(ing) => chooseIngredient(ing.id, ing)} onClose={() => setScanning(false)} />
         </Suspense>
       )}
-      {preparing && <PrepareRecipeModal onClose={() => setPreparing(false)} onDone={(item) => chooseDish(item.id)} />}
+      {preparing && <PrepareRecipeModal eatNow={{ date, moment }} onClose={() => setPreparing(false)} onDone={() => setDishId(null)} />}
       <PageHeader
         title="Repas"
         subtitle={formatLong(date)}

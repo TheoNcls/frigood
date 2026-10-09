@@ -3,11 +3,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChefHat, Plus, RotateCcw, X } from "lucide-react";
 import { api } from "../api/client";
 import { useFridge, useIngredients, useRecipes } from "../api/queries";
-import type { FridgeItem, Ingredient, Preparation, Recipe } from "../api/types";
+import type { FridgeItem, Ingredient, MealLog, Moment, Preparation, Recipe } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { addDays, todayISO } from "../lib/dates";
 import { DUREE_RECETTE_DEFAUT, EXPIRY_STYLES, expiryInfo } from "../lib/fridge";
-import { compositionMacros, fmt, preparationPortionMacros, recipeMacros } from "../lib/nutrition";
+import { MOMENT_LABELS, compositionMacros, fmt, preparationPortionMacros, recipeMacros } from "../lib/nutrition";
 import { usePickerRecipes, useUsageCounts } from "../lib/usage";
 import FoodPicker from "./FoodPicker";
 import FoodThumb from "./FoodThumb";
@@ -95,8 +95,15 @@ export function useInvalidateFridge() {
  * pour le nombre de portions choisi. On décoche, on change une quantité, on ajoute un ingrédient :
  * le plat rejoint le frigo avec ce qui a réellement été cuisiné.
  */
-export function PrepareRecipeForm({ onDone }: { onDone: (item: FridgeItem) => void }) {
+/** Depuis Repas : le plat préparé est aussitôt mangé en entier (toutes ses portions), dans ce repas. */
+export interface EatNow {
+  date: string;
+  moment: Moment;
+}
+
+export function PrepareRecipeForm({ onDone, eatNow }: { onDone: (item: FridgeItem) => void; eatNow?: EatNow }) {
   const user = useCurrentUser();
+  const queryClient = useQueryClient();
   const ingredients = useIngredients();
   const recipes = useRecipes();
   const fridge = useFridge();
@@ -161,20 +168,42 @@ export function PrepareRecipeForm({ onDone }: { onDone: (item: FridgeItem) => vo
   }
 
   const save = useMutation({
-    mutationFn: () => api<FridgeItem>(`/users/${user.id}/fridge/`, {
-      method: "POST",
-      body: {
-        recipe_id: recipeId,
-        quantite: portionsNum,
-        date_achat: dateAchat,
-        date_peremption: peremptionEffective,
-        deduire_ingredients: deduire,
-        ingredients: used,
-      },
-    }),
+    mutationFn: async () => {
+      const item = await api<FridgeItem>(`/users/${user.id}/fridge/`, {
+        method: "POST",
+        body: {
+          recipe_id: recipeId,
+          quantite: portionsNum,
+          date_achat: eatNow ? eatNow.date : dateAchat,
+          date_peremption: peremptionEffective,
+          deduire_ingredients: deduire,
+          ingredients: used,
+        },
+      });
+      if (!eatNow) return item;
+      // Préparer et manger : tout le plat dans ce repas (il quitte aussitôt le frigo)
+      try {
+        await api<MealLog>(`/users/${user.id}/meal_logs/`, {
+          method: "POST",
+          body: {
+            date: eatNow.date, moment: eatNow.moment, recipe_id: item.recipe_id, fridge_item_id: item.id,
+            ingredient_id: null, quantite: portionsNum, type_mesure: "poids", notes: null,
+          },
+        });
+      } catch (e) {
+        invalidate();
+        throw new Error(`Le plat est au frigo, mais le repas n'a pas été noté : ${(e as Error).message}`);
+      }
+      return item;
+    },
     onSuccess: (item) => {
       invalidate();
-      toast(`« ${recipe?.nom} » préparé : ${fmt(portionsNum, 1)} portion(s) au frigo`);
+      if (eatNow) {
+        queryClient.invalidateQueries({ queryKey: ["meal_logs"] });
+        toast(`« ${recipe?.nom} » préparé et mangé : ${fmt(portionsNum, 1)} portion(s) (${MOMENT_LABELS[eatNow.moment].toLowerCase()})`);
+      } else {
+        toast(`« ${recipe?.nom} » préparé : ${fmt(portionsNum, 1)} portion(s) au frigo`);
+      }
       onDone(item);
     },
     onError: (e) => toast(e.message, "error"),
@@ -288,29 +317,41 @@ export function PrepareRecipeForm({ onDone }: { onDone: (item: FridgeItem) => vo
             Retirer du frigo les ingrédients utilisés (🧊)
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
+          {!eatNow && <div className="grid grid-cols-2 gap-3">
             <Field label="Date de préparation">
               <input className="input" type="date" value={dateAchat} onChange={(e) => e.target.value && setDateAchat(e.target.value)} />
             </Field>
             <Field label="Péremption" hint={`Conservation par défaut : ${DUREE_RECETTE_DEFAUT} jour(s)`}>
               <input className="input" type="date" value={peremptionEffective} onChange={(e) => setPeremption(e.target.value || null)} />
             </Field>
-          </div>
+          </div>}
         </>
       )}
 
       <button type="submit" className="btn-primary w-full" disabled={save.isPending || !recipe}>
         <ChefHat className="h-4 w-4" />
-        {recipe && portionsNum > 0 ? `Préparer · ${fmt(portionsNum, 1)} portion(s) au frigo` : "Préparer"}
+        {eatNow
+          ? (recipe && portionsNum > 0 ? `Préparer et manger · ${fmt(portionsNum, 1)} portion(s)` : "Préparer et manger")
+          : (recipe && portionsNum > 0 ? `Préparer · ${fmt(portionsNum, 1)} portion(s) au frigo` : "Préparer")}
       </button>
     </form>
   );
 }
 
-export function PrepareRecipeModal({ onClose, onDone }: { onClose: () => void; onDone: (item: FridgeItem) => void }) {
+export function PrepareRecipeModal({ onClose, onDone, eatNow }: {
+  onClose: () => void;
+  onDone: (item: FridgeItem) => void;
+  eatNow?: EatNow;
+}) {
   return (
-    <Modal title="Préparer une recette" onClose={onClose}>
-      <PrepareRecipeForm onDone={(item) => { onDone(item); onClose(); }} />
+    <Modal title={eatNow ? "Préparer et manger une recette" : "Préparer une recette"} onClose={onClose}>
+      {eatNow && (
+        <p className="mb-3 text-sm text-slate-600">
+          Tout le plat est noté dans ce repas ({MOMENT_LABELS[eatNow.moment].toLowerCase()}) : il ne va pas au frigo.
+          Pour en garder une partie, prépare-le plutôt depuis le Frigo.
+        </p>
+      )}
+      <PrepareRecipeForm eatNow={eatNow} onDone={(item) => { onDone(item); onClose(); }} />
     </Modal>
   );
 }
@@ -367,11 +408,11 @@ export function DishPicker({ value, onChange, onPrepare }: { value: number | nul
         </ul>
       ) : (
         <p className="rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-500">
-          Aucun plat préparé dans ton frigo. Pour noter une recette, prépare-la d'abord.
+          Aucun plat préparé dans ton frigo. Prépare et mange une recette directement, ou prépare-la dans le Frigo pour plusieurs repas.
         </p>
       )}
       <button type="button" className="btn-ghost mt-1 text-brand-700" onClick={onPrepare}>
-        <ChefHat className="h-4 w-4" /> Préparer une recette
+        <ChefHat className="h-4 w-4" /> Préparer et manger une recette
       </button>
     </div>
   );
