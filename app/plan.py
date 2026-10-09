@@ -1,4 +1,4 @@
-"""Plan à long terme vers les objectifs : jalons mois par mois (km, D+, sortie longue, repères), écrit par Claude.
+"""Plan à long terme vers les objectifs : jalons en blocs de durée libre (km, D+, sortie longue, repères), écrit par Claude.
 
 Généré une seule fois à partir des objectifs écrits dans le profil et de l'historique d'entraînement ;
 la personne le modifie ensuite à la main, et le coach de la semaine s'en sert pour ses séances.
@@ -29,7 +29,7 @@ On te donne en JSON ses objectifs (texte libre qu'elle a écrit), son profil, se
 d'entraînement (par semaine et par sport : séances, km, dénivelé positif, minutes), ses plus longues sorties,
 sa forme Garmin (VO2max, prédictions, statut) et ses pesées.
 
-Écris son plan à long terme : les jalons, mois par mois, jusqu'à l'échéance de son objectif principal.
+Écris son plan à long terme : les jalons, bloc par bloc, jusqu'à l'échéance de son objectif principal.
 Ce texte est enregistré dans son profil : elle pourra le modifier, et le coach de chaque semaine s'en servira
 pour lui proposer ses séances.
 
@@ -44,13 +44,18 @@ choisis parmi « sports_disponibles » et écrits exactement comme dans cette li
 ## Point de départ
 Son volume actuel (km et D+ par semaine, plus longue sortie), sa régularité, sa forme ; l'écart avec l'objectif.
 ## Jalons
-Un titre ### par mois jusqu'à l'objectif, avec les dates au format jj/mm (l'appli s'en sert pour suivre le mois
-en cours), par exemple « ### Mois 1 · 08/10 → 07/11 », puis exactement ces puces :
+Découpe la préparation en blocs (les jalons) qui suivent la logique de l'entraînement, pas le calendrier : par exemple
+une base de 4 à 6 semaines, un bloc spécifique de 3 semaines, un affûtage de 10 à 15 jours. Un bloc peut être plus
+court ou plus long qu'un mois. Les blocs se suivent sans trou ni chevauchement jusqu'à l'objectif.
+Un titre ### par bloc, avec son numéro, son nom et ses dates au format jj/mm (l'appli s'en sert pour suivre le bloc
+en cours), par exemple « ### Bloc 1 · Base aérobie · 08/10 → 08/11 », puis exactement ces puces :
+- **But** : ce que travaille ce bloc, en une phrase
 - **Volume** : 25–30 km/semaine · 400 m D+/semaine   (fourchette de km, puis D+ par semaine)
-- **Sortie longue** : 15 km · 300 m D+ · 1 h 45   (visée en fin de mois)
+- **Sortie longue** : 15 km · 300 m D+ · 1 h 45   (visée en fin de bloc)
 - **Séances clés** : 2 ou 3 types de séances (fractionné, côtes, seuil, endurance, renforcement…)
-- **Repère** : ce qu'elle doit être capable de faire en fin de mois (un test simple)
-Prévois une semaine plus légère toutes les 3 à 4 semaines et un affûtage avant l'objectif.
+- **Repère** : ce qu'elle doit être capable de faire en fin de bloc (un test simple)
+Prévois une semaine plus légère toutes les 3 à 4 semaines (dans un bloc ou en bloc à part) et un bloc d'affûtage
+avant l'objectif.
 ## Points d'attention
 Récupération, prévention des blessures, matériel, nutrition et hydratation à l'effort, signaux d'alerte.
 
@@ -58,7 +63,7 @@ Règles :
 - Pars de son volume réel (les données font foi) et progresse prudemment : pas plus d'environ 10 % de volume
   en plus d'une semaine à l'autre.
 - Adapte les jalons au sport de l'objectif (course, trail, vélo, natation…) ; pour un objectif non sportif
-  (poids, santé, habitudes), donne des jalons adaptés (poids visé par mois, habitudes à installer).
+  (poids, santé, habitudes), donne des jalons adaptés (poids visé en fin de bloc, habitudes à installer).
 - Si les données d'entraînement sont rares ou absentes, dis-le et pars d'hypothèses prudentes.
 - Utilise ses zones cardiaques Garmin quand c'est utile.
 - Tu n'es pas médecin : si elle mentionne une blessure ou un problème de santé, conseille de valider le plan
@@ -339,7 +344,7 @@ def _d_plus(activity: Activity) -> int:
 
 
 def current_milestone(db: Session, user: User, today: date) -> dict | None:
-    """Jalon du mois en cours (ou le prochain) et où on en est : km et D+ de la semaine, plus longue sortie du jalon."""
+    """Jalon (bloc) en cours, ou le prochain, et où on en est : km et D+ de la semaine, plus longue sortie du bloc."""
     if not (user.plan_objectifs or "").strip():
         return None
     ref_year = (user.plan_genere_at.date() if user.plan_genere_at else today).year
@@ -374,7 +379,7 @@ def current_milestone(db: Session, user: User, today: date) -> dict | None:
         "numero": idx + 1, "nombre": len(jalons), "titre": j["titre"], "statut": status,
         "debut": j["debut"].isoformat(), "fin": j["fin"].isoformat(),
         "jour": max(0, min(total_days, (today - j["debut"]).days + 1)), "jours": total_days,
-        "lignes": j["lignes"][:8], "cibles": j["cibles"], "sport": fam,
+        "lignes": j["lignes"][:12], "cibles": j["cibles"], "sport": fam,
         # Sports pris en compte : ceux écrits dans le plan, sinon ceux devinés (sports_auto)
         "sports_comptes": sports, "sports_auto": None if sports else FAMILY_LABELS[fam],
         "semaine": {**week, "km": round(week["km"], 1), "depuis": monday.isoformat()},

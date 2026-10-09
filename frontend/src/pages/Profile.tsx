@@ -295,7 +295,7 @@ function CoachingProfileCard() {
 
 const PLAN_MAX = 20000;
 
-/** Plan à long terme vers les objectifs : jalons mois par mois, généré une fois par le coach, puis modifiable. */
+/** Plan à long terme vers les objectifs : jalons en blocs, générés une fois par le coach, puis modifiables. */
 function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
   const user = useCurrentUser();
   const { setUser } = useAuth();
@@ -334,13 +334,13 @@ function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           aria-label="Mon plan vers mes objectifs"
-          placeholder={"## Objectif\nTrail de 40 km / 2000 m D+ en avril\n\n## Jalons\n### Mois 1\n- **Volume** : 30 km/semaine, 600 m D+\n- **Sortie longue** : 15 km / 400 m D+"}
+          placeholder={"## Objectif\nTrail de 40 km / 2000 m D+ en avril\n**Sports comptés** : Course à pied, Trail\n\n## Jalons\n### Bloc 1 · Base · 08/10 → 08/11\n- **But** : construire l'endurance\n- **Volume** : 25–30 km/semaine · 400 m D+/semaine\n- **Sortie longue** : 15 km · 300 m D+"}
         />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-slate-500">
-            Pour suivre le mois en cours sur l'accueil : « **Sports comptés** : Course à pied, Trail » (dans Objectif, ou dans un jalon
-            pour ce mois-là), « ### Mois 1 · 08/10 → 07/11 », puis « - **Volume** : 25–30 km/semaine · 400 m D+ »
-            et « - **Sortie longue** : 15 km · 300 m D+ » · {text.length} / {PLAN_MAX}
+            Pour suivre le bloc en cours sur l'accueil : « **Sports comptés** : Course à pied, Trail » (dans Objectif, ou dans un bloc
+            pour ce bloc-là), un titre par bloc avec ses dates « ### Bloc 1 · Base · 08/10 → 08/11 » (de la durée que tu veux),
+            puis « - **Volume** : 25–30 km/semaine · 400 m D+ » et « - **Sortie longue** : 15 km · 300 m D+ » · {text.length} / {PLAN_MAX}
           </span>
           <div className="flex gap-2">
             <button type="button" className="btn-secondary" onClick={() => { setText(plan ?? ""); setEditing(false); }}>Annuler</button>
@@ -392,8 +392,8 @@ function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
     <div>
       {title}
       <p className="text-sm text-slate-600">
-        Les grandes étapes jusqu'à ton objectif, mois par mois : volume (km, D+), sortie longue, séances clés et repères
-        à atteindre. Par exemple pour un trail dans 6 mois : où tu dois en être chaque mois.
+        Les grandes étapes jusqu'à ton objectif, en blocs (base, spécifique, affûtage…) de la durée qu'il faut : volume (km, D+),
+        sortie longue, séances clés et repères à atteindre. Par exemple pour un trail dans 6 mois : où tu dois en être à la fin de chaque bloc.
       </p>
       {generate.isPending ? (
         <div className="mt-3 rounded-xl bg-violet-50 px-3 py-2"><Spinner label="Le coach prépare ton plan (1 à 2 minutes)…" /></div>
@@ -478,16 +478,16 @@ function PersoIngredientsSetting() {
     mutationFn: (v: boolean) => api<User>(`/users/${user.id}`, { method: "PUT", body: { ingredients_perso_seulement: v } }),
     onSuccess: (u) => {
       setUser(u);
-      toast(u.ingredients_perso_seulement ? "Repas et Frigo : seulement tes ingrédients" : "Repas et Frigo : tout le catalogue");
+      toast(u.ingredients_perso_seulement ? "Repas et Frigo : seulement tes ingrédients et recettes" : "Repas et Frigo : tout le catalogue");
     },
     onError: (e) => toast(e.message, "error"),
   });
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4">
       <span>
-        <span className="block text-sm font-medium text-slate-800">Seulement mes ingrédients dans Repas et Frigo</span>
+        <span className="block text-sm font-medium text-slate-800">Seulement mes ingrédients et recettes dans Repas et Frigo</span>
         <span className="block text-xs text-slate-500">
-          Les listes d'ingrédients ne montrent que les tiens et ceux du catalogue que tu as déjà mangés ou mis au frigo.
+          Les listes ne montrent que tes ingrédients et recettes, et ceux du catalogue que tu as déjà mangés, préparés ou mis au frigo.
           Pour un nouveau produit, le scan reste possible. Réglage de ton compte.
         </span>
       </span>
@@ -495,7 +495,7 @@ function PersoIngredientsSetting() {
         <input
           type="checkbox"
           role="switch"
-          aria-label="Seulement mes ingrédients dans Repas et Frigo"
+          aria-label="Seulement mes ingrédients et recettes dans Repas et Frigo"
           className="peer sr-only"
           checked={user.ingredients_perso_seulement}
           disabled={save.isPending}

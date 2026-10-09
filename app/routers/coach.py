@@ -140,7 +140,7 @@ def generate_plan(user_id: int, principal: Principal = Depends(get_principal), d
 
 @router.get("/users/{user_id}/plan/jalon")
 def plan_milestone(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    """Jalon du mois en cours (lu dans le plan) et où on en est cette semaine : pour l'accueil."""
+    """Jalon (bloc) en cours, lu dans le plan, et où on en est cette semaine : pour l'accueil."""
     check_user_access(principal, user_id)
     user = db.get(User, user_id)
     if not user:

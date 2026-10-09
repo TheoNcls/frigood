@@ -68,7 +68,7 @@ Règles :
   (récupération, sommeil, disposition, charge) : si la forme est mauvaise, privilégie la récupération plutôt que le volume.
   Dans « suivi_plan », dis où elle en est par rapport au jalon (en avance, dans les clous, en retard, chiffres à l'appui).
   Si les jalons ne sont plus réalistes (retard important, fatigue durable, douleur, ou au contraire objectif déjà
-  dépassé), explique dans « ajuster_jalons » ce qu'il faudrait changer (quel mois, quelles cibles) ; sinon null.
+  dépassé), explique dans « ajuster_jalons » ce qu'il faudrait changer (quel bloc, quelles dates ou cibles) ; sinon null.
   Sans plan, « suivi_plan » est vide et « ajuster_jalons » null.
 - Nutrition : respecte strictement son régime alimentaire (profil.regime) ; regarde surtout calories et protéines
   par rapport à ses objectifs, et propose des aliments concrets compatibles avec son régime.

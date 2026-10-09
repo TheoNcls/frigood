@@ -415,7 +415,7 @@ export interface StrengthExercise {
   repos_s: number;
 }
 
-/** Jalon du mois en cours, lu dans le plan, et où on en est (calculé par le serveur). */
+/** Jalon (bloc) en cours, lu dans le plan, et où on en est (calculé par le serveur). */
 export interface PlanMilestone {
   numero: number;
   nombre: number;

@@ -9,6 +9,7 @@ import {
 } from "../api/queries";
 import { dayNutrients, foodsWithout, nutrientDecimals } from "../lib/nutrients";
 import type { PlanMilestone } from "../api/types";
+import { CoachText } from "../components/Coach";
 import { Card, MacroTile, ProgressBar } from "../components/ui";
 import { formatLong, formatShort, todayISO } from "../lib/dates";
 import { expiryInfo, fridgeItemName } from "../lib/fridge";
@@ -132,7 +133,7 @@ export default function Home() {
   );
 }
 
-/** Jalon en cours du plan : où on en est dans le mois, et cette semaine par rapport aux cibles. */
+/** Jalon (bloc) en cours du plan : où on en est dans le bloc, cette semaine par rapport aux cibles, et son détail. */
 function MilestoneProgress({ jalon }: { jalon: PlanMilestone }) {
   const c = jalon.cibles;
   const kmTarget = c.km_semaine_min ?? c.km_semaine_max;
@@ -145,6 +146,9 @@ function MilestoneProgress({ jalon }: { jalon: PlanMilestone }) {
     label: "Plus longue sortie", value: jalon.plus_longue_sortie.km, target: c.sortie_longue_km,
     text: `${fmt(jalon.plus_longue_sortie.km, 1)} / ${fmt(c.sortie_longue_km, 1)} km${c.sortie_longue_d_plus ? ` · ${fmt(jalon.plus_longue_sortie.d_plus_m)} / ${fmt(c.sortie_longue_d_plus)} m D+` : ""}`,
   });
+
+  // Détail du bloc : tout sauf le volume et la sortie longue, déjà en barres de progression
+  const details = jalon.lignes.filter((l) => !rows.length || !/volume|sortie longue/i.test(l));
 
   return (
     <div className="space-y-2.5">
@@ -169,7 +173,7 @@ function MilestoneProgress({ jalon }: { jalon: PlanMilestone }) {
           ? <>Sports comptés : {jalon.sports_comptes.join(", ")}</>
           : <>Sports comptés : {jalon.sports_auto} (par défaut : précise-les dans ton plan avec « Sports comptés »)</>}
       </div>
-      {rows.length ? rows.map((r) => (
+      {rows.map((r) => (
         <div key={r.label}>
           <div className="mb-1 flex justify-between gap-2 text-sm">
             <span className="text-slate-600">{r.label}</span>
@@ -179,10 +183,11 @@ function MilestoneProgress({ jalon }: { jalon: PlanMilestone }) {
           </div>
           <ProgressBar value={r.value} max={r.target} />
         </div>
-      )) : (
-        <ul className="list-disc space-y-0.5 pl-5 text-sm text-slate-600">
-          {jalon.lignes.slice(0, 3).map((l, i) => <li key={i}>{l.replace(/\*\*/g, "")}</li>)}
-        </ul>
+      ))}
+      {details.length > 0 && (
+        <div className="rounded-xl bg-slate-50 px-3 py-2">
+          <CoachText text={details.map((l) => `- ${l}`).join("\n")} />
+        </div>
       )}
     </div>
   );

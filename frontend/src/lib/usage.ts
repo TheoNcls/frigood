@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useFridge, useFridgeHistory, useIngredients, useMealLogs } from "../api/queries";
+import { useFridge, useFridgeHistory, useIngredients, useMealLogs, useRecipes } from "../api/queries";
 import { useCurrentUser } from "../auth/AuthContext";
 
 /** Nombre d'utilisations de chaque ingrédient / recette dans tous les repas, pour trier les listes. */
@@ -39,5 +39,24 @@ export function usePickerIngredients(selectedId: number | null) {
     if (selectedId) keep.add(selectedId);
     return ingredients.list.filter((i) => i.created_by === user.id || keep.has(i.id));
   }, [persoOnly, ingredients.list, usage.ingredients, fridge.data, history.data, selectedId, user.id]);
+  return { list, persoOnly };
+}
+
+/** Recettes proposées à la préparation. Avec l'option : les siennes et celles déjà préparées ou mangées. */
+export function usePickerRecipes(selectedId: number | null) {
+  const user = useCurrentUser();
+  const persoOnly = user.ingredients_perso_seulement;
+  const recipes = useRecipes();
+  const usage = useUsageCounts();
+  const fridge = useFridge();
+  const history = useFridgeHistory({ enabled: persoOnly });
+  const list = useMemo(() => {
+    if (!persoOnly) return recipes.list;
+    const keep = new Set<number>(usage.recipes.keys());
+    for (const f of fridge.data ?? []) if (f.recipe_id) keep.add(f.recipe_id);
+    for (const h of history.data ?? []) if (h.recipe_id) keep.add(h.recipe_id);
+    if (selectedId) keep.add(selectedId);
+    return recipes.list.filter((r) => r.created_by === user.id || keep.has(r.id));
+  }, [persoOnly, recipes.list, usage.recipes, fridge.data, history.data, selectedId, user.id]);
   return { list, persoOnly };
 }

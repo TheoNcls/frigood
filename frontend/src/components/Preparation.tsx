@@ -8,7 +8,7 @@ import { useCurrentUser } from "../auth/AuthContext";
 import { addDays, todayISO } from "../lib/dates";
 import { DUREE_RECETTE_DEFAUT, EXPIRY_STYLES, expiryInfo } from "../lib/fridge";
 import { compositionMacros, fmt, preparationPortionMacros, recipeMacros } from "../lib/nutrition";
-import { useUsageCounts } from "../lib/usage";
+import { usePickerRecipes, useUsageCounts } from "../lib/usage";
 import FoodPicker from "./FoodPicker";
 import FoodThumb from "./FoodThumb";
 import Modal from "./Modal";
@@ -105,6 +105,8 @@ export function PrepareRecipeForm({ onDone }: { onDone: (item: FridgeItem) => vo
   const toast = useToast();
 
   const [recipeId, setRecipeId] = useState<number | null>(null);
+  // Option du profil « seulement mes ingrédients et recettes »
+  const recipePicker = usePickerRecipes(recipeId);
   const [portions, setPortions] = useState("1");
   const [scaledFor, setScaledFor] = useState(1);   // portions pour lesquelles les quantités sont calculées
   const [rows, setRows] = useState<Row[]>([]);
@@ -188,7 +190,14 @@ export function PrepareRecipeForm({ onDone }: { onDone: (item: FridgeItem) => vo
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <FoodPicker label="Recette" items={recipes.list} counts={usage.recipes} value={recipeId} onChange={chooseRecipe} />
+      <div>
+        <FoodPicker label="Recette" items={recipePicker.list} counts={usage.recipes} value={recipeId} onChange={chooseRecipe} />
+        {recipePicker.persoOnly && (
+          <p className="mt-1 text-xs text-slate-500">
+            Tes recettes et celles que tu as déjà préparées ou mangées (option du Profil). Tu peux aussi créer la tienne dans le Catalogue.
+          </p>
+        )}
+      </div>
 
       {recipe && (
         <>

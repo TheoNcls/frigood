@@ -35,7 +35,7 @@ export default function RecipesAdmin({ mode = "admin" }: { mode?: CatalogMode })
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [scope, setScope] = useState<CatalogScope>("tout");
+  const [scope, setScope] = useState<CatalogScope>("miens");
 
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
