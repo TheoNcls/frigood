@@ -250,6 +250,8 @@ class Activity(Base):
     notes = Column(String, nullable=True)
     # JSON brut Garmin, chargé seulement à la demande (volumineux)
     raw_data = deferred(Column(Text, nullable=True))
+    # Tours (segments) Garmin, récupérés à la première ouverture du détail (JSON brut)
+    laps_data = deferred(Column(Text, nullable=True))
 
     user = relationship("User", back_populates="activities")
     activity_type = relationship("ActivityType", back_populates="activities")

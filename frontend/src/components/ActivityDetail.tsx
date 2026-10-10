@@ -3,9 +3,10 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useActivityTypes } from "../api/queries";
 import type { Activity } from "../api/types";
-import { activityLabel } from "../lib/activity";
+import { activityLabel, clock, duration, pace } from "../lib/activity";
 import { formatLong } from "../lib/dates";
 import { fmt } from "../lib/nutrition";
+import ActivityLaps from "./ActivityLaps";
 import { useInvalidateSport } from "./Garmin";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
@@ -24,6 +25,8 @@ interface Details {
   vitesse_max_kmh?: number | null;
   allure_s_km?: number | null;
   allure_s_100m?: number | null;
+  allure_ajustee_s_km?: number | null;
+  meilleurs_temps?: { distance_m: number; secondes: number }[];
   denivele_pos_m?: number | null;
   denivele_neg_m?: number | null;
   altitude_min_m?: number | null;
@@ -40,6 +43,18 @@ interface Details {
   cadence_course?: number | null;
   cadence_velo?: number | null;
   foulee_m?: number | null;
+  contact_sol_ms?: number | null;
+  oscillation_cm?: number | null;
+  ratio_vertical?: number | null;
+  equilibre_gauche?: number | null;
+  respiration_moy?: number | null;
+  respiration_max?: number | null;
+  effort_percu?: number | null;
+  ressenti?: string | null;
+  endurance_debut?: number | null;
+  endurance_fin?: number | null;
+  endurance_min?: number | null;
+  zones_puissance?: { zone: number; secondes: number }[];
   pas?: number | null;
   puissance_moy_w?: number | null;
   puissance_norm_w?: number | null;
@@ -57,22 +72,31 @@ interface Details {
   body_battery?: number | null;
 }
 
-export function duration(s: number | null | undefined): string | null {
-  if (!s) return null;
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = Math.round(s % 60);
-  if (h) return `${h} h ${String(m).padStart(2, "0")}`;
-  return sec && m < 10 ? `${m} min ${String(sec).padStart(2, "0")} s` : `${m} min`;
-}
-
-function pace(s: number | null | undefined, unit: string): string | null {
-  if (!s) return null;
-  return `${Math.floor(s / 60)}'${String(Math.round(s % 60)).padStart(2, "0")}" ${unit}`;
-}
-
 const ZONE_COLORS = ["#94a3b8", "#38bdf8", "#22c55e", "#f59e0b", "#ef4444"];
 const ZONE_LABELS = ["Échauffement", "Facile", "Aérobie", "Seuil", "Maximum"];
+const SPLIT_LABELS: Record<number, string> = { 1000: "1 km", 5000: "5 km", 10000: "10 km", 21098: "Semi", 42195: "Marathon" };
+
+/** Temps passé dans chaque zone (cardiaque ou de puissance), en barres. */
+function ZoneBars({ zones, labels }: { zones: { zone: number; secondes: number }[]; labels?: string[] }) {
+  const total = zones.reduce((s, z) => s + z.secondes, 0);
+  return (
+    <div className="space-y-1.5">
+      {[1, 2, 3, 4, 5].map((z) => {
+        const s = zones.find((x) => x.zone === z)?.secondes ?? 0;
+        const pct = total ? (s / total) * 100 : 0;
+        return (
+          <div key={z} className="flex items-center gap-2 text-xs">
+            <span className="w-24 shrink-0 text-slate-600">Z{z}{labels ? ` · ${labels[z - 1]}` : ""}</span>
+            <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: ZONE_COLORS[z - 1] }} />
+            </div>
+            <span className="w-24 shrink-0 text-right text-slate-700">{duration(s) ?? "—"} · {fmt(pct)} %</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function Metric({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
   if (value === null || value === undefined || value === "") return null;
@@ -121,7 +145,8 @@ export default function ActivityDetail({ activity, onClose }: { activity: Activi
   });
   const d = details.data;
   const zones = d?.zones_fc ?? [];
-  const zonesTotal = zones.reduce((s, z) => s + z.secondes, 0);
+  const powerZones = d?.zones_puissance ?? [];
+  const bestTimes = d?.meilleurs_temps ?? [];
   const heure = d?.debut?.slice(11, 16);
   const toast = useToast();
   const invalidate = useInvalidateSport();
@@ -161,6 +186,11 @@ export default function ActivityDetail({ activity, onClose }: { activity: Activi
             <Metric label="Durée" value={duration(d.duree_mouvement_s || d.duree_s)} hint={d.duree_mouvement_s && d.duree_s && d.duree_s - d.duree_mouvement_s > 60 ? `${duration(d.duree_s)} au total` : undefined} />
             <Metric label="Distance" value={d.distance_km ? `${fmt(d.distance_km, 2)} km` : null} />
             <Metric label="Allure moyenne" value={pace(d.allure_s_km, "/km") ?? pace(d.allure_s_100m, "/100 m")} />
+            <Metric
+              label="Allure ajustée (pente)"
+              value={d.allure_ajustee_s_km && d.allure_ajustee_s_km !== d.allure_s_km ? pace(d.allure_ajustee_s_km, "/km") : null}
+              hint="effort équivalent à plat"
+            />
             <Metric label="Vitesse moyenne" value={!d.allure_s_km && !d.allure_s_100m && d.vitesse_moy_kmh ? `${fmt(d.vitesse_moy_kmh, 1)} km/h` : null} hint={d.vitesse_max_kmh ? `max ${fmt(d.vitesse_max_kmh, 1)} km/h` : undefined} />
             <Metric label="Dénivelé" value={d.denivele_pos_m ? `+${fmt(d.denivele_pos_m)} m` : null} hint={d.denivele_neg_m ? `−${fmt(d.denivele_neg_m)} m` : undefined} />
             <Metric label="Calories" value={d.calories ? `${fmt(d.calories)} kcal` : null} />
@@ -168,25 +198,50 @@ export default function ActivityDetail({ activity, onClose }: { activity: Activi
             <Metric label="Body battery" value={d.body_battery ? `${d.body_battery > 0 ? "+" : ""}${d.body_battery}` : null} />
           </div>
 
-          {zones.length > 0 && (
-            <Section title="Zones cardiaques">
-              <div className="space-y-1.5">
-                {[1, 2, 3, 4, 5].map((z) => {
-                  const s = zones.find((x) => x.zone === z)?.secondes ?? 0;
-                  const pct = zonesTotal ? (s / zonesTotal) * 100 : 0;
-                  return (
-                    <div key={z} className="flex items-center gap-2 text-xs">
-                      <span className="w-24 shrink-0 text-slate-600">Z{z} · {ZONE_LABELS[z - 1]}</span>
-                      <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: ZONE_COLORS[z - 1] }} />
-                      </div>
-                      <span className="w-24 shrink-0 text-right text-slate-700">{duration(s) ?? "—"} · {fmt(pct)} %</span>
-                    </div>
-                  );
-                })}
+          {bestTimes.length > 0 && (
+            <Section title="Meilleurs temps dans la sortie">
+              <div className="flex flex-wrap gap-2">
+                {bestTimes.map((b) => (
+                  <div key={b.distance_m} className="rounded-xl bg-slate-50 px-3 py-1.5 text-sm">
+                    <span className="text-slate-500">{SPLIT_LABELS[b.distance_m] ?? `${fmt(b.distance_m / 1000, 1)} km`} </span>
+                    <b className="text-slate-900">{b.distance_m === 1000 ? pace(b.secondes) : clock(b.secondes)}</b>
+                    {b.distance_m > 1000 && <span className="text-xs text-slate-500"> · {pace((b.secondes / b.distance_m) * 1000, "/km")}</span>}
+                  </div>
+                ))}
               </div>
             </Section>
           )}
+
+          {d.type_key && !d.type_key.includes("swim") && (d.tours === null || d.tours === undefined || d.tours >= 2) && (
+            <ActivityLaps activityId={activity.id} />
+          )}
+
+          {zones.length > 0 && (
+            <Section title="Zones cardiaques">
+              <ZoneBars zones={zones} labels={ZONE_LABELS} />
+            </Section>
+          )}
+
+          {powerZones.length > 0 && (
+            <Section title="Zones de puissance">
+              <ZoneBars zones={powerZones} />
+            </Section>
+          )}
+
+          {has(d.effort_percu, d.endurance_debut) || d.ressenti ? (
+            <Section title="Ressenti">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Metric label="Effort perçu" value={d.effort_percu ? `${d.effort_percu}/10` : null} hint="noté sur la montre" />
+                <Metric label="Ressenti" value={d.ressenti} />
+                <Metric
+                  label="Endurance"
+                  value={d.endurance_debut !== null && d.endurance_debut !== undefined && d.endurance_fin !== null && d.endurance_fin !== undefined
+                    ? `${fmt(d.endurance_debut)} → ${fmt(d.endurance_fin)} %` : null}
+                  hint={d.endurance_min !== null && d.endurance_min !== undefined ? `au plus bas ${fmt(d.endurance_min)} %` : undefined}
+                />
+              </div>
+            </Section>
+          ) : null}
 
           {has(d.effet_aerobie, d.effet_anaerobie, d.charge) && (
             <Section title={`Effet d'entraînement${d.effet_libelle ? ` · ${d.effet_libelle}` : ""}`}>
@@ -204,11 +259,19 @@ export default function ActivityDetail({ activity, onClose }: { activity: Activi
             </Section>
           )}
 
-          {has(d.cadence_course, d.foulee_m, d.pas, d.cadence_velo, d.puissance_moy_w, d.longueurs, d.swolf) && (
+          {has(d.cadence_course, d.foulee_m, d.pas, d.cadence_velo, d.puissance_moy_w, d.longueurs, d.swolf, d.contact_sol_ms, d.oscillation_cm, d.respiration_moy) && (
             <Section title="Technique">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Metric label="Cadence" value={d.cadence_course ? `${d.cadence_course} pas/min` : d.cadence_velo ? `${d.cadence_velo} tr/min` : null} />
                 <Metric label="Foulée" value={d.foulee_m ? `${fmt(d.foulee_m, 2)} m` : null} />
+                <Metric
+                  label="Contact au sol"
+                  value={d.contact_sol_ms ? `${fmt(d.contact_sol_ms)} ms` : null}
+                  hint={d.equilibre_gauche ? `G ${fmt(d.equilibre_gauche, 1)} % / D ${fmt(100 - d.equilibre_gauche, 1)} %` : undefined}
+                />
+                <Metric label="Oscillation verticale" value={d.oscillation_cm ? `${fmt(d.oscillation_cm, 1)} cm` : null} />
+                <Metric label="Ratio vertical" value={d.ratio_vertical ? `${fmt(d.ratio_vertical, 1)} %` : null} hint="plus bas = plus efficace" />
+                <Metric label="Respiration" value={d.respiration_moy ? `${d.respiration_moy} /min` : null} hint={d.respiration_max ? `max ${d.respiration_max} /min` : undefined} />
                 <Metric label="Pas" value={d.pas ? fmt(d.pas) : null} />
                 <Metric label="Puissance" value={d.puissance_moy_w ? `${d.puissance_moy_w} W` : null} hint={d.puissance_norm_w ? `normalisée ${d.puissance_norm_w} W` : undefined} />
                 <Metric label="Longueurs" value={d.longueurs ? `${d.longueurs}${d.piscine_m ? ` × ${d.piscine_m} m` : ""}` : null} />

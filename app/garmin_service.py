@@ -359,19 +359,39 @@ def _num(v, decimals=1):
         return None
 
 
+# Meilleurs temps calculés par Garmin dans l'activité (secondes), du plus court au plus long
+FASTEST_SPLITS = (1000, 5000, 10000, 21098, 42195)
+WORKOUT_FEEL = {0: "Très faible", 25: "Faible", 50: "Normal", 75: "Fort", 100: "Très fort"}
+
+
+def _time_in_zones(a: dict, prefix: str) -> list[dict]:
+    zones = []
+    for z in range(1, 6):
+        seconds = _num(a.get(f"{prefix}{z}"), 0)
+        if seconds:
+            zones.append({"zone": z, "secondes": int(seconds)})
+    return zones
+
+
 def activity_details(a: dict) -> dict:
     """Champs utiles d'un résumé d'activité Garmin ; chaque valeur vaut None si la montre ne la fournit pas."""
     type_key = ((a.get("activityType") or {}).get("typeKey") or "").lower()
+    # Ressenti et effort perçu : notés sur la montre en fin de séance (selon le modèle)
+    summary = a.get("summaryDTO") if isinstance(a.get("summaryDTO"), dict) else {}
+
+    def pick(key):
+        return a.get(key) if a.get(key) is not None else summary.get(key)
+
     speed = _num(a.get("averageSpeed"), 3)      # m/s
     max_speed = _num(a.get("maxSpeed"), 3)
     distance_m = _num(a.get("distance"), 0)
     is_swim = "swim" in type_key
 
-    zones = []
-    for z in range(1, 6):
-        seconds = _num(a.get(f"hrTimeInZone_{z}"), 0)
-        if seconds:
-            zones.append({"zone": z, "secondes": int(seconds)})
+    zones = _time_in_zones(a, "hrTimeInZone_")
+    pace_sport = any(s in type_key for s in PACE_SPORTS)
+    gap = _num(a.get("avgGradeAdjustedSpeed"), 3)
+    rpe = _num(pick("directWorkoutRpe"), 0)
+    feel = _num(pick("directWorkoutFeel"), 0)
 
     pool = _num(a.get("poolLength"), 1)
     pool_unit = ((a.get("unitOfPoolLength") or {}).get("unitKey") or "meter").lower()
@@ -392,7 +412,12 @@ def activity_details(a: dict) -> dict:
         "vitesse_moy_kmh": round(speed * 3.6, 1) if speed else None,
         "vitesse_max_kmh": round(max_speed * 3.6, 1) if max_speed else None,
         # Allure en secondes par km (course, marche) ou par 100 m (natation)
-        "allure_s_km": round(1000 / speed) if speed and any(s in type_key for s in PACE_SPORTS) else None,
+        "allure_s_km": round(1000 / speed) if speed and pace_sport else None,
+        # Allure ajustée à la pente (GAP) : l'effort à plat équivalent, utile en trail
+        "allure_ajustee_s_km": round(1000 / gap) if gap and pace_sport else None,
+        "meilleurs_temps": [
+            {"distance_m": d, "secondes": int(s)} for d in FASTEST_SPLITS if (s := _num(a.get(f"fastestSplit_{d}"), 0))
+        ] if pace_sport else [],
         "allure_s_100m": round(100 / speed) if speed and is_swim else None,
         "denivele_pos_m": _num(a.get("elevationGain"), 0),
         "denivele_neg_m": _num(a.get("elevationLoss"), 0),
@@ -410,6 +435,19 @@ def activity_details(a: dict) -> dict:
         "cadence_course": _num(a.get("averageRunningCadenceInStepsPerMinute"), 0),
         "cadence_velo": _num(a.get("averageBikingCadenceInRevPerMinute"), 0),
         "foulee_m": round(v / 100, 2) if (v := _num(a.get("avgStrideLength"))) else None,
+        # Dynamique de course (ceinture HRM-Pro / Run ou montre compatible)
+        "contact_sol_ms": _num(a.get("avgGroundContactTime"), 0),
+        "oscillation_cm": _num(a.get("avgVerticalOscillation"), 1),
+        "ratio_vertical": _num(a.get("avgVerticalRatio"), 1),
+        "equilibre_gauche": _num(a.get("avgGroundContactBalance"), 1),
+        "respiration_moy": _num(a.get("avgRespirationRate"), 0),
+        "respiration_max": _num(a.get("maxRespirationRate"), 0),
+        "effort_percu": round(rpe / 10) if rpe else None,   # 10…100 -> 1…10
+        "ressenti": WORKOUT_FEEL.get(int(feel)) if feel is not None else None,
+        "endurance_debut": _num(a.get("beginPotentialStamina"), 0),
+        "endurance_fin": _num(a.get("endPotentialStamina"), 0),
+        "endurance_min": _num(a.get("minAvailableStamina"), 0),
+        "zones_puissance": _time_in_zones(a, "powerTimeInZone_"),
         "pas": _num(a.get("steps"), 0),
         "puissance_moy_w": _num(a.get("avgPower"), 0),
         "puissance_norm_w": _num(a.get("normPower"), 0),

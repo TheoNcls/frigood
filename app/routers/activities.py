@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models import Activity, GarminIgnoredActivity, User, DailyStat
 from app.schemas import ActivityCreate, ActivityRead, GarminAutoSettings, GarminCredentials, GarminTokens, DailyStatRead, UserRead
 from app.auth import Principal, get_principal, check_user_access
-from app import garmin_auto
+from app import garmin_auto, garmin_laps
 from app.push_service import now_local
 from app.garmin_body import recompute_body_fitness
 from app.garmin_service import (
@@ -88,6 +88,54 @@ def activity_detail(id: int, principal: Principal = Depends(get_principal), db: 
     except ValueError:
         return {"disponible": False}
     return {"disponible": True, **activity_details(raw)}
+
+
+def _own_activity(db: Session, id: int, principal: Principal) -> Activity:
+    activity = db.get(Activity, id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activité introuvable")
+    check_user_access(principal, activity.user_id)
+    return activity
+
+
+@router.get("/activities/{id}/laps")
+def activity_laps(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Tours déjà enregistrés (aucun appel à Garmin) ; sinon, s'ils peuvent être récupérés."""
+    activity = _own_activity(db, id, principal)
+    if activity.laps_data:
+        return garmin_laps.laps_response(db, activity)
+    return {"statut": "a_recuperer" if garmin_laps.can_fetch(activity) else "indisponible", "tours": []}
+
+
+@router.post("/activities/{id}/laps")
+def fetch_activity_laps(id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Un appel à Garmin (session enregistrée, jamais le mot de passe), puis les tours restent en base."""
+    activity = _own_activity(db, id, principal)
+    if activity.laps_data:
+        return garmin_laps.laps_response(db, activity)
+    if not garmin_laps.can_fetch(activity):
+        raise HTTPException(status_code=400, detail="Pas de tours pour cette activité")
+    user = activity.user
+    if not user.garmin_tokens:
+        raise HTTPException(status_code=400, detail="Connecte d'abord Garmin dans le Profil")
+    if garmin_auto.blocked_now():
+        raise HTTPException(status_code=429, detail="GARMIN_BLOQUE")
+    garmin_laps.space_calls(user.id)
+    try:
+        api = login_with_tokens(user, db)
+    except GarminSessionExpired:
+        raise HTTPException(status_code=401, detail="SESSION_GARMIN_EXPIREE")
+    try:
+        raw = api.get_activity_splits(activity.garmin_activity_id)
+    except Exception as e:
+        if garmin_auto.is_blocked_error(str(e)):
+            garmin_auto.block()
+            raise HTTPException(status_code=429, detail="GARMIN_BLOQUE")
+        raise HTTPException(status_code=502, detail=f"Garmin n'a pas renvoyé les tours : {str(e)[:200]}")
+    activity.laps_data = json.dumps(raw if raw is not None else {}, ensure_ascii=False)
+    db.commit()
+    save_tokens(user, api, db)
+    return garmin_laps.laps_response(db, activity)
 
 
 @router.get("/users/{user_id}/daily_stats/", response_model=DailyStatRead | None)
