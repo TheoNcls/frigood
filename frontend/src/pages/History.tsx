@@ -11,10 +11,11 @@ import {
 import type { Activity, DailyStat } from "../api/types";
 import ActivityDetail from "../components/ActivityDetail";
 import { useCurrentUser } from "../auth/AuthContext";
-import { Card, Empty, PageHeader, ProgressBar, Spinner, Stat } from "../components/ui";
+import DayNutritionTiles from "../components/DayNutrition";
+import { Card, Empty, PageHeader, ProgressBar, Spinner } from "../components/ui";
 import { activityDetails, activityLabel } from "../lib/activity";
 import { addDays, formatLong, formatShort, todayISO } from "../lib/dates";
-import { MOMENTS, MOMENT_LABELS, describeLog, fmt, logMacros, totalMacros } from "../lib/nutrition";
+import { MOMENTS, MOMENT_LABELS, describeLog, fmt, logMacros } from "../lib/nutrition";
 
 export default function History() {
   const user = useCurrentUser();
@@ -53,34 +54,22 @@ export default function History() {
 }
 
 function DayNutrition({ date }: { date: string }) {
-  const user = useCurrentUser();
   const meals = useMealLogs({ date });
   const ingredients = useIngredients();
   const recipes = useRecipes();
+  const today = date === todayISO();
 
   const logs = [...(meals.data ?? [])].sort((a, b) => MOMENTS.indexOf(a.moment) - MOMENTS.indexOf(b.moment));
-  const total = totalMacros(logs, ingredients.byId, recipes.byId);
-  const delta = user.calories_cible ? total.cal - user.calories_cible : null;
 
   return (
     <Card title="Nutrition">
       {meals.isLoading ? <Spinner /> : !logs.length ? <Empty>Aucun repas enregistré.</Empty> : (
         <>
-          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat
-              label="Calories"
-              value={`${fmt(total.cal)} kcal`}
-              hint={delta !== null && (
-                <span className={delta > 0 ? "text-red-600" : "text-emerald-600"}>
-                  {delta > 0 ? "+" : ""}{fmt(delta)} vs objectif
-                </span>
-              )}
-            />
-            <Stat label="Protéines" value={`${fmt(total.prot, 1)} g`} />
-            <Stat label="Glucides" value={`${fmt(total.gluc, 1)} g`} />
-            <Stat label="Lipides" value={`${fmt(total.lip, 1)} g`} />
+          <div className="mb-4">
+            {/* Le reste « à manger » n'a de sens qu'aujourd'hui ; les autres jours : valeur, objectif et barre */}
+            <DayNutritionTiles logs={logs} showRemaining={today} dateLabel={today ? "Aujourd'hui" : formatLong(date)} />
           </div>
-          <ul className="divide-y divide-slate-100 text-sm">
+          <ul className="divide-y divide-slate-100 border-t border-slate-100 text-sm">
             {logs.map((log) => {
               const m = logMacros(log, ingredients.byId, recipes.byId);
               return (

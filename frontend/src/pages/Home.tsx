@@ -4,16 +4,14 @@ import DaySummary from "../components/DaySummary";
 import WeekStrip from "../components/WeekStrip";
 import { AlertTriangle, Footprints, Target } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
-import {
-  useDailyStat, useFridge, useIngredients, useMealLogs, useNutriments, usePlanMilestone, useRecipes,
-} from "../api/queries";
-import { dayNutrients, foodsWithout, nutrientDecimals } from "../lib/nutrients";
+import { useDailyStat, useFridge, useIngredients, useMealLogs, usePlanMilestone, useRecipes } from "../api/queries";
 import type { PlanMilestone } from "../api/types";
 import { CoachText } from "../components/Coach";
-import { Card, MacroTile, ProgressBar } from "../components/ui";
+import DayNutritionTiles from "../components/DayNutrition";
+import { Card, ProgressBar } from "../components/ui";
 import { formatLong, formatShort, todayISO } from "../lib/dates";
 import { expiryInfo, fridgeItemName } from "../lib/fridge";
-import { fmt, totalMacros } from "../lib/nutrition";
+import { fmt } from "../lib/nutrition";
 
 export default function Home() {
   const user = useCurrentUser();
@@ -29,11 +27,6 @@ export default function Home() {
   // Clic sur une notification de rappel : /?jour=AAAA-MM-JJ ouvre le résumé de ce jour
   const [params, setParams] = useSearchParams();
   const openedDay = /^\d{4}-\d{2}-\d{2}$/.test(params.get("jour") ?? "") ? params.get("jour") : null;
-
-  const consumed = totalMacros(meals.data ?? [], ingredients.byId, recipes.byId);
-  const nutriments = useNutriments();
-  const suivis = user.nutriments_suivis ?? [];
-  const day = dayNutrients(meals.data ?? [], ingredients.byId, recipes.byId);
 
   const expiring = (fridge.data ?? []).filter((f) => {
     const { days } = expiryInfo(f.date_peremption);
@@ -69,38 +62,7 @@ export default function Home() {
 
       {user.nutrition_active && (
         <Card title="Nutrition du jour" action={<Link to="/repas" className="text-sm font-medium text-brand-700">Ajouter un repas →</Link>}>
-          <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-            <MacroTile label="Calories" value={consumed.cal} target={user.calories_cible} unit="kcal" showRemaining />
-            <MacroTile label="Protéines" value={consumed.prot} target={user.proteines_cible} unit="g" showRemaining />
-            <MacroTile label="Glucides" value={consumed.gluc} target={user.glucides_cible} unit="g" showRemaining />
-            <MacroTile label="Lipides" value={consumed.lip} target={user.lipides_cible} unit="g" showRemaining />
-          </div>
-          {suivis.length > 0 && (
-            <div className="mt-5 grid grid-cols-2 gap-5 border-t border-slate-100 pt-4 md:grid-cols-4">
-              {suivis.map((s) => {
-                const n = nutriments.list.find((x) => x.id === s.nutriment_id);
-                if (!n) return null;
-                const missing = foodsWithout(day.foods, n.id);
-                return (
-                  <MacroTile
-                    key={n.id}
-                    label={n.nom}
-                    value={day.amounts.get(n.id) ?? 0}
-                    target={s.cible}
-                    unit={n.unite}
-                    decimals={nutrientDecimals(n.unite, s.cible)}
-                    goal={s.sens}
-                    showRemaining
-                    note={missing.length ? (
-                      <span title={`Sans valeur connue : ${missing.map((m) => m.nom).join(", ")}`}>
-                        partiel : {missing.length} aliment{missing.length > 1 ? "s" : ""} sans valeur
-                      </span>
-                    ) : undefined}
-                  />
-                );
-              })}
-            </div>
-          )}
+          <DayNutritionTiles logs={meals.data ?? []} showRemaining dateLabel="Aujourd'hui" />
         </Card>
       )}
 

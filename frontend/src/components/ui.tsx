@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { ChevronRight, Loader2, Trash2 } from "lucide-react";
 import { fmt } from "../lib/nutrition";
 
 export function Card({ title, children, className = "", action }: {
@@ -45,8 +45,11 @@ export function ProgressBar({ value, max, over = false }: { value: number; max: 
   );
 }
 
-/** goal « max » : objectif à ne pas dépasser (calories, sel…) ; « min » : à atteindre (protéines du jour, fer, fibres…). */
-export function MacroTile({ label, value, target, unit, showRemaining = false, decimals = 0, goal = "max", note }: {
+/**
+ * goal « max » : objectif à ne pas dépasser (calories, sel…) ; « min » : à atteindre (protéines du jour, fer, fibres…).
+ * Avec onClick, la tuile devient un bouton (détail de ce qui l'apporte).
+ */
+export function MacroTile({ label, value, target, unit, showRemaining = false, decimals = 0, goal = "max", note, onClick }: {
   label: string;
   value: number;
   target: number | null;
@@ -55,13 +58,17 @@ export function MacroTile({ label, value, target, unit, showRemaining = false, d
   decimals?: number;
   goal?: "min" | "max";
   note?: ReactNode;
+  onClick?: () => void;
 }) {
   const hasTarget = !!target && target > 0;
   const remaining = hasTarget ? target - value : 0;
   const over = hasTarget && remaining < 0;
-  return (
-    <div className="space-y-1.5">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
+  const content = (
+    <>
+      <div className="flex items-center gap-0.5 text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+        {onClick && <ChevronRight className="h-3.5 w-3.5 text-brand-600" />}
+      </div>
       <div className="text-slate-900">
         <span className="text-xl font-semibold">{fmt(value, decimals)}</span>
         {hasTarget && <span className="text-sm text-slate-500"> / {fmt(target, decimals)} {unit}</span>}
@@ -78,7 +85,18 @@ export function MacroTile({ label, value, target, unit, showRemaining = false, d
         </div>
       ))}
       {note && <div className="text-[11px] leading-tight text-slate-400">{note}</div>}
-    </div>
+    </>
+  );
+  if (!onClick) return <div className="space-y-1.5">{content}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Voir ce qui en apporte"
+      className="-m-2 block w-[calc(100%+1rem)] space-y-1.5 rounded-xl p-2 text-left transition hover:bg-slate-50 active:bg-slate-100"
+    >
+      {content}
+    </button>
   );
 }
 

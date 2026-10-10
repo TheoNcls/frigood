@@ -27,36 +27,69 @@ export function nutrientReference(nom: string) {
   return REFERENCES[nom.trim().toLowerCase()];
 }
 
+/** Ingrédients réellement mangés dans un repas, en g / ml (un plat est détaillé ingrédient par ingrédient). */
+export function logFoods(log: MealLog, ingredients: Map<number, Ingredient>, recipes: Map<number, Recipe>): { ing: Ingredient; grams: number }[] {
+  const out: { ing: Ingredient; grams: number }[] = [];
+  const add = (ing: Ingredient | undefined, grams: number) => {
+    if (ing && grams > 0) out.push({ ing, grams });
+  };
+  const q = log.quantite ?? 0;
+  if (log.preparation) {
+    // Part d'un plat préparé : ce qui a réellement été cuisiné
+    const f = (q || 1) / (log.preparation.portions || 1);
+    for (const it of log.preparation.ingredients) add(ingredients.get(it.ingredient_id), it.quantite * f);
+  } else if (log.recipe_id) {
+    const r = recipes.get(log.recipe_id);
+    const f = (q || 1) / (r?.portions || 1);
+    for (const ri of r?.ingredients ?? []) {
+      if (!ri.par_defaut) continue;
+      const grams = ri.type_mesure === "unite" ? ri.quantite * (ri.ingredient.quantite_defaut ?? 0) : ri.quantite;
+      add(ingredients.get(ri.ingredient_id) ?? ri.ingredient, grams * f);
+    }
+  } else if (log.ingredient_id) {
+    const ing = ingredients.get(log.ingredient_id);
+    add(ing, log.type_mesure === "unite" ? q * (ing?.quantite_defaut ?? 0) : q);
+  }
+  return out;
+}
+
 /** Nutriments apportés par des repas (quantité dans l'unité du nutriment), et les aliments qu'ils contiennent. */
 export function dayNutrients(logs: MealLog[], ingredients: Map<number, Ingredient>, recipes: Map<number, Recipe>) {
   const amounts = new Map<number, number>();
   const foods = new Map<number, Ingredient>();
-  const add = (ing: Ingredient | undefined, grams: number) => {
-    if (!ing || grams <= 0) return;
+  for (const { ing, grams } of logs.flatMap((log) => logFoods(log, ingredients, recipes))) {
     foods.set(ing.id, ing);
     for (const n of ing.nutriments) amounts.set(n.nutriment_id, (amounts.get(n.nutriment_id) ?? 0) + (n.valeur * grams) / 100);
-  };
-  for (const log of logs) {
-    const q = log.quantite ?? 0;
-    if (log.preparation) {
-      // Part d'un plat préparé : ce qui a réellement été cuisiné
-      const f = (q || 1) / (log.preparation.portions || 1);
-      for (const it of log.preparation.ingredients) add(ingredients.get(it.ingredient_id), it.quantite * f);
-    } else if (log.recipe_id) {
-      const r = recipes.get(log.recipe_id);
-      if (!r) continue;
-      const f = (q || 1) / (r.portions || 1);
-      for (const ri of r.ingredients) {
-        if (!ri.par_defaut) continue;
-        const grams = ri.type_mesure === "unite" ? ri.quantite * (ri.ingredient.quantite_defaut ?? 0) : ri.quantite;
-        add(ingredients.get(ri.ingredient_id) ?? ri.ingredient, grams * f);
-      }
-    } else if (log.ingredient_id) {
-      const ing = ingredients.get(log.ingredient_id);
-      add(ing, log.type_mesure === "unite" ? q * (ing?.quantite_defaut ?? 0) : q);
-    }
   }
   return { amounts, foods };
+}
+
+export interface FoodPart {
+  ing: Ingredient;
+  grams: number;
+  amount: number;
+}
+
+/**
+ * Ce qu'apporte chaque repas pour une valeur (calories, protéines, fer…) donnée pour 100 g, du plus au moins,
+ * avec le détail par ingrédient, et les aliments dont la valeur est inconnue (le total est alors partiel).
+ */
+export function contributions(
+  logs: MealLog[], ingredients: Map<number, Ingredient>, recipes: Map<number, Recipe>, per100: (ing: Ingredient) => number | null,
+) {
+  const missing = new Map<number, Ingredient>();
+  const entries = logs.map((log) => {
+    const parts: FoodPart[] = [];
+    for (const { ing, grams } of logFoods(log, ingredients, recipes)) {
+      const v = per100(ing);
+      if (v === null) missing.set(ing.id, ing);
+      else parts.push({ ing, grams, amount: (v * grams) / 100 });
+    }
+    parts.sort((a, b) => b.amount - a.amount);
+    return { log, parts, amount: parts.reduce((s, p) => s + p.amount, 0) };
+  });
+  entries.sort((a, b) => b.amount - a.amount);
+  return { entries, missing: [...missing.values()] };
 }
 
 /** Aliments du jour sans valeur connue pour ce nutriment : le total affiché est alors partiel. */
