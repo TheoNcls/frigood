@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Barcode, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { Barcode, Bot, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { ApiError, api } from "../api/client";
 import { useIngredients, useNutriments } from "../api/queries";
 import type { Ingredient, IngredientInput, IngredientSuggestion, NutrimentSuggestion } from "../api/types";
@@ -13,6 +13,7 @@ import { Card, ConfirmButton, Empty, ErrorMessage, Field, Segmented, Spinner } f
 import { formatFull } from "../lib/dates";
 import { fmt } from "../lib/nutrition";
 import BarcodeScanner from "../components/BarcodeScanner";
+import AiImport from "./AiImport";
 import IngredientForm from "./IngredientForm";
 import { SOURCE_LABELS, createIngredient, parseNum, useInvalidateCatalog, type SourceType } from "./catalog";
 import { OwnerBadges, ScopeFilter, canEditItem, inScope, type CatalogMode, type CatalogScope } from "./CatalogBits";
@@ -118,7 +119,7 @@ export default function IngredientsAdmin({ mode = "admin" }: { mode?: CatalogMod
   );
 }
 
-type Mode = "claude" | "barcode" | "manual";
+type Mode = "claude" | "ia" | "barcode" | "manual";
 
 function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) => void; allowClaude: boolean }) {
   // La recherche par Claude (payante) reste réservée à l'administration
@@ -130,7 +131,7 @@ function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) =
 
   const save = useMutation({
     mutationFn: ({ values, nuts }: { values: IngredientInput; nuts: NutrimentSuggestion[] }) => {
-      const type: SourceType = mode === "claude" ? "claude" : mode === "barcode" ? "openfoodfacts" : "manual";
+      const type: SourceType = mode === "claude" ? "claude" : mode === "ia" ? "ia" : mode === "barcode" ? "openfoodfacts" : "manual";
       return createIngredient(values, nuts, { type, codeBarre: suggestion?.code_barre, rawData: suggestion?.raw_data }, nutriments.list);
     },
     onSuccess: ({ ingredient, added }) => {
@@ -154,6 +155,7 @@ function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) =
         onChange={changeMode}
         options={[
           ...(allowClaude ? [{ value: "claude" as Mode, label: <span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4" /> Claude</span> }] : []),
+          { value: "ia", label: <span className="inline-flex items-center gap-1.5"><Bot className="h-4 w-4" /> IA</span> },
           { value: "barcode", label: <span className="inline-flex items-center gap-1.5"><Barcode className="h-4 w-4" /> Code-barre</span> },
           { value: "manual", label: "Manuel" },
         ]}
@@ -161,6 +163,8 @@ function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) =
 
       {!suggestion && mode === "claude" && <ClaudeLookup onFound={setSuggestion} />}
       {!suggestion && mode === "barcode" && <BarcodeLookup onFound={setSuggestion} onExisting={(id) => onDone(id)} />}
+      {/* Reste monté pendant la vérification : en annulant, on retrouve la réponse collée */}
+      {mode === "ia" && <div className={suggestion ? "hidden" : ""}><AiImport onSingle={setSuggestion} onDone={() => onDone()} /></div>}
 
       {(suggestion || mode === "manual") && (
         <>

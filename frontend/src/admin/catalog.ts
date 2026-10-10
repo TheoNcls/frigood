@@ -2,12 +2,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { Ingredient, IngredientInput, Nutriment, NutrimentSuggestion } from "../api/types";
 
-export type SourceType = "claude" | "openfoodfacts" | "manual";
+export type SourceType = "claude" | "openfoodfacts" | "manual" | "ia";
 
 export const SOURCE_LABELS: Record<string, string> = {
   claude: "Claude",
   openfoodfacts: "OpenFoodFacts",
   manual: "Manuel",
+  ia: "IA (copier-coller)",
   import: "Import Excel",
 };
 
