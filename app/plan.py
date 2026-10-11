@@ -362,11 +362,20 @@ def current_milestone(db: Session, user: User, today: date) -> dict | None:
     since = min(monday, j["debut"])
     week = {"km": 0.0, "d_plus_m": 0, "seances": 0}
     longest = {"km": 0.0, "d_plus_m": 0, "date": None}
+    # Semaine par semaine depuis le début du bloc (8 dernières au plus) : la tendance, pas seulement cette semaine
+    first_monday = max(j["debut"] - timedelta(days=j["debut"].weekday()), monday - timedelta(weeks=7))
+    weeks = {first_monday + timedelta(weeks=i): {"km": 0.0, "d_plus_m": 0, "seances": 0}
+             for i in range((monday - first_monday).days // 7 + 1)} if j["debut"] <= today else {}
     for a in (db.query(Activity).filter(Activity.user_id == user.id, Activity.date >= since, Activity.date <= today)
               .order_by(Activity.date)):
         if not _counts(a, fam, sports):
             continue
         dp = _d_plus(a)
+        w = weeks.get(a.date - timedelta(days=a.date.weekday()))
+        if w is not None and a.date >= j["debut"]:
+            w["km"] += a.distance_km or 0
+            w["d_plus_m"] += dp
+            w["seances"] += 1
         if a.date >= monday:
             week["km"] += a.distance_km or 0
             week["d_plus_m"] += dp
@@ -384,4 +393,5 @@ def current_milestone(db: Session, user: User, today: date) -> dict | None:
         "sports_comptes": sports, "sports_auto": None if sports else FAMILY_LABELS[fam],
         "semaine": {**week, "km": round(week["km"], 1), "depuis": monday.isoformat()},
         "plus_longue_sortie": {**longest, "km": round(longest["km"], 1)},
+        "semaines_du_bloc": [{"semaine_du": m.isoformat(), **w, "km": round(w["km"], 1)} for m, w in sorted(weeks.items())],
     }

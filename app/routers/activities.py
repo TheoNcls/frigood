@@ -126,14 +126,13 @@ def fetch_activity_laps(id: int, principal: Principal = Depends(get_principal), 
     except GarminSessionExpired:
         raise HTTPException(status_code=401, detail="SESSION_GARMIN_EXPIREE")
     try:
-        raw = api.get_activity_splits(activity.garmin_activity_id)
+        garmin_laps.store_laps(db, activity, api)
     except Exception as e:
+        db.rollback()
         if garmin_auto.is_blocked_error(str(e)):
             garmin_auto.block()
             raise HTTPException(status_code=429, detail="GARMIN_BLOQUE")
         raise HTTPException(status_code=502, detail=f"Garmin n'a pas renvoyé les tours : {str(e)[:200]}")
-    activity.laps_data = json.dumps(raw if raw is not None else {}, ensure_ascii=False)
-    db.commit()
     save_tokens(user, api, db)
     return garmin_laps.laps_response(db, activity)
 

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CalendarPlus, Check, ChefHat, HeartPulse, Lightbulb, Lock, Search, Sparkles, Target } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Check, ChefHat, ClipboardCheck, HeartPulse, Lightbulb, Lock, Search, Sparkles, Target } from "lucide-react";
 import { api } from "../api/client";
 import { useCurrentUser } from "../auth/AuthContext";
 import type { SeanceStep, StrengthExercise } from "../api/types";
@@ -29,6 +29,8 @@ interface CoachActivity {
 
 interface CoachResult {
   remarques: string;
+  /** Dernières séances par rapport au programme (bilans récents) */
+  recap_seances?: string;
   sante_recuperation: string;
   ameliorations: string;
   /** Où on en est par rapport au jalon en cours (bilans faits avec un plan) */
@@ -253,6 +255,13 @@ function StructuredReport({ report }: { report: CoachReport }) {
     <div className="space-y-3">
       {d.remarques && (
         <Section icon={<Search className="h-4 w-4" />} title="Ce que je remarque sur les derniers jours"><CoachText text={d.remarques} /></Section>
+      )}
+      {d.recap_seances && (
+        <div className="rounded-xl bg-sky-50/60 px-3 pb-2.5">
+          <Section icon={<ClipboardCheck className="h-4 w-4 text-sky-600" />} title="Tes séances vs le programme">
+            <CoachText text={d.recap_seances} />
+          </Section>
+        </div>
       )}
       {d.sante_recuperation && (
         <div className="rounded-xl bg-rose-50/60 px-3 pb-2.5">

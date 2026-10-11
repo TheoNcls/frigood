@@ -99,7 +99,8 @@ def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^
                    + ("" if next_week else f"Prochain bilan possible le week-end pour la semaine du {target + timedelta(days=7):%d/%m}."),
         )
 
-    context = coach.build_context(db, user, today)
+    # Vrai bilan : les tours manquants de quelques séances prévues sont récupérés sur Garmin (appels espacés)
+    context = coach.build_context(db, user, today, fetch_laps=True)
     sports = [t.nom for t in db.query(ActivityType).all()]
     try:
         result, usage = coach.ask_claude(context, sports, week, exercises_for(user.materiel))

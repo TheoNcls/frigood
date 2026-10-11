@@ -7,8 +7,9 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
+from app import garmin_laps
 from app.fridge_service import to_base_qty
-from app.garmin_workouts import EQUIPMENT, clean_exercises, clean_seance, exercises_for
+from app.garmin_workouts import EQUIPMENT, _estimate_s, clean_exercises, clean_seance, exercises_for
 from app.garmin_service import activity_details
 from app.models import (
     Activity, BodyComposition, CoachReport, DailyStat, FitnessMetric, FridgeItem, Ingredient, MealLog, Recipe, Task, TaskCompletion,
@@ -22,6 +23,8 @@ PAST_DAYS = 14        # santé Garmin, forme, tâches passées
 MEAL_DAYS = 7         # repas : la semaine écoulée suffit (contexte plus léger)
 ACTIVITY_DAYS = 42    # activités : 6 semaines pour juger la charge et la progression
 NEXT_DAYS = 14        # tâches à venir
+LAPS_DAYS = 14        # tours (segments) des activités récentes
+MAX_LAPS = 30
 WEIGHT_DAYS = 90
 REGIME_LABELS = {
     "omnivore": "omnivore", "flexitarien": "flexitarien", "pescetarien": "pescétarien",
@@ -35,9 +38,19 @@ On te donne en JSON ses objectifs et contraintes (texte libre qu'elle a écrit),
 son régime alimentaire, ses repas des derniers jours (totaux journaliers calculés par l'app), ses activités,
 ses données Garmin (sommeil, pas, stress, body battery, HRV, disposition à l'entraînement, VO2max, prédictions),
 ses pesées, ses tâches passées et à venir, et le contenu de son frigo.
+Pour les activités : allure, allure ajustée à la pente (GAP), FC et zones, effet d'entraînement, cadence et dynamique
+de course, effort perçu et ressenti notés sur la montre, endurance (stamina), meilleurs temps dans la sortie et,
+pour les plus récentes, les tours (segments). « seances_programme_vs_realise » met côte à côte les séances prévues
+dans son agenda (les tiennes ou les siennes) et ce qui a été fait, avec, quand la montre a suivi les étapes,
+le verdict de chaque étape par rapport à sa cible (allure ± marge, ou zone cardiaque).
 
 Tu réponds dans le format JSON demandé :
 - « remarques » : ce que tu remarques sur les derniers jours (nutrition, sport, régularité), en Markdown (listes à puces).
+- « recap_seances » : ses dernières séances par rapport au programme (« seances_programme_vs_realise »), en Markdown :
+  pour chaque séance prévue, faite ou non, et si elle a respecté les cibles (allures, zones, durée ou distance),
+  chiffres à l'appui (ex. « 3 efforts sur 4 dans la cible, le 3e à 4'46" au lieu de 4'30" ») ; les séances faites
+  en plus du programme ; puis une ou deux lignes sur ce que ça dit (cibles trop ambitieuses ou trop faciles,
+  fatigue, régularité). Chaîne vide s'il n'y avait aucune séance prévue sur la période.
 - « sante_recuperation » : la récupération est-elle bonne, le sommeil est-il bon, comment va la santé globale
   (sommeil, HRV, fréquence cardiaque au repos, stress, body battery, disposition, charge d'entraînement, poids) — en Markdown.
 - « ameliorations » : conseils concrets pour t'améliorer, en Markdown.
@@ -73,6 +86,13 @@ Règles :
 - Nutrition : respecte strictement son régime alimentaire (profil.regime) ; regarde surtout calories et protéines
   par rapport à ses objectifs, et propose des aliments concrets compatibles avec son régime.
 - Sport : relie charge et récupération ; reste prudent sur l'intensité si la récupération est mauvaise.
+- Règle les cibles de la semaine sur ce qui a été réellement couru : efforts régulièrement plus lents que la cible
+  avec une FC ou un effort perçu élevés -> cibles trop ambitieuses ou fatigue (baisse ou ajoute de la récupération) ;
+  efforts plus rapides avec un effort perçu bas -> tu peux progresser légèrement. Une seule séance ratée ne suffit
+  pas à tout changer.
+- En trail ou sur parcours vallonné, juge l'effort avec l'allure ajustée (GAP) et la FC plutôt qu'avec l'allure brute.
+- Un effort perçu élevé ou un ressenti faible pour une FC habituelle, plusieurs fois de suite, est un signe de fatigue.
+- Dynamique de course (cadence, contact au sol, oscillation) : regarde les tendances, sans conclure sur une seule sortie.
 - Markdown simple : listes à puces courtes, gras pour l'essentiel, pas de titres (les sections sont déjà titrées).
 - Si « bilan_precedent » est présent : sers-t'en pour suivre l'évolution (ce qui s'est amélioré ou dégradé depuis),
   dis ce que sont devenues les séances que tu avais proposées (faites, pas faites, non ajoutées) et adapte la semaine
@@ -200,8 +220,116 @@ def _milestone(db: Session, user: User, today: date) -> dict | None:
         return None
 
 
-def build_context(db: Session, user: User, today: date) -> dict:
+def _realise(a: Activity) -> dict:
+    out = {"duree_min": a.duree_min, "distance_km": a.distance_km, "fc_moy": a.freq_cardiaque_moy}
+    if a.raw_data:
+        try:
+            det = activity_details(json.loads(a.raw_data))
+        except (ValueError, TypeError, KeyError):
+            det = {}
+        out.update({k: det.get(k) for k in (
+            "allure_s_km", "allure_ajustee_s_km", "denivele_pos_m", "effet_libelle", "charge", "effort_percu", "ressenti")})
+        if out.get("allure_ajustee_s_km") == out.get("allure_s_km"):
+            out.pop("allure_ajustee_s_km", None)
+    return out
+
+
+def _seance_of(t: Task):
+    try:
+        return json.loads(t.seance) if t.seance else None
+    except ValueError:
+        return None
+
+
+def _planned_sessions(db: Session, user: User, today: date):
+    """Séances de sport prévues sur 14 jours (tâches importantes exclues) et l'activité faite ce jour-là pour ce sport."""
+    from app.routers.tasks import occurrences, sport_activities
+
     start = today - timedelta(days=PAST_DAYS - 1)
+    tasks = [t for t in db.query(Task).filter(Task.user_id == user.id, Task.activity_type_id.isnot(None), Task.date <= today)
+             if not t.important]
+    occ = sorted(((t, d) for t in tasks for d in occurrences(t, start, today)), key=lambda x: (x[1], x[0].heure or ""))
+    by_day = sport_activities(db, user.id, tasks, start, today)
+    links = {(t.activity_type_id, d): by_day[(t.activity_type_id, d)] for t, d in occ if (t.activity_type_id, d) in by_day}
+    acts = {a.id: a for a in db.query(Activity).filter(Activity.id.in_(set(links.values())))} if links else {}
+    return occ, links, acts
+
+
+def fetch_planned_laps(db: Session, user: User, today: date) -> int:
+    """Tours manquants des séances détaillées faites (les plus récentes d'abord), pour comparer étape par étape."""
+    occ, links, acts = _planned_sessions(db, user, today)
+    todo = list(dict.fromkeys(acts[links[(t.activity_type_id, d)]] for t, d in reversed(occ)
+                              if isinstance(_seance_of(t), list) and _seance_of(t) and (t.activity_type_id, d) in links))
+    return garmin_laps.fetch_missing_laps(db, user, todo)
+
+
+def programme_vs_realise(db: Session, user: User, today: date) -> dict:
+    """Séances de sport prévues sur 14 jours (agenda, tâches importantes exclues) face à ce qui a été fait."""
+    start = today - timedelta(days=PAST_DAYS - 1)
+    occ, links, acts = _planned_sessions(db, user, today)
+    done = {(c.task_id, c.date): c.statut for c in db.query(TaskCompletion).join(Task).filter(
+        Task.user_id == user.id, TaskCompletion.date >= start, TaskCompletion.date <= today)}
+
+    seances = []
+    for t, d in occ:
+        a = acts.get(links.get((t.activity_type_id, d)))
+        coche = done.get((t.id, d))
+        if a:
+            statut = "faite"
+        elif coche == "fait":
+            statut = "cochée faite, sans activité enregistrée"
+        elif coche == "pas_fait":
+            statut = "pas faite"
+        else:
+            statut = "à faire aujourd'hui" if d == today else "pas faite (non cochée)"
+        seance = _seance_of(t)
+        prevu = {"notes": (t.notes or "")[:300] or None, "etapes": garmin_laps.seance_text(seance) or None}
+        if isinstance(seance, list) and seance:
+            prevu["duree_estimee_min"] = round(sum(_estimate_s(s) for s in garmin_laps.flatten(seance)) / 60)
+        row = {"date": d.isoformat(), "titre": t.titre, "sport": t.activity_type.nom if t.activity_type else None,
+               "proposee_par_le_coach": bool(t.par_coach), "statut": statut,
+               "prevu": {k: v for k, v in prevu.items() if v is not None} or None}
+        if a:
+            row["realise"] = _realise(a)
+            if a.laps_data:
+                resp = garmin_laps.laps_response(db, a)
+                s = resp.get("seance")
+                if s and s["titre"] == t.titre:
+                    if not s["correspondance"]:
+                        row["comparaison"] = {"tours_suivent_les_etapes": False}
+                    else:
+                        judged = [lap for lap in resp["tours"] if lap.get("verdict")]
+                        efforts = [lap for lap in judged if lap["type"] == "effort"]
+                        row["comparaison"] = {
+                            "tours_suivent_les_etapes": True,
+                            "marge_allure_s": s["marge_allure_s"],
+                            "efforts_dans_la_cible": f"{sum(lap['verdict'] == 'ok' for lap in efforts)}/{len(efforts)}" if efforts else None,
+                            "ecarts": [
+                                f"tour {lap['numero']} ({garmin_laps.step_text(lap['prevu'])}) : "
+                                + (f"{lap['allure_s_km']} s/km" if lap["prevu"].get("allure_s_km") else f"FC {lap['fc_moy']:.0f}")
+                                + f" -> {lap['verdict']}"
+                                for lap in judged if lap["verdict"] != "ok"
+                            ],
+                        }
+        seances.append(row)
+
+    linked = set(links.values())
+    hors_programme = [
+        {"date": a.date.isoformat(), "type": a.activity_type.nom if a.activity_type else None,
+         "duree_min": a.duree_min, "distance_km": a.distance_km}
+        for a in db.query(Activity).filter(Activity.user_id == user.id, Activity.date >= start, Activity.date <= today)
+        .order_by(Activity.date) if a.id not in linked
+    ]
+    return {"seances": seances, "activites_hors_programme": hors_programme}
+
+
+def build_context(db: Session, user: User, today: date, fetch_laps: bool = False) -> dict:
+    """Données envoyées au coach. fetch_laps : récupère sur Garmin les tours manquants de quelques séances
+    prévues (seulement pour un vrai bilan, jamais pour l'aperçu)."""
+    start = today - timedelta(days=PAST_DAYS - 1)
+    if fetch_laps:
+        # En premier : les activités comme la comparaison avec le programme en profitent
+        fetch_planned_laps(db, user, today)
 
     age = None
     if user.date_naissance:
@@ -235,11 +363,23 @@ def build_context(db: Session, user: User, today: date) -> dict:
             try:
                 det = activity_details(json.loads(a.raw_data))
                 entry.update({k: det.get(k) for k in (
-                    "allure_s_km", "denivele_pos_m", "fc_max", "effet_aerobie", "effet_anaerobie", "effet_libelle", "charge")})
+                    "allure_s_km", "allure_ajustee_s_km", "denivele_pos_m", "fc_max", "effet_aerobie", "effet_anaerobie",
+                    "effet_libelle", "charge", "cadence_course", "foulee_m", "contact_sol_ms", "oscillation_cm",
+                    "ratio_vertical", "puissance_moy_w", "effort_percu", "ressenti")})
+                if entry.get("allure_ajustee_s_km") == entry.get("allure_s_km"):
+                    entry.pop("allure_ajustee_s_km", None)
                 if det.get("zones_fc"):
                     entry["zones_fc_min"] = {f"Z{z['zone']}": round(z["secondes"] / 60) for z in det["zones_fc"]}
+                if det.get("meilleurs_temps"):
+                    entry["meilleurs_temps_s"] = {f"{b['distance_m'] / 1000:g} km": b["secondes"] for b in det["meilleurs_temps"]}
+                if det.get("endurance_debut") is not None and det.get("endurance_fin") is not None:
+                    entry["endurance_pct_debut_fin"] = [det["endurance_debut"], det["endurance_fin"]]
             except (ValueError, TypeError, KeyError):
                 pass
+        if a.date >= today - timedelta(days=LAPS_DAYS - 1) and a.laps_data:
+            laps = garmin_laps.laps_response(db, a)["tours"]
+            if len(laps) >= 2:
+                entry["tours"] = [garmin_laps.compact_lap(t) for t in laps[:MAX_LAPS]]
         activites.append(entry)
         w = weeks[a.date - timedelta(days=a.date.weekday())]
         w["seances"] += 1
@@ -290,6 +430,8 @@ def build_context(db: Session, user: User, today: date) -> dict:
         if t.important:
             continue  # les tâches importantes restent privées : jamais envoyées au coach
         for d in occurrences(t, start, end):
+            if t.activity_type_id and d <= today:
+                continue  # séances passées : détaillées dans « seances_programme_vs_realise »
             statut = done.get((t.id, d)) or ("fait" if t.activity_type_id and sport.get((t.activity_type_id, d)) else None)
             item = {"date": d.isoformat(), "heure": t.heure, "titre": t.titre, "notes": t.notes,
                     "sport": t.activity_type.nom if t.activity_type else None}
@@ -339,6 +481,7 @@ def build_context(db: Session, user: User, today: date) -> dict:
         f"pesees_{WEIGHT_DAYS}_jours": pesees,
         "forme_garmin": forme,
         "taches_passees": passees,
+        f"seances_programme_vs_realise_{PAST_DAYS}_jours": programme_vs_realise(db, user, today),
         f"taches_et_seances_a_venir_{NEXT_DAYS}_jours": a_venir,
         "frigo": frigo,
         "bilan_precedent": previous_report(db, user, today),
@@ -408,6 +551,7 @@ def response_schema(sports: list[str], exercises: list[str] | None = None) -> di
         "type": "object",
         "properties": {
             "remarques": {**markdown, "description": "Ce que je remarque sur les derniers jours"},
+            "recap_seances": {**markdown, "description": "Dernières séances par rapport au programme (vide sans séance prévue)"},
             "sante_recuperation": {**markdown, "description": "Récupération, sommeil et santé globale"},
             "ameliorations": {**markdown, "description": "Conseils pour s'améliorer"},
             "suivi_plan": {**markdown, "description": "Où elle en est par rapport au jalon en cours de son plan (vide sans plan)"},
@@ -455,7 +599,8 @@ def response_schema(sports: list[str], exercises: list[str] | None = None) -> di
                 },
             },
         },
-        "required": ["remarques", "sante_recuperation", "ameliorations", "suivi_plan", "ajuster_jalons", "recettes", "activites"],
+        "required": ["remarques", "recap_seances", "sante_recuperation", "ameliorations", "suivi_plan", "ajuster_jalons",
+                     "recettes", "activites"],
         "additionalProperties": False,
     }
 
@@ -546,6 +691,7 @@ def clean_result(data: dict, sports: set[str], week: tuple[date, date]) -> dict:
     activites.sort(key=lambda a: a["date"])
     return {
         "remarques": str(data.get("remarques") or "").strip(),
+        "recap_seances": str(data.get("recap_seances") or "").strip(),
         "sante_recuperation": str(data.get("sante_recuperation") or "").strip(),
         "ameliorations": str(data.get("ameliorations") or "").strip(),
         "suivi_plan": str(data.get("suivi_plan") or "").strip(),
@@ -559,6 +705,10 @@ def to_markdown(result: dict) -> str:
     """Version texte du bilan (gardée en base, lisible telle quelle)."""
     parts = [
         "## Ce que je remarque sur les derniers jours", result["remarques"],
+    ]
+    if result.get("recap_seances"):
+        parts += ["## Tes séances vs le programme", result["recap_seances"]]
+    parts += [
         "## Santé & récupération", result["sante_recuperation"],
         "## Pour t'améliorer", result["ameliorations"],
     ]
