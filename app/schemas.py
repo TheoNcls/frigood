@@ -1,6 +1,6 @@
 import json
 from typing import Literal
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import date as date_type, datetime as datetime_type
 
 
@@ -696,6 +696,11 @@ class FitnessMetricRead(BaseModel):
     synced_at: datetime_type | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CoachManualIn(BaseModel):
+    """Réponse d'une autre IA, collée telle quelle (le JSON du bilan, avec ou sans texte autour)."""
+    texte: str = Field(min_length=2, max_length=200_000)
 
 
 class CoachReportRead(BaseModel):

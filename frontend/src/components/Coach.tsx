@@ -1,12 +1,16 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CalendarPlus, Check, ChefHat, ClipboardCheck, HeartPulse, Lightbulb, Lock, Search, Sparkles, Target } from "lucide-react";
+import {
+  AlertTriangle, CalendarPlus, Check, ChefHat, ClipboardCheck, ClipboardPaste, FileUp, HeartPulse, Lightbulb, Lock, Search, Sparkles, Target,
+} from "lucide-react";
 import { api } from "../api/client";
 import { useCurrentUser } from "../auth/AuthContext";
 import type { SeanceStep, StrengthExercise } from "../api/types";
 import { ExercisesList, SeanceSteps } from "./Seance";
 import { formatLong, todayISO } from "../lib/dates";
+import CopyPromptButton from "./CopyPrompt";
+import Modal from "./Modal";
 import { useToast } from "./Toast";
 import { Card, Segmented, Spinner } from "./ui";
 
@@ -131,6 +135,7 @@ function CoachContent() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [showData, setShowData] = useState(false);
+  const [manual, setManual] = useState(false);
 
   // Le week-end : deux onglets (ce week-end = semaine en cours, semaine prochaine) ; en semaine : la semaine en cours
   const weekend = [0, 6].includes(new Date().getDay());
@@ -218,10 +223,34 @@ function CoachContent() {
         )}
       </div>
 
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-dashed border-slate-200 pt-3">
+        <p className="w-full text-xs text-slate-500">
+          Avec une autre IA (ChatGPT, Claude.ai, Gemini…) : copie le texte qu'aurait reçu le coach, colle-le dans l'IA, puis importe sa réponse.
+        </p>
+        <CopyPromptButton
+          className="btn-secondary py-1.5 text-sm"
+          load={() => api<{ texte: string }>(`/users/${user.id}/coach/prompt`, { method: "POST", query: { semaine } }).then((x) => x.texte)}
+        />
+        <button type="button" className="btn-secondary py-1.5 text-sm" onClick={() => setManual(true)}>
+          <ClipboardPaste className="h-4 w-4" /> Nouveau bilan manuel
+        </button>
+      </div>
+      {manual && (
+        <ManualReportModal
+          semaine={semaine}
+          weekLabel={semaine === "prochaine" ? `la semaine du ${ddmm(nextMonday)}` : "cette semaine"}
+          onClose={() => setManual(false)}
+          onDone={(rep) => {
+            queryClient.setQueryData(["coach", user.id, target], rep);
+            queryClient.invalidateQueries({ queryKey: ["coach_weeks", user.id] });
+          }}
+        />
+      )}
+
       {report.isLoading ? <Spinner /> : r && (
         <div className="mt-4 border-t border-slate-100 pt-3">
           <div className="mb-2 text-xs text-slate-500">
-            Bilan du {at!.toLocaleDateString("fr-FR")} à {at!.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            {r.model === MANUAL_MODEL ? "Bilan importé d'une autre IA" : "Bilan"} du {at!.toLocaleDateString("fr-FR")} à {at!.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
             {r.semaine_cible && at! < new Date(`${r.semaine_cible}T00:00`) && ` · pour la semaine du ${ddmm(new Date(`${r.semaine_cible}T12:00`))}`}
           </div>
           {r.donnees ? <StructuredReport report={r} /> : <CoachText text={r.texte} />}
@@ -236,6 +265,65 @@ function CoachContent() {
         ) : null}
       </details>
     </Card>
+  );
+}
+
+const MANUAL_MODEL = "autre IA";   // bilan fait ailleurs, importé (même nom côté serveur)
+
+/** Réponse d'une autre IA, collée ou chargée en fichier : enregistrée comme un bilan du coach (aucun appel à Claude). */
+function ManualReportModal({ semaine, weekLabel, onClose, onDone }: {
+  semaine: "courante" | "prochaine";
+  weekLabel: string;
+  onClose: () => void;
+  onDone: (report: CoachReport) => void;
+}) {
+  const user = useCurrentUser();
+  const toast = useToast();
+  const [text, setText] = useState("");
+  const save = useMutation({
+    mutationFn: () => api<{ bilan: CoachReport; seances_ignorees: number }>(`/users/${user.id}/coach/manuel`, {
+      method: "POST", query: { semaine }, body: { texte: text },
+    }),
+    onSuccess: (res) => {
+      onDone(res.bilan);
+      toast(res.seances_ignorees
+        ? `Bilan importé : ${res.seances_ignorees} séance(s) écartée(s) (hors de la semaine ou sport inconnu)`
+        : "Bilan importé");
+      onClose();
+    },
+    onError: (e) => toast(e.message, "error"),
+  });
+
+  return (
+    <Modal title="Nouveau bilan manuel" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <p className="text-slate-600">
+          Colle toute la réponse de l'IA (le bloc JSON), ou charge son fichier. Le bilan s'affiche comme celui du coach,
+          pour {weekLabel}, et tu peux ajouter ses séances à l'agenda. Il ne compte pas comme ton bilan Claude de la semaine.
+        </p>
+        <textarea
+          className="input min-h-[12rem] font-mono text-xs"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder='```json&#10;{ "remarques": "…", "recap_seances": "…", … }&#10;```'
+          aria-label="Réponse de l'IA"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="btn-secondary cursor-pointer">
+            <FileUp className="h-4 w-4" /> Charger le fichier
+            <input
+              type="file"
+              accept=".json,.txt,application/json,text/plain"
+              className="sr-only"
+              onChange={async (e) => { const f = e.target.files?.[0]; if (f) setText(await f.text()); }}
+            />
+          </label>
+          <button type="button" className="btn-primary" disabled={!text.trim() || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? "Import…" : "Importer le bilan"}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

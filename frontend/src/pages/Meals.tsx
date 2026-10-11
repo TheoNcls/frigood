@@ -10,10 +10,11 @@ import FoodThumb from "../components/FoodThumb";
 import { DishPicker, PrepareRecipeModal } from "../components/Preparation";
 import QuickMeals, { copyOf, useAddMeals } from "../components/QuickMeals";
 import { useToast } from "../components/Toast";
-import { Card, Empty, ErrorMessage, Field, MacroTile, PageHeader, Segmented, Spinner } from "../components/ui";
+import DayNutritionTiles from "../components/DayNutrition";
+import { Card, Empty, ErrorMessage, Field, PageHeader, Segmented, Spinner } from "../components/ui";
 import { formatLong, todayISO } from "../lib/dates";
 import {
-  MOMENTS, MOMENT_LABELS, defaultMoment, describeLog, fmt, logMacros, totalMacros,
+  MOMENTS, MOMENT_LABELS, defaultMoment, describeLog, fmt, logMacros,
 } from "../lib/nutrition";
 import { usePickerIngredients, useUsageCounts } from "../lib/usage";
 
@@ -113,7 +114,6 @@ export default function Meals() {
   }
 
   const logs = [...(meals.data ?? [])].sort((a, b) => MOMENTS.indexOf(a.moment) - MOMENTS.indexOf(b.moment));
-  const total = totalMacros(logs, ingredients.byId, recipes.byId);
   const preview = logMacros(
     {
       recipe_id: kind === "recette" ? dish?.recipe_id ?? null : null,
@@ -140,12 +140,8 @@ export default function Meals() {
       />
 
       <Card title="Bilan du jour">
-        <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-          <MacroTile label="Calories" value={total.cal} target={user.calories_cible} unit="kcal" />
-          <MacroTile label="Protéines" value={total.prot} target={user.proteines_cible} unit="g" />
-          <MacroTile label="Glucides" value={total.gluc} target={user.glucides_cible} unit="g" />
-          <MacroTile label="Lipides" value={total.lip} target={user.lipides_cible} unit="g" />
-        </div>
+        {/* Comme à l'accueil : nutriments suivis en plus, et chaque tuile montre ce qui l'apporte */}
+        <DayNutritionTiles logs={logs} showRemaining={date === todayISO()} dateLabel={date === todayISO() ? "Aujourd'hui" : formatLong(date)} />
       </Card>
 
       <QuickMeals date={date} moment={moment} />

@@ -13,6 +13,7 @@ import { usePreferences } from "../lib/preferences";
 import { fmt } from "../lib/nutrition";
 import { todayISO } from "../lib/dates";
 import { CoachText } from "../components/Coach";
+import CopyPromptButton from "../components/CopyPrompt";
 import { GarminSettingsCard } from "../components/Garmin";
 import { WeighInsCard, useLatestWeight } from "../components/Body";
 import { Card, Field, PageHeader, Spinner } from "../components/ui";
@@ -318,6 +319,14 @@ function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
   });
 
   const title = <div id="plan" className="label mb-1 scroll-mt-4">Mon plan vers mes objectifs</div>;
+  // Le texte qu'aurait reçu le coach, pour une autre IA : sa réponse se colle avec « Modifier » / « L'écrire moi-même »
+  const copyPrompt = (className: string) => user.coach_access && (
+    <CopyPromptButton
+      className={className}
+      label="Texte pour une autre IA"
+      load={() => api<{ texte: string }>(`/users/${user.id}/plan/prompt`, { method: "POST" }).then((x) => x.texte)}
+    />
+  );
   // Une nouvelle génération (autorisée par l'administration) remplace le texte actuel
   const canGenerate = user.coach_access && !user.plan_genere_at;
   const generatedOn = user.plan_genere_at
@@ -377,6 +386,7 @@ function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
             <button type="button" className="btn-secondary py-1.5" onClick={() => { setText(plan); setEditing(true); }}>
               <Pencil className="h-4 w-4" /> Modifier
             </button>
+            {copyPrompt("btn-secondary py-1.5")}
           </div>
         </div>
         {generate.isPending && <div className="mt-3 rounded-xl bg-violet-50 px-3 py-2"><Spinner label="Le coach prépare ton nouveau plan (1 à 2 minutes)…" /></div>}
@@ -407,6 +417,7 @@ function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
           <button type="button" className="btn-secondary" onClick={() => { setText(""); setEditing(true); }}>
             <Pencil className="h-4 w-4" /> L'écrire moi-même
           </button>
+          {copyPrompt("btn-secondary")}
         </div>
       )}
       <p className="mt-2 text-xs text-slate-500">

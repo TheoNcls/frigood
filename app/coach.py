@@ -2,6 +2,8 @@
 import json
 import logging
 import os
+import re
+import unicodedata
 from collections import defaultdict
 from datetime import date, timedelta
 
@@ -19,6 +21,7 @@ from app.models import (
 log = logging.getLogger("frigood.coach")
 
 MODEL = "claude-sonnet-5-5"   # Sonnet 5.5 : 2 $ / 10 $ par million de tokens (Opus 5.5 : 4 $ / 20 $)
+MANUAL_MODEL = "autre IA"     # bilan fait ailleurs (texte copié, réponse collée) : aucun appel à Claude
 PAST_DAYS = 14        # santé Garmin, forme, tâches passées
 MEAL_DAYS = 7         # repas : la semaine écoulée suffit (contexte plus léger)
 ACTIVITY_DAYS = 42    # activités : 6 semaines pour juger la charge et la progression
@@ -612,6 +615,60 @@ def context_today(context: dict) -> date:
         return date.today()
 
 
+def user_message(context: dict, sports: list[str], week: tuple[date, date]) -> str:
+    return (
+        # Séances qui commencent après aujourd'hui : c'est la semaine prochaine, préparée le week-end
+        ("C'est le week-end : fais-moi mon bilan et prépare ma semaine prochaine. " if week[0] > context_today(context) else "Fais-moi mon bilan. ")
+        + f"Séances à proposer entre le {week[0].isoformat()} et le {week[1].isoformat()} inclus.\n"
+        f"Sports possibles : {', '.join(sports)}.\n\nVoici mes données Frigood (JSON) :\n\n"
+        + json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
+    )
+
+
+def external_prompt(context: dict, sports: list[str], week: tuple[date, date], exercises: list[str] | None = None) -> str:
+    """Tout ce que reçoit le coach, en un texte à coller dans une autre IA (ChatGPT, Claude.ai, Gemini…),
+    avec le format de réponse que l'appli sait relire."""
+    sports = sorted(set(sports)) or ["Course à pied"]
+    schema = json.dumps(response_schema(sports, exercises), ensure_ascii=False, separators=(",", ":"))
+    return (
+        SYSTEM_PROMPT
+        + "\n\n---\n\n" + user_message(context, sports, week)
+        + "\n\n---\n\nRéponds UNIQUEMENT avec un objet JSON, dans un bloc ```json (ou un fichier .json), conforme à ce schéma JSON :\n"
+        + schema
+        + "\nLes textes sont en Markdown simple (listes à puces, gras) ; les dates au format AAAA-MM-JJ ; "
+          "« etapes » et « exercices » sont des listes vides quand ils ne s'appliquent pas."
+    )
+
+
+def _norm(s: str) -> str:
+    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode().lower().strip()
+
+
+def parse_external(text: str, sports: list[str], week: tuple[date, date]) -> tuple[dict, int]:
+    """Lit la réponse collée d'une autre IA : (bilan nettoyé, nombre de séances écartées)."""
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text or "", re.I)
+    body = fence.group(1) if fence else (text or "")
+    start, end = body.find("{"), body.rfind("}")
+    if start < 0 or end <= start:
+        raise CoachError("Aucun bloc JSON trouvé : colle toute la réponse de l'IA")
+    try:
+        data = json.loads(body[start:end + 1])
+    except ValueError:
+        raise CoachError("La réponse n'est pas un JSON valide : recopie bien tout le bloc donné par l'IA")
+    if not isinstance(data, dict):
+        raise CoachError("La réponse doit être un objet JSON (le bilan)")
+    # Noms de sport à peu près justes (« course a pied ») : ramenés à ceux de l'appli
+    known = {_norm(s): s for s in sports}
+    proposed = [a for a in data.get("activites") or [] if isinstance(a, dict)]
+    for a in proposed:
+        a["sport"] = known.get(_norm(str(a.get("sport") or "")), a.get("sport"))
+    data["activites"] = proposed
+    result = clean_result(data, set(sports), week)
+    if not any(result[k] for k in ("remarques", "recap_seances", "sante_recuperation", "ameliorations", "activites")):
+        raise CoachError("Aucun bilan trouvé dans la réponse (remarques, conseils ou séances)")
+    return result, len(proposed) - len(result["activites"])
+
+
 def ask_claude(context: dict, sports: list[str], week: tuple[date, date],
                exercises: list[str] | None = None) -> tuple[dict, dict]:
     """Renvoie (bilan structuré, infos d'usage). Lève CoachError avec un message lisible."""
@@ -622,13 +679,6 @@ def ask_claude(context: dict, sports: list[str], week: tuple[date, date],
 
     client = anthropic.Anthropic(api_key=api_key)
     sports = sorted(set(sports)) or ["Course à pied"]
-    user_message = (
-        # Séances qui commencent après aujourd'hui : c'est la semaine prochaine, préparée le week-end
-        ("C'est le week-end : fais-moi mon bilan et prépare ma semaine prochaine. " if week[0] > context_today(context) else "Fais-moi mon bilan. ")
-        + f"Séances à proposer entre le {week[0].isoformat()} et le {week[1].isoformat()} inclus.\n"
-        f"Sports possibles : {', '.join(sports)}.\n\nVoici mes données Frigood (JSON) :\n\n"
-        + json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
-    )
     try:
         # Streaming : la réponse peut prendre un moment (évite les délais d'attente HTTP)
         with client.beta.messages.stream(
@@ -640,7 +690,7 @@ def ask_claude(context: dict, sports: list[str], week: tuple[date, date],
             # Repli automatique sur un autre modèle si celui-ci décline la demande
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
-            messages=[{"role": "user", "content": user_message}],
+            messages=[{"role": "user", "content": user_message(context, sports, week)}],
         ) as stream:
             message = stream.get_final_message()
     except anthropic.AuthenticationError:
@@ -667,6 +717,15 @@ def ask_claude(context: dict, sports: list[str], week: tuple[date, date],
         raise CoachError("Réponse du coach illisible, réessaie")
     usage = {"model": message.model, "input_tokens": message.usage.input_tokens, "output_tokens": message.usage.output_tokens}
     return clean_result(data, set(sports), week), usage
+
+
+def _texts(v) -> list[str]:
+    return [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
+
+
+def _recipe(r: dict) -> dict:
+    return {"titre": str(r["titre"]).strip()[:200], "pourquoi": str(r.get("pourquoi") or "").strip()[:500],
+            "ingredients": _texts(r.get("ingredients"))[:30], "etapes": _texts(r.get("etapes"))[:30]}
 
 
 def clean_result(data: dict, sports: set[str], week: tuple[date, date]) -> dict:
@@ -696,26 +755,19 @@ def clean_result(data: dict, sports: set[str], week: tuple[date, date]) -> dict:
         "ameliorations": str(data.get("ameliorations") or "").strip(),
         "suivi_plan": str(data.get("suivi_plan") or "").strip(),
         "ajuster_jalons": str(data.get("ajuster_jalons") or "").strip() or None,
-        "recettes": [r for r in (data.get("recettes") or [])[:2] if isinstance(r, dict) and r.get("titre")],
+        "recettes": [_recipe(r) for r in (data.get("recettes") or [])[:2] if isinstance(r, dict) and r.get("titre")],
         "activites": activites,
     }
 
 
 def to_markdown(result: dict) -> str:
     """Version texte du bilan (gardée en base, lisible telle quelle)."""
-    parts = [
-        "## Ce que je remarque sur les derniers jours", result["remarques"],
-    ]
-    if result.get("recap_seances"):
-        parts += ["## Tes séances vs le programme", result["recap_seances"]]
-    parts += [
-        "## Santé & récupération", result["sante_recuperation"],
-        "## Pour t'améliorer", result["ameliorations"],
-    ]
-    if result.get("suivi_plan"):
-        parts += ["## Ton plan", result["suivi_plan"]]
-    if result.get("ajuster_jalons"):
-        parts += ["## Ajuster tes jalons ?", result["ajuster_jalons"]]
+    parts = []
+    for title, key in (("Ce que je remarque sur les derniers jours", "remarques"), ("Tes séances vs le programme", "recap_seances"),
+                       ("Santé & récupération", "sante_recuperation"), ("Pour t'améliorer", "ameliorations"),
+                       ("Ton plan", "suivi_plan"), ("Ajuster tes jalons ?", "ajuster_jalons")):
+        if result.get(key):   # pas de titre pour une section vide
+            parts += [f"## {title}", result[key]]
     if result["recettes"]:
         parts.append("## Recettes")
         for r in result["recettes"]:

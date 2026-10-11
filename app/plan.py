@@ -137,6 +137,23 @@ def build_plan_context(db: Session, user: User, today: date) -> dict:
     }
 
 
+def plan_message(context: dict) -> str:
+    return (
+        f"Prépare mon plan à long terme vers mes objectifs. Nous sommes le {context_today(context).isoformat()}.\n\n"
+        "Voici mes données Frigood (JSON) :\n\n"
+        + json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
+    )
+
+
+def external_plan_prompt(context: dict) -> str:
+    """Le même texte que pour le coach, à coller dans une autre IA ; sa réponse se colle dans « Modifier »."""
+    return (
+        SYSTEM_PROMPT + "\n\n---\n\n" + plan_message(context)
+        + "\n\n---\n\nRéponds uniquement avec le plan, en Markdown, exactement dans le format décrit plus haut "
+          "(titres « ### Bloc … · jj/mm → jj/mm », lignes « - **Volume** : … », « **Sports comptés** : … »), sans texte autour."
+    )
+
+
 def ask_plan(context: dict) -> tuple[str, dict]:
     """Renvoie (plan en Markdown, infos d'usage). Lève CoachError avec un message lisible."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -145,11 +162,6 @@ def ask_plan(context: dict) -> tuple[str, dict]:
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
-    user_message = (
-        f"Prépare mon plan à long terme vers mes objectifs. Nous sommes le {context_today(context).isoformat()}.\n\n"
-        "Voici mes données Frigood (JSON) :\n\n"
-        + json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
-    )
     try:
         with client.beta.messages.stream(
             model=MODEL,
@@ -159,7 +171,7 @@ def ask_plan(context: dict) -> tuple[str, dict]:
             output_config={"effort": "high"},
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
-            messages=[{"role": "user", "content": user_message}],
+            messages=[{"role": "user", "content": plan_message(context)}],
         ) as stream:
             message = stream.get_final_message()
     except anthropic.AuthenticationError:

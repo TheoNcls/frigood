@@ -8,7 +8,7 @@ from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
 from app.models import ActivityType, CoachReport, Task, User
 from app.push_service import local_date, now_local
-from app.schemas import CoachActivitiesAdd, CoachReportRead, UserRead
+from app.schemas import CoachActivitiesAdd, CoachManualIn, CoachReportRead, UserRead
 
 router = APIRouter(tags=["coach"], dependencies=[Depends(get_principal)])
 
@@ -25,9 +25,13 @@ def _target_of(report: CoachReport) -> date | None:
 
 
 def _targets(db: Session, user_id: int) -> set:
-    """Semaines déjà préparées (anciens bilans sans semaine : la semaine où ils ont été faits)."""
+    """Semaines déjà préparées par Claude (anciens bilans sans semaine : la semaine où ils ont été faits).
+    Les bilans d'une autre IA ne comptent pas : ils ne coûtent rien et n'empêchent pas le bilan Claude."""
     out = set()
-    for semaine_cible, created_at in db.query(CoachReport.semaine_cible, CoachReport.created_at).filter_by(user_id=user_id):
+    for semaine_cible, created_at, model in (db.query(CoachReport.semaine_cible, CoachReport.created_at, CoachReport.model)
+                                             .filter_by(user_id=user_id)):
+        if model == coach.MANUAL_MODEL:
+            continue
         if semaine_cible:
             out.add(semaine_cible)
         elif created_at:
@@ -79,6 +83,57 @@ def preview_context(user_id: int, principal: Principal = Depends(get_principal),
     return coach.build_context(db, user, now_local().date())
 
 
+def _week(today: date, semaine: str) -> tuple[date, date]:
+    next_week = semaine == "prochaine"
+    if next_week and not coach.is_weekend(today):
+        raise HTTPException(status_code=400, detail="La semaine prochaine se prépare le week-end (samedi ou dimanche)")
+    return coach.week_window(today, next_week)
+
+
+@router.post("/users/{user_id}/coach/prompt")
+def external_prompt(user_id: int, semaine: str = Query(default="courante", pattern="^(courante|prochaine)$"),
+                    principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Le texte complet envoyé au coach (consignes, données, format de réponse) pour le coller dans une autre IA.
+    Comme pour un vrai bilan, les tours manquants de quelques séances prévues sont récupérés sur Garmin."""
+    user = _user(db, user_id, principal)
+    today = now_local().date()
+    week = _week(today, semaine)
+    context = coach.build_context(db, user, today, fetch_laps=True)
+    sports = [t.nom for t in db.query(ActivityType).all()]
+    return {"texte": coach.external_prompt(context, sports, week, exercises_for(user.materiel))}
+
+
+@router.post("/users/{user_id}/coach/manuel")
+def manual_report(user_id: int, data: CoachManualIn,
+                  semaine: str = Query(default="courante", pattern="^(courante|prochaine)$"),
+                  principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Bilan fait par une autre IA : sa réponse est relue et enregistrée comme un bilan (aucun appel à Claude)."""
+    user = _user(db, user_id, principal)
+    today = now_local().date()
+    week = _week(today, semaine)
+    sports = [t.nom for t in db.query(ActivityType).all()]
+    try:
+        result, ignored = coach.parse_external(data.texte, sports, week)
+    except coach.CoachError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    report = CoachReport(
+        user_id=user_id, texte=coach.to_markdown(result), donnees=json.dumps(result, ensure_ascii=False),
+        model=coach.MANUAL_MODEL, contexte=json.dumps(coach.build_context(db, user, today), ensure_ascii=False, default=str),
+        semaine_cible=week[0] - timedelta(days=week[0].weekday()),
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return {"bilan": CoachReportRead.model_validate(report, from_attributes=True), "seances_ignorees": ignored}
+
+
+@router.post("/users/{user_id}/plan/prompt")
+def external_plan_prompt(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Le texte envoyé au coach pour écrire le plan, à coller dans une autre IA (sa réponse se colle dans « Modifier »)."""
+    user = _user(db, user_id, principal)
+    return {"texte": plan.external_plan_prompt(plan.build_plan_context(db, user, now_local().date()))}
+
+
 @router.post("/users/{user_id}/coach/", response_model=CoachReportRead)
 def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^(courante|prochaine)$"),
                principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
@@ -86,9 +141,7 @@ def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^
     user = _user(db, user_id, principal)
     today = now_local().date()
     next_week = semaine == "prochaine"
-    if next_week and not coach.is_weekend(today):
-        raise HTTPException(status_code=400, detail="La semaine prochaine se prépare le week-end (samedi ou dimanche)")
-    week = coach.week_window(today, next_week)
+    week = _week(today, semaine)
     target = week[0] - timedelta(days=week[0].weekday())   # lundi de la semaine préparée
     if target in _targets(db, user_id):
         # Un bilan par semaine préparée (chaque bilan coûte un appel à Claude)
