@@ -109,8 +109,12 @@ function MilestoneProgress({ jalon }: { jalon: PlanMilestone }) {
     text: `${fmt(jalon.plus_longue_sortie.km, 1)} / ${fmt(c.sortie_longue_km, 1)} km${c.sortie_longue_d_plus ? ` · ${fmt(jalon.plus_longue_sortie.d_plus_m)} / ${fmt(c.sortie_longue_d_plus)} m D+` : ""}`,
   });
 
-  // Détail du bloc : tout sauf le volume et la sortie longue, déjà en barres de progression
-  const details = jalon.lignes.filter((l) => !rows.length || !/volume|sortie longue/i.test(l));
+  // Détail du bloc : tout sauf les lignes Volume et Sortie longue (déjà en barres de progression), le But en premier.
+  // Seul l'intitulé compte : un But ou des Séances clés qui parlent de sortie longue restent affichés.
+  const label = (l: string) => l.replace(/^[*_\s]+/, "").toLowerCase();
+  const details = jalon.lignes
+    .filter((l) => !rows.length || !/^(volume|sortie longue)\b/.test(label(l)))
+    .sort((a, b) => Number(label(b).startsWith("but")) - Number(label(a).startsWith("but")));
 
   return (
     <div className="space-y-2.5">

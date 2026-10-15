@@ -116,7 +116,7 @@ export default function DaySummary({ date, onClose }: { date: string; onClose: (
                         <span className="font-semibold text-slate-900">{fmt(value)}</span>
                         <span className="text-slate-500">{target ? ` / ${fmt(target)}` : ""} {unit}</span>
                       </div>
-                      {target ? <ProgressBar value={value} max={target} over={value > target} /> : null}
+                      {target ? <ProgressBar value={value} max={target} over={value > target} showPercent /> : null}
                     </div>
                   ))}
                 </div>

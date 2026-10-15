@@ -33,14 +33,29 @@ export function PageHeader({ title, subtitle, action }: { title: ReactNode; subt
   );
 }
 
-export function ProgressBar({ value, max, over = false }: { value: number; max: number; over?: boolean }) {
+/** showPercent : pourcentage de l'objectif à droite de la barre (nutrition). */
+export function ProgressBar({ value, max, over = false, showPercent = false }: {
+  value: number;
+  max: number;
+  over?: boolean;
+  showPercent?: boolean;
+}) {
   const pct = max > 0 ? Math.min(value / max, 1) * 100 : 0;
-  return (
+  const bar = (
     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
       <div
         className={`h-full rounded-full transition-all ${over ? "bg-red-500" : "bg-brand-500"}`}
         style={{ width: `${pct}%` }}
       />
+    </div>
+  );
+  if (!showPercent || max <= 0) return bar;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="min-w-0 flex-1">{bar}</div>
+      <span className={`shrink-0 text-[11px] font-medium tabular-nums ${over ? "text-red-600" : "text-slate-500"}`}>
+        {fmt((value / max) * 100)} %
+      </span>
     </div>
   );
 }
@@ -74,7 +89,7 @@ export function MacroTile({ label, value, target, unit, showRemaining = false, d
         {hasTarget && <span className="text-sm text-slate-500"> / {fmt(target, decimals)} {unit}</span>}
         {!hasTarget && <span className="text-sm text-slate-500"> {unit}</span>}
       </div>
-      {hasTarget && <ProgressBar value={value} max={target} over={goal === "max" && over} />}
+      {hasTarget && <ProgressBar value={value} max={target} over={goal === "max" && over} showPercent />}
       {hasTarget && showRemaining && (goal === "min" ? (
         <div className={`text-xs ${remaining <= 0 ? "text-emerald-600" : "text-slate-500"}`}>
           {remaining <= 0 ? "✓ objectif atteint" : `${fmt(remaining, decimals)} ${unit} pour l'objectif`}
