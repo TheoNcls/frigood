@@ -12,6 +12,7 @@ class NutrimentCreate(BaseModel):
 
 class NutrimentRead(NutrimentCreate):
     id: int
+    created_at: datetime_type | None = None
 
     model_config = {"from_attributes": True}
 
@@ -127,6 +128,8 @@ class IngredientCreate(IngredientBase):
 
 class IngredientRead(IngredientBase):
     id: int
+    created_at: datetime_type | None = None
+    updated_at: datetime_type | None = None
     valide: bool = True
     created_by: int = 0
     created_by_nom: str | None = None
@@ -168,6 +171,8 @@ class RecipeCreate(BaseModel):
 
 class RecipeRead(RecipeCreate):
     id: int
+    created_at: datetime_type | None = None
+    updated_at: datetime_type | None = None
     valide: bool = True
     created_by: int = 0
     created_by_nom: str | None = None
@@ -211,6 +216,7 @@ class ActivityCreate(BaseModel):
 class ActivityRead(ActivityCreate):
     id: int
     user_id: int
+    created_at: datetime_type | None = None
     activity_type: ActivityTypeRead | None = None
     model_config = {"from_attributes": True}
 
@@ -458,6 +464,7 @@ class MealLogCreate(BaseModel):
 class MealLogRead(BaseModel):
     id: int
     user_id: int
+    created_at: datetime_type | None = None
     date: date_type
     moment: str
     recipe_id: int | None = None
@@ -493,6 +500,8 @@ class FridgeItemUpdate(BaseModel):
 class FridgeItemRead(BaseModel):
     id: int
     user_id: int
+    created_at: datetime_type | None = None
+    updated_at: datetime_type | None = None
     ingredient_id: int | None = None
     recipe_id: int | None = None
     quantite: float
@@ -571,6 +580,8 @@ class TaskCreate(TaskBase):
 
 class TaskRead(TaskBase):
     id: int
+    created_at: datetime_type | None = None
+    updated_at: datetime_type | None = None
     par_coach: bool = False
     model_config = {"from_attributes": True}
 
@@ -660,6 +671,8 @@ class BodyCompositionUpdate(BaseModel):
 
 class BodyCompositionRead(BaseModel):
     id: int
+    created_at: datetime_type | None = None
+    updated_at: datetime_type | None = None
     date: date_type
     mesure_at: datetime_type | None = None
     poids_kg: float
@@ -738,6 +751,7 @@ class AdminUserRead(BaseModel):
     id: int
     nom: str
     email: str
+    created_at: datetime_type | None = None   # inscription (vide pour les comptes les plus anciens)
     is_admin: bool = False
     coach_autorise: bool = False
     coach_access: bool = False

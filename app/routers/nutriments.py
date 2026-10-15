@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -53,7 +54,8 @@ def _own_ingredient(db: Session, ingredient_id: int, principal: Principal) -> In
 @router.post("/ingredients/{ingredient_id}/nutriments/", response_model=IngredientNutrimentRead)
 def add_nutriment_to_ingredient(ingredient_id: int, data: IngredientNutrimentCreate,
                                 principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    _own_ingredient(db, ingredient_id, principal)
+    ingredient = _own_ingredient(db, ingredient_id, principal)
+    ingredient.updated_at = datetime.utcnow()
     # Déjà associé : on met à jour la valeur plutôt que de créer un doublon
     lien = db.query(IngredientNutriment).filter_by(ingredient_id=ingredient_id, nutriment_id=data.nutriment_id).first()
     if lien:
@@ -70,12 +72,13 @@ def add_nutriment_to_ingredient(ingredient_id: int, data: IngredientNutrimentCre
 @router.delete("/ingredients/{ingredient_id}/nutriments/{nutriment_id}")
 def remove_nutriment_from_ingredient(ingredient_id: int, nutriment_id: int,
                                      principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    _own_ingredient(db, ingredient_id, principal)
+    ingredient = _own_ingredient(db, ingredient_id, principal)
     lien = db.query(IngredientNutriment).filter_by(
         ingredient_id=ingredient_id, nutriment_id=nutriment_id
     ).first()
     if not lien:
         raise HTTPException(status_code=404, detail="Nutriment non trouvé pour cet ingrédient")
     db.delete(lien)
+    ingredient.updated_at = datetime.utcnow()
     db.commit()
     return {"message": "Nutriment retiré"}

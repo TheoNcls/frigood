@@ -10,6 +10,8 @@ class Ingredient(Base):
     __tablename__ = "ingredients"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)   # dernière modification
     nom = Column(String, nullable=False, unique=True)
     # Visible par tout le monde une fois validé ; sinon seulement par la personne qui l'a créé
     valide = Column(Boolean, nullable=False, default=True, server_default=true())
@@ -48,6 +50,7 @@ class Nutriment(Base):
     __tablename__ = "nutriments"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     nom = Column(String, nullable=False, unique=True)
     unite = Column(String, nullable=False, default="g")
 
@@ -58,6 +61,7 @@ class IngredientNutriment(Base):
     __tablename__ = "ingredient_nutriments"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=False)
     nutriment_id = Column(Integer, ForeignKey("nutriments.id"), nullable=False)
     valeur = Column(Float, nullable=False)
@@ -71,6 +75,8 @@ class Recipe(Base):
     __tablename__ = "recipes"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)   # dernière modification
     nom = Column(String, nullable=False, unique=True)
     # Visible par tout le monde une fois validé ; sinon seulement par la personne qui l'a créé
     valide = Column(Boolean, nullable=False, default=True, server_default=true())
@@ -94,6 +100,7 @@ class RecipeIngredient(Base):
     __tablename__ = "recipe_ingredients"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     recipe_id = Column(Integer, ForeignKey("recipes.id"), nullable=False)
     ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=False)
     quantite = Column(Float, nullable=False)
@@ -109,6 +116,7 @@ class ActivityType(Base):
     __tablename__ = "activity_types"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     nom = Column(String, nullable=False, unique=True)
     description = Column(String, nullable=True)
     met_value = Column(Float, nullable=True)
@@ -122,6 +130,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     nom = Column(String, nullable=False)
     email = Column(String, nullable=False, unique=True)
     password_hash = Column(String, nullable=False)
@@ -217,6 +226,7 @@ class MealLog(Base):
     __tablename__ = "meal_logs"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     date = Column(Date, nullable=False)
     moment = Column(String, nullable=False)
@@ -238,6 +248,7 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     date = Column(Date, nullable=False)
     activity_type_id = Column(Integer, ForeignKey("activity_types.id"), nullable=True)
@@ -261,6 +272,7 @@ class DailyStat(Base):
     __tablename__ = "daily_stats"
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     date = Column(Date, nullable=False)
 
@@ -327,6 +339,7 @@ class FridgeItem(Base):
     __tablename__ = "fridge_items"
 
     id = Column(Integer, primary_key=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)   # dernière modification
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=True)
     recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=True)
@@ -392,6 +405,7 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id = Column(Integer, primary_key=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)   # dernière modification
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     titre = Column(String(200), nullable=False)
     notes = Column(String, nullable=True)
@@ -463,6 +477,7 @@ class BodyComposition(Base):
     __table_args__ = (UniqueConstraint("user_id", "garmin_sample_pk", name="uq_body_comp_sample"),)
 
     id = Column(Integer, primary_key=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)   # dernière modification
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
     mesure_at = Column(DateTime, nullable=True)            # UTC, si l'heure est connue
@@ -488,6 +503,7 @@ class FitnessMetric(Base):
     __table_args__ = (UniqueConstraint("user_id", "date", name="uq_fitness_day"),)
 
     id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne (vide pour les plus anciennes)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     date = Column(Date, nullable=False)
     readiness_score = Column(Integer, nullable=True)       # disposition à l'entraînement, 0-100

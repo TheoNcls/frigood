@@ -67,6 +67,9 @@ export interface IngredientNutriment {
 
 export interface Ingredient {
   id: number;
+  /** Création et dernière modification (UTC) ; vides pour les lignes antérieures à ces champs */
+  created_at?: string | null;
+  updated_at?: string | null;
   nom: string;
   description: string | null;
   categorie: string | null;
@@ -169,6 +172,9 @@ export interface RecipeIngredient {
 
 export interface Recipe {
   id: number;
+  /** Création et dernière modification (UTC) ; vides pour les lignes antérieures à ces champs */
+  created_at?: string | null;
+  updated_at?: string | null;
   nom: string;
   description: string | null;
   categorie: string | null;

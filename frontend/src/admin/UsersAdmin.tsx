@@ -10,6 +10,8 @@ interface AdminUser {
   id: number;
   nom: string;
   email: string;
+  /** Inscription (vide pour les comptes créés avant ce champ) */
+  created_at: string | null;
   is_admin: boolean;
   coach_autorise: boolean;
   coach_access: boolean;
@@ -83,6 +85,7 @@ export default function UsersAdmin() {
                   </div>
                   <div className="truncate text-sm text-slate-500">{u.email}</div>
                   <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    {u.created_at && <span>Inscrit le {dateFr(u.created_at)}</span>}
                     <span>{u.garmin_connected ? "⌚ Garmin connecté" : "Pas de Garmin"}</span>
                     <span>
                       {u.bilans_coach ? `${u.bilans_coach} bilan(s) coach · dernier le ${dateFr(u.dernier_bilan_at!)}` : "Aucun bilan coach"}

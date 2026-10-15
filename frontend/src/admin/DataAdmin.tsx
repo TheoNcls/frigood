@@ -26,6 +26,10 @@ async function fetchCatalog() {
   return { ingredients, recipes, nutriments };
 }
 
+/** Date du jour (heure locale) pour Excel, ou vide si inconnue. */
+const excelDate = (s: string | null | undefined) =>
+  s ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s}Z`).toLocaleDateString("fr-FR") : null;
+
 async function exportAll() {
   const XLSX = await loadXlsx();
   const { ingredients, recipes, nutriments } = await fetchCatalog();
@@ -38,15 +42,18 @@ async function exportAll() {
     Glucides: i.glucides, Lipides: i.lipides, "Unité": i.unite, "Quantité défaut": i.quantite_defaut, "Poids total": i.poids_paquet,
     "Conservation (jours)": i.duree_conservation, "Nutri-Score": i.nutriscore?.toUpperCase() ?? null,
     "Green-Score": i.greenscore ? GREENSCORE_LABELS[i.greenscore] : null, NOVA: i.nova, "Régime": i.regime,
-    Composition: i.composition, "Créé par": i.created_by_nom,
-  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Poids total", "Conservation (jours)", "Nutri-Score", "Green-Score", "NOVA", "Régime", "Composition", "Créé par"]);
+    Composition: i.composition, "Créé par": i.created_by_nom, "Ajouté le": excelDate(i.created_at), "Modifié le": excelDate(i.updated_at),
+  })), "Ingrédients", ["Nom", "Description", "Catégorie", "Calories", "Protéines", "Glucides", "Lipides", "Unité", "Quantité défaut", "Poids total", "Conservation (jours)", "Nutri-Score", "Green-Score", "NOVA", "Régime", "Composition", "Créé par", "Ajouté le", "Modifié le"]);
 
   sheet(recipes.flatMap((r) => {
-    const base = { Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation, "Créé par": r.created_by_nom };
+    const base = {
+      Recette: r.nom, Description: r.description, "Catégorie": r.categorie, Portions: r.portions, "Temps préparation (min)": r.temps_preparation,
+      "Créé par": r.created_by_nom, "Ajouté le": excelDate(r.created_at), "Modifié le": excelDate(r.updated_at),
+    };
     return r.ingredients.length
       ? r.ingredients.map((ri) => ({ ...base, "Ingrédient": ri.ingredient.nom, "Quantité": ri.quantite, "Type mesure": ri.type_mesure, "Unité": ri.ingredient.unite, "Par défaut": ri.par_defaut ? "oui" : "non" }))
       : [base];
-  }), "Recettes", ["Recette", "Description", "Catégorie", "Portions", "Temps préparation (min)", "Ingrédient", "Quantité", "Type mesure", "Unité", "Par défaut", "Créé par"]);
+  }), "Recettes", ["Recette", "Description", "Catégorie", "Portions", "Temps préparation (min)", "Ingrédient", "Quantité", "Type mesure", "Unité", "Par défaut", "Créé par", "Ajouté le", "Modifié le"]);
 
   sheet(nutriments.map((x) => ({ Nom: x.nom, "Unité": x.unite })), "Nutriments", ["Nom", "Unité"]);
 

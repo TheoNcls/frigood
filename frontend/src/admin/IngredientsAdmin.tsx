@@ -16,7 +16,7 @@ import BarcodeScanner from "../components/BarcodeScanner";
 import AiImport from "./AiImport";
 import IngredientForm from "./IngredientForm";
 import { SOURCE_LABELS, createIngredient, parseNum, useInvalidateCatalog, type SourceType } from "./catalog";
-import { OwnerBadges, ScopeFilter, canEditItem, inScope, type CatalogMode, type CatalogScope } from "./CatalogBits";
+import { OwnerBadges, ScopeFilter, addedText, canEditItem, inScope, type CatalogMode, type CatalogScope } from "./CatalogBits";
 
 export default function IngredientsAdmin({ mode = "admin" }: { mode?: CatalogMode }) {
   const me = useCurrentUser();
@@ -331,7 +331,8 @@ function IngredientView({ ingredient: i }: { ingredient: Ingredient }) {
       )}
       {i.composition && <p className="text-xs text-slate-500">Composition : {i.composition}</p>}
       <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        Ingrédient du catalogue{i.created_by_nom ? `, ajouté par ${i.created_by_nom}` : ""} : tu peux l'utiliser, mais seuls tes propres ingrédients sont modifiables.
+        Ingrédient du catalogue : tu peux l'utiliser, mais seuls tes propres ingrédients sont modifiables.
+        {addedText(i) && <span className="mt-0.5 block">{addedText(i)}.</span>}
       </p>
     </div>
   );
@@ -387,9 +388,9 @@ function EditIngredient({ ingredient, onDeleted }: { ingredient: Ingredient; onD
           À valider : visible seulement par {ingredient.created_by_nom ?? "la personne qui l'a ajouté"} pour l'instant.
         </p>
       )}
-      {(ingredient.sources.length > 0 || ingredient.created_by_nom) && (
+      {(ingredient.sources.length > 0 || addedText(ingredient)) && (
         <div className="text-xs text-slate-500">
-          {ingredient.created_by_nom && <span className="mr-2">Ajouté par {ingredient.created_by_nom}.</span>}
+          {addedText(ingredient) && <span className="mr-2">{addedText(ingredient)}.</span>}
           {ingredient.sources.length > 0 && "Source : "}
           {ingredient.sources.map((s) => (
             <span key={s.id} className="mr-2">

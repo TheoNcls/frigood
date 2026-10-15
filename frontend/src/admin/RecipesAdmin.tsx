@@ -11,7 +11,7 @@ import { useToast } from "../components/Toast";
 import { Card, ConfirmButton, Empty, Field, Segmented, Spinner, Stat } from "../components/ui";
 import { fmt, recipeMacros } from "../lib/nutrition";
 import { parseNum, useInvalidateCatalog } from "./catalog";
-import { OwnerBadges, ScopeFilter, canEditItem, inScope, type CatalogMode, type CatalogScope } from "./CatalogBits";
+import { OwnerBadges, ScopeFilter, addedText, canEditItem, inScope, type CatalogMode, type CatalogScope } from "./CatalogBits";
 
 const NO_COUNTS = new Map<number, number>();
 
@@ -202,7 +202,8 @@ function RecipeView({ recipe }: { recipe: Recipe }) {
         </div>
       )}
       <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        Recette du catalogue{recipe.created_by_nom ? `, ajoutée par ${recipe.created_by_nom}` : ""} : tu peux la préparer, mais seules tes propres recettes sont modifiables.
+        Recette du catalogue : tu peux la préparer, mais seules tes propres recettes sont modifiables.
+        {addedText(recipe, true) && <span className="mt-0.5 block">{addedText(recipe, true)}.</span>}
       </p>
     </div>
   );
@@ -236,7 +237,7 @@ function EditRecipe({ recipe, onDeleted }: { recipe: Recipe; onDeleted: () => vo
           À valider : visible seulement par {recipe.created_by_nom ?? "la personne qui l'a ajoutée"} pour l'instant.
         </p>
       )}
-      {recipe.created_by_nom && <p className="text-xs text-slate-500">Ajoutée par {recipe.created_by_nom}.</p>}
+      {addedText(recipe, true) && <p className="text-xs text-slate-500">{addedText(recipe, true)}.</p>}
       <div className="border-t border-slate-200 pt-4">
         <ConfirmButton label="Supprimer la recette" disabled={remove.isPending} onConfirm={() => remove.mutate()} />
       </div>
