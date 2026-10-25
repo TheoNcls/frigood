@@ -26,6 +26,7 @@ PAST_DAYS = 14        # santé Garmin, forme, tâches passées
 MEAL_DAYS = 7         # repas : la semaine écoulée suffit (contexte plus léger)
 ACTIVITY_DAYS = 42    # activités : 6 semaines pour juger la charge et la progression
 NEXT_DAYS = 14        # tâches à venir
+MAX_PER_DAY = 2       # séances proposées par jour : une principale + une courte complémentaire
 LAPS_DAYS = 14        # tours (segments) des activités récentes
 MAX_LAPS = 30
 WEIGHT_DAYS = 90
@@ -60,7 +61,10 @@ Tu réponds dans le format JSON demandé :
 - « recettes » : 1 ou 2 petites recettes simples qui respectent son régime alimentaire, adaptées à ses besoins
   (protéines, objectifs) et, si possible, avec ce qu'il y a dans son frigo (en priorité ce qui périme bientôt).
 - « activites » : les séances de sport que tu conseilles pour la semaine, uniquement entre les dates indiquées
-  (au plus une par jour, jours de repos compris dans ton raisonnement). Choisis le sport parmi la liste fournie.
+  (une séance principale par jour au plus, jours de repos compris dans ton raisonnement). Le même jour, tu peux
+  ajouter une courte séance complémentaire de 10 à 20 min (mobilité, renforcement, prévention ou rééducation)
+  quand c'est utile, par exemple pour une douleur, une blessure ou un point faible, y compris un jour de repos :
+  2 séances par jour au maximum, et jamais deux séances intenses le même jour. Choisis le sport parmi la liste fournie.
   Tiens compte de la récupération, des séances déjà prévues dans ses tâches (ne les duplique pas) et de ses objectifs.
   Le titre est court et précis (ex. « Course tempo 20 min », « Vélo endurance 1 h ») ; le détail décrit la séance
   (échauffement, corps de séance, allure ou zone cardiaque, retour au calme).
@@ -577,7 +581,8 @@ def response_schema(sports: list[str], exercises: list[str] | None = None) -> di
             },
             "activites": {
                 "type": "array",
-                "description": "Séances conseillées pour la semaine, entre les dates indiquées",
+                "description": "Séances conseillées pour la semaine, entre les dates indiquées : au plus 2 par jour "
+                               "(une principale + une courte séance complémentaire)",
                 "items": {
                     "type": "object",
                     "properties": {
@@ -729,16 +734,20 @@ def _recipe(r: dict) -> dict:
 
 
 def clean_result(data: dict, sports: set[str], week: tuple[date, date]) -> dict:
-    """Garde seulement des séances valides (dans la semaine, sport connu, une par jour)."""
-    activites, days = [], set()
+    """Garde seulement des séances valides : dans la semaine, sport connu, pas en double, au plus 2 par jour."""
+    activites, per_day, seen = [], defaultdict(int), set()
     for a in data.get("activites") or []:
         try:
             d = date.fromisoformat(str(a.get("date")))
         except ValueError:
             continue
-        if not (week[0] <= d <= week[1]) or a.get("sport") not in sports or d in days or not str(a.get("titre") or "").strip():
+        titre = str(a.get("titre") or "").strip()
+        if not (week[0] <= d <= week[1]) or a.get("sport") not in sports or not titre:
             continue
-        days.add(d)
+        if per_day[d] >= MAX_PER_DAY or (d, titre.lower()) in seen:
+            continue
+        per_day[d] += 1
+        seen.add((d, titre.lower()))
         duree = a.get("duree_min")
         activites.append({
             "date": d.isoformat(), "sport": a["sport"], "titre": str(a["titre"]).strip()[:200],

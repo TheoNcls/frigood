@@ -291,7 +291,7 @@ function ManualReportModal({ semaine, claude, weekLabel, onClose, onDone }: {
     onSuccess: (res) => {
       onDone(res.bilan);
       toast(res.seances_ignorees
-        ? `Bilan importé : ${res.seances_ignorees} séance(s) écartée(s) (hors de la semaine ou sport inconnu)`
+        ? `Bilan importé : ${res.seances_ignorees} séance(s) écartée(s) (hors de la semaine, sport inconnu, en double ou plus de 2 le même jour)`
         : "Bilan importé");
       onClose();
     },
