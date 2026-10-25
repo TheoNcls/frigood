@@ -409,6 +409,7 @@ class UserRead(BaseModel):
     is_admin: bool = False
     coach_autorise: bool = False
     coach_access: bool = False
+    coach_bilans_bonus: int = 0   # bilans Claude en plus du « un par semaine »
 
     model_config = {"from_attributes": True}
 
@@ -755,6 +756,7 @@ class AdminUserRead(BaseModel):
     is_admin: bool = False
     coach_autorise: bool = False
     coach_access: bool = False
+    coach_bilans_bonus: int = 0   # bilans Claude en plus du « un par semaine »
     garmin_connected: bool = False
     garmin_last_sync_at: datetime_type | None = None
     bilans_coach: int = 0
@@ -768,3 +770,5 @@ class AdminUserUpdate(BaseModel):
     coach_autorise: bool | None = None
     # true : le plan peut être généré une nouvelle fois (le texte actuel reste jusqu'à la nouvelle génération)
     plan_regenerable: bool | None = None
+    # true : un bilan du coach (Claude) de plus, même si celui de la semaine est déjà fait
+    bilan_supplementaire: bool | None = None

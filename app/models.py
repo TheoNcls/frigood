@@ -158,6 +158,8 @@ class User(Base):
     plan_genere_at = Column(DateTime, nullable=True)
     # Accès au coach IA (chaque bilan coûte un appel à Claude) : activé par l'administration
     coach_autorise = Column(Boolean, nullable=False, default=False, server_default=false())
+    # Bilans Claude en plus du « un par semaine », accordés par l'administration (« Autoriser une nouvelle génération »)
+    coach_bilans_bonus = Column(Integer, nullable=False, default=0, server_default="0")
 
     garmin_tokens = Column(String, nullable=True)
     # Zones cardiaques Garmin (profil course) : JSON {zones: [{zone, min, max}], fc_max, …}

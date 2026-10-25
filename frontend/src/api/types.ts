@@ -37,6 +37,8 @@ export interface User {
   /** Coach IA activé par l'administration (l'administration y a toujours accès) */
   coach_autorise: boolean;
   coach_access: boolean;
+  /** Bilans du coach (Claude) en plus du « un par semaine », accordés par l'administration */
+  coach_bilans_bonus?: number;
 }
 
 export interface NutrimentSuivi {

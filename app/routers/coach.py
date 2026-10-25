@@ -146,8 +146,9 @@ def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^
     next_week = semaine == "prochaine"
     week = _week(today, semaine)
     target = week[0] - timedelta(days=week[0].weekday())   # lundi de la semaine préparée
-    if target in _targets(db, user_id):
-        # Un bilan par semaine préparée (chaque bilan coûte un appel à Claude)
+    # Un bilan par semaine préparée (chaque bilan coûte un appel à Claude), sauf bilan en plus accordé par l'administration
+    redo = target in _targets(db, user_id)
+    if redo and not user.coach_bilans_bonus:
         label = "la semaine prochaine" if next_week else "cette semaine"
         raise HTTPException(
             status_code=409,
@@ -168,6 +169,8 @@ def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^
         contexte=json.dumps(context, ensure_ascii=False, default=str), semaine_cible=target,
     )
     db.add(report)
+    if redo:
+        user.coach_bilans_bonus -= 1   # utilisé seulement si le bilan a réussi
     db.commit()
     db.refresh(report)
     return report

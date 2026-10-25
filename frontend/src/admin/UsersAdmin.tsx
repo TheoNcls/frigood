@@ -15,6 +15,7 @@ interface AdminUser {
   is_admin: boolean;
   coach_autorise: boolean;
   coach_access: boolean;
+  coach_bilans_bonus: number;
   garmin_connected: boolean;
   garmin_last_sync_at: string | null;
   bilans_coach: number;
@@ -45,8 +46,11 @@ export default function UsersAdmin() {
     onError: (e) => toast(e.message, "error"),
   });
   const allowPlan = useMutation({
-    mutationFn: (id: number) => api<AdminUser>(`/admin/users/${id}`, { method: "PUT", body: { plan_regenerable: true } }),
-    onSuccess: (u) => { update(u); toast(`${u.nom} peut générer un nouveau plan`); },
+    // Une nouvelle génération du plan et un bilan du coach (Claude) de plus, même si celui de la semaine est fait
+    mutationFn: (id: number) => api<AdminUser>(`/admin/users/${id}`, {
+      method: "PUT", body: { plan_regenerable: true, bilan_supplementaire: true },
+    }),
+    onSuccess: (u) => { update(u); toast(`${u.nom} peut refaire un bilan du coach et générer un nouveau plan`); },
     onError: (e) => toast(e.message, "error"),
   });
 
@@ -97,10 +101,16 @@ export default function UsersAdmin() {
                       {u.plan_genere_at ? `Plan généré le ${dateFr(u.plan_genere_at)}`
                         : u.a_un_plan ? "Plan écrit à la main · génération possible" : "Pas de plan · génération possible"}
                     </span>
-                    {u.plan_genere_at && (
+                    {u.coach_bilans_bonus > 0 && (
+                      <span className="text-violet-700">
+                        · {u.coach_bilans_bonus} bilan{u.coach_bilans_bonus > 1 ? "s" : ""} coach en plus autorisé{u.coach_bilans_bonus > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {(u.coach_access || u.plan_genere_at) && (
                       <button type="button" className="font-medium text-violet-700 hover:underline disabled:opacity-50"
-                        disabled={allowPlan.isPending} onClick={() => allowPlan.mutate(u.id)}>
-                        Autoriser une nouvelle génération
+                        disabled={allowPlan.isPending} onClick={() => allowPlan.mutate(u.id)}
+                        title="Un nouveau plan et un bilan du coach de plus (préparer la semaine, nouveau bilan), même si celui de la semaine est fait">
+                        Autoriser une nouvelle génération (plan + bilan)
                       </button>
                     )}
                   </div>

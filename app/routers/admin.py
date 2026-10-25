@@ -36,6 +36,8 @@ def update_user(user_id: int, data: AdminUserUpdate, db: Session = Depends(get_d
         user.coach_autorise = data.coach_autorise
     if data.plan_regenerable:
         user.plan_genere_at = None
+    if data.bilan_supplementaire:
+        user.coach_bilans_bonus = (user.coach_bilans_bonus or 0) + 1
     db.commit()
     db.refresh(user)
     return _read(user, _coach_stats(db))

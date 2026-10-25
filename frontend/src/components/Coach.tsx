@@ -5,7 +5,7 @@ import {
   AlertTriangle, CalendarPlus, Check, ChefHat, ClipboardCheck, ClipboardPaste, FileUp, HeartPulse, Lightbulb, Lock, Search, Sparkles, Target,
 } from "lucide-react";
 import { api } from "../api/client";
-import { useCurrentUser } from "../auth/AuthContext";
+import { useAuth, useCurrentUser } from "../auth/AuthContext";
 import type { SeanceStep, StrengthExercise } from "../api/types";
 import { ExercisesList, SeanceSteps } from "./Seance";
 import { formatLong, todayISO } from "../lib/dates";
@@ -123,6 +123,9 @@ function CoachContent() {
   // Chaque bilan Claude coûte un appel : il est activé compte par compte par l'administration.
   // Le bilan avec une autre IA (texte copié, réponse importée) ne coûte rien : ouvert à tous.
   const claude = user.coach_access;
+  const { refreshUser } = useAuth();
+  // Bilans en plus accordés par l'administration : permettent de refaire celui d'une semaine déjà faite
+  const bonus = user.coach_bilans_bonus ?? 0;
   const toast = useToast();
   const queryClient = useQueryClient();
   const [showData, setShowData] = useState(false);
@@ -158,6 +161,7 @@ function CoachContent() {
     onSuccess: (r) => {
       queryClient.setQueryData(["coach", user.id, target], r);
       queryClient.invalidateQueries({ queryKey: ["coach_weeks", user.id] });
+      if (doneTarget) refreshUser();   // un bilan en plus vient d'être utilisé
       toast(semaine === "prochaine" ? "Ta semaine prochaine est prête" : "Ton bilan est prêt");
     },
     onError: (e) => toast(e.message, "error"),
@@ -205,14 +209,20 @@ function CoachContent() {
         </p>
       )}
       {claude && <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className="btn-primary" disabled={ask.isPending || doneTarget || weeks.isLoading} onClick={() => ask.mutate()}>
+        <button type="button" className="btn-primary" disabled={ask.isPending || (doneTarget && !bonus) || weeks.isLoading} onClick={() => ask.mutate()}>
           <Sparkles className="h-4 w-4" />
           {ask.isPending ? "Le coach analyse tes données…"
-            : semaine === "prochaine" ? "Préparer ma semaine prochaine"
-              : r ? "Nouveau bilan" : "Demander mon bilan"}
+            : doneTarget && bonus ? (semaine === "prochaine" ? "Refaire ma semaine prochaine" : "Refaire mon bilan")
+              : semaine === "prochaine" ? "Préparer ma semaine prochaine"
+                : r ? "Nouveau bilan" : "Demander mon bilan"}
         </button>
         {ask.isPending && <span className="text-xs text-slate-500">Compte jusqu'à une minute.</span>}
-        {doneTarget && !ask.isPending && (
+        {doneTarget && bonus > 0 && !ask.isPending && (
+          <span className="text-xs text-violet-700">
+            Déjà fait, mais l'administrateur t'autorise {bonus > 1 ? `${bonus} bilans de plus` : "un bilan de plus"}.
+          </span>
+        )}
+        {doneTarget && !bonus && !ask.isPending && (
           <span className="text-xs text-slate-500">
             {semaine === "prochaine"
               ? `Semaine du ${ddmm(nextMonday)} déjà préparée.`
