@@ -40,12 +40,15 @@ def _targets(db: Session, user_id: int) -> set:
     return out
 
 
-def _user(db: Session, user_id: int, principal: Principal) -> User:
+def _user(db: Session, user_id: int, principal: Principal, claude: bool = False) -> User:
+    """claude=True : l'action appelle Claude (bilan, génération du plan), réservée aux comptes activés par
+    l'administration. Le reste (bilans enregistrés, texte pour une autre IA, bilan manuel) est ouvert à tous."""
     check_user_access(principal, user_id)
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    _check_coach_access(principal, user)
+    if claude:
+        _check_coach_access(principal, user)
     return user
 
 COACH_NON_AUTORISE = "Le coach IA n'est pas encore activé pour ton compte : demande l'accès à l'administrateur."
@@ -138,7 +141,7 @@ def external_plan_prompt(user_id: int, principal: Principal = Depends(get_princi
 def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^(courante|prochaine)$"),
                principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     """Bilan et séances pour la semaine en cours, ou (le week-end seulement) pour la semaine prochaine."""
-    user = _user(db, user_id, principal)
+    user = _user(db, user_id, principal, claude=True)
     today = now_local().date()
     next_week = semaine == "prochaine"
     week = _week(today, semaine)
@@ -174,7 +177,7 @@ def new_report(user_id: int, semaine: str = Query(default="courante", pattern="^
 def generate_plan(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     """Plan à long terme vers les objectifs, écrit par le coach. Une seule fois (l'administration peut en autoriser
     une nouvelle) : ensuite on le modifie à la main. Une nouvelle génération remplace le texte."""
-    user = _user(db, user_id, principal)
+    user = _user(db, user_id, principal, claude=True)
     if user.plan_genere_at:
         raise HTTPException(status_code=409, detail="Ton plan a déjà été généré : modifie-le directement "
                                                     "(ou demande à l'administrateur d'en autoriser un nouveau)")
@@ -210,7 +213,6 @@ def add_activities(report_id: int, data: CoachActivitiesAdd, principal: Principa
     if not report:
         raise HTTPException(status_code=404, detail="Bilan introuvable")
     check_user_access(principal, report.user_id)
-    _check_coach_access(principal, db.get(User, report.user_id))
     if report.activites_ajoutees_at:
         raise HTTPException(status_code=409, detail="Les activités de ce bilan sont déjà dans l'agenda")
     proposals = (json.loads(report.donnees) if report.donnees else {}).get("activites") or []

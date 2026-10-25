@@ -65,7 +65,8 @@ export default function UsersAdmin() {
       <p className="text-sm text-slate-600">
         <Sparkles className="mr-1 inline h-4 w-4 text-violet-600" />
         Coach IA : {allowed} compte(s) sur {users.data?.length ?? 0}. Désactivé par défaut pour les nouveaux comptes,
-        y compris les comptes admin : chacun s'active ici.
+        y compris les comptes admin : chacun s'active ici. Il ne bloque que Claude (bilan, génération du plan) : le coach et
+        le plan avec une autre IA restent ouverts à tous.
       </p>
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

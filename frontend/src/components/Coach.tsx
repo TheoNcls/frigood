@@ -115,23 +115,14 @@ function fromUtc(s: string): Date {
 const COACH_TITLE = <span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-violet-600" /> Coach</span>;
 
 export function CoachCard() {
-  const user = useCurrentUser();
-  // Chaque bilan coûte un appel à Claude : le coach est activé compte par compte par l'administration
-  if (!user.coach_access) {
-    return (
-      <Card title={COACH_TITLE}>
-        <p className="flex items-start gap-2 text-sm text-slate-600">
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-          Le coach IA n'est pas encore activé pour ton compte. Demande l'accès à l'administrateur de Frigood.
-        </p>
-      </Card>
-    );
-  }
   return <CoachContent />;
 }
 
 function CoachContent() {
   const user = useCurrentUser();
+  // Chaque bilan Claude coûte un appel : il est activé compte par compte par l'administration.
+  // Le bilan avec une autre IA (texte copié, réponse importée) ne coûte rien : ouvert à tous.
+  const claude = user.coach_access;
   const toast = useToast();
   const queryClient = useQueryClient();
   const [showData, setShowData] = useState(false);
@@ -204,7 +195,16 @@ function CoachContent() {
           />
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-3">
+      {!claude && (
+        <p className="mb-3 flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <span>
+            Le bilan par Claude n'est pas activé pour ton compte (à demander à l'administrateur). Tu peux faire ton bilan
+            avec une autre IA : copie le texte, colle-le dans l'IA, puis importe sa réponse.
+          </span>
+        </p>
+      )}
+      {claude && <div className="flex flex-wrap items-center gap-3">
         <button type="button" className="btn-primary" disabled={ask.isPending || doneTarget || weeks.isLoading} onClick={() => ask.mutate()}>
           <Sparkles className="h-4 w-4" />
           {ask.isPending ? "Le coach analyse tes données…"
@@ -221,12 +221,14 @@ function CoachContent() {
                 : `Bilan de la semaine fait. Prochain possible le week-end, pour la semaine du ${ddmm(nextMonday)}.`}
           </span>
         )}
-      </div>
+      </div>}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-dashed border-slate-200 pt-3">
-        <p className="w-full text-xs text-slate-500">
-          Avec une autre IA (ChatGPT, Claude.ai, Gemini…) : copie le texte qu'aurait reçu le coach, colle-le dans l'IA, puis importe sa réponse.
-        </p>
+      <div className={`flex flex-wrap items-center gap-2 ${claude ? "mt-3 border-t border-dashed border-slate-200 pt-3" : ""}`}>
+        {claude && (
+          <p className="w-full text-xs text-slate-500">
+            Avec une autre IA (ChatGPT, Claude.ai, Gemini…) : copie le texte qu'aurait reçu le coach, colle-le dans l'IA, puis importe sa réponse.
+          </p>
+        )}
         <CopyPromptButton
           className="btn-secondary py-1.5 text-sm"
           load={() => api<{ texte: string }>(`/users/${user.id}/coach/prompt`, { method: "POST", query: { semaine } }).then((x) => x.texte)}
@@ -238,6 +240,7 @@ function CoachContent() {
       {manual && (
         <ManualReportModal
           semaine={semaine}
+          claude={claude}
           weekLabel={semaine === "prochaine" ? `la semaine du ${ddmm(nextMonday)}` : "cette semaine"}
           onClose={() => setManual(false)}
           onDone={(rep) => {
@@ -271,8 +274,9 @@ function CoachContent() {
 const MANUAL_MODEL = "autre IA";   // bilan fait ailleurs, importé (même nom côté serveur)
 
 /** Réponse d'une autre IA, collée ou chargée en fichier : enregistrée comme un bilan du coach (aucun appel à Claude). */
-function ManualReportModal({ semaine, weekLabel, onClose, onDone }: {
+function ManualReportModal({ semaine, claude, weekLabel, onClose, onDone }: {
   semaine: "courante" | "prochaine";
+  claude: boolean;
   weekLabel: string;
   onClose: () => void;
   onDone: (report: CoachReport) => void;
@@ -299,7 +303,7 @@ function ManualReportModal({ semaine, weekLabel, onClose, onDone }: {
       <div className="space-y-3 text-sm">
         <p className="text-slate-600">
           Colle toute la réponse de l'IA (le bloc JSON), ou charge son fichier. Le bilan s'affiche comme celui du coach,
-          pour {weekLabel}, et tu peux ajouter ses séances à l'agenda. Il ne compte pas comme ton bilan Claude de la semaine.
+          pour {weekLabel}, et tu peux ajouter ses séances à l'agenda.{claude ? " Il ne compte pas comme ton bilan Claude de la semaine." : ""}
         </p>
         <textarea
           className="input min-h-[12rem] font-mono text-xs"

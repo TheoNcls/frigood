@@ -320,7 +320,7 @@ function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
 
   const title = <div id="plan" className="label mb-1 scroll-mt-4">Mon plan vers mes objectifs</div>;
   // Le texte qu'aurait reçu le coach, pour une autre IA : sa réponse se colle avec « Modifier » / « L'écrire moi-même »
-  const copyPrompt = (className: string) => user.coach_access && (
+  const copyPrompt = (className: string) => (
     <CopyPromptButton
       className={className}
       label="Texte pour une autre IA"
@@ -422,7 +422,7 @@ function PlanSection({ objectivesReady }: { objectivesReady: boolean }) {
       )}
       <p className="mt-2 text-xs text-slate-500">
         {!user.coach_access
-          ? "La génération par le coach demande l'accès au coach IA (à demander à l'administrateur)."
+          ? "La génération par Claude demande l'accès au coach IA (à demander à l'administrateur). Avec une autre IA : « Texte pour une autre IA », puis colle sa réponse avec « L'écrire moi-même »."
           : user.plan_genere_at
             ? "Ton plan a déjà été généré une fois : tu peux en réécrire un toi-même (ou demander une nouvelle génération à l'administrateur)."
             : !objectivesReady
