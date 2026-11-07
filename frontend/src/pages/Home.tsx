@@ -8,7 +8,7 @@ import {
   useDailyStat, useFridge, useHabitLogs, useHabits, useIngredients, useMealLogs, usePlanMilestone, useRecipes, useTasks,
 } from "../api/queries";
 import HabitsToday from "../components/HabitsToday";
-import { isDue } from "../lib/habits";
+import { doneDates, isDue, weekStart } from "../lib/habits";
 import type { PlanMilestone } from "../api/types";
 import { CoachText } from "../components/Coach";
 import DayNutritionTiles from "../components/DayNutrition";
@@ -30,9 +30,9 @@ export default function Home() {
   const fridge = useFridge();
   // Habitudes du jour (si l'onglet est activé) ; tâches du jour : même requête que la carte « Aujourd'hui »
   const habits = useHabits(user.habitudes_active);
-  const habitLogs = useHabitLogs(today, today, user.habitudes_active);
+  const habitLogs = useHabitLogs(weekStart(today), today, user.habitudes_active);   // depuis lundi (objectifs par semaine)
   const showHabits = user.habitudes_active
-    && (habits.list.some((h) => isDue(h, today)) || (habitLogs.data ?? []).some((l) => l.date === today));
+    && (habits.list.some((h) => isDue(h, today, doneDates(habitLogs.data, h.id))) || (habitLogs.data ?? []).some((l) => l.date === today));
   const hasTasks = (useTasks(today, today).data ?? []).length > 0;
   // Clic sur une notification de rappel : /?jour=AAAA-MM-JJ ouvre le résumé de ce jour
   const [params, setParams] = useSearchParams();

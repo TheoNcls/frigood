@@ -351,14 +351,25 @@ def _habits(db: Session, user: User, today: date) -> list[dict] | None:
                    .filter(Habit.user_id == user.id, HabitLog.date >= start, HabitLog.date <= today)):
         done[hid].add(d)
     out = []
+    monday = today - timedelta(days=today.weekday())
+
+    def week(hid: int, m: date) -> int:
+        return sum(1 for d in done[hid] if m <= d <= m + timedelta(days=6))
+
     for h in habits:
+        label = f"{h.emoji} {h.nom}" if h.emoji else h.nom
+        if h.objectif_semaine:
+            # Objectif « X fois par semaine » : où elle en est cette semaine et la précédente
+            out.append({"habitude": label, "objectif_par_semaine": h.objectif_semaine,
+                        "faites_cette_semaine": week(h.id, monday), "faites_semaine_derniere": week(h.id, monday - timedelta(days=7))})
+            continue
         days = {int(c) for c in h.jours or "" if c.isdigit()}
         first = max(start, local_date(h.created_at)) if h.created_at else start
         planned = [first + timedelta(days=i) for i in range((today - first).days + 1)]
         # Aujourd'hui ne compte que si c'est déjà fait : la journée n'est pas finie
         planned = [d for d in planned if d.weekday() in days and (d < today or d in done[h.id])]
         faites = sum(1 for d in planned if d in done[h.id])
-        out.append({"habitude": f"{h.emoji} {h.nom}" if h.emoji else h.nom, "jours": [HABIT_DAYS[d] for d in sorted(days)],
+        out.append({"habitude": label, "jours": [HABIT_DAYS[d] for d in sorted(days)],
                     "faites": faites, "prevues": len(planned),
                     "faites_en_plus": len(done[h.id]) - faites})   # jours non prévus où elle l'a faite quand même
     return out

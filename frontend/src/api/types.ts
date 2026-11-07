@@ -459,6 +459,10 @@ export interface Habit {
   jours: number[];
   /** En pause : gardée avec son historique, mais plus proposée chaque jour */
   active: boolean;
+  /** Objectif « X fois par semaine » (n'importe quels jours) à la place des jours précis ; null = jours précis */
+  objectif_semaine: number | null;
+  /** Rappel par notification « HH:MM », les jours où elle est à faire */
+  rappel_heure: string | null;
   created_at: string | null;
   updated_at: string | null;
 }

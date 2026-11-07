@@ -43,7 +43,8 @@ def add_habit(user_id: int, data: HabitCreate, principal: Principal = Depends(ge
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if db.query(Habit).filter_by(user_id=user_id).count() >= MAX_HABITS:
         raise HTTPException(status_code=400, detail=f"{MAX_HABITS} habitudes au maximum")
-    habit = Habit(user_id=user_id, nom=data.nom, emoji=data.emoji, jours=_days_text(data.jours))
+    habit = Habit(user_id=user_id, nom=data.nom, emoji=data.emoji, jours=_days_text(data.jours),
+                  objectif_semaine=data.objectif_semaine, rappel_heure=data.rappel_heure)
     db.add(habit)
     db.commit()
     db.refresh(habit)
@@ -52,7 +53,7 @@ def add_habit(user_id: int, data: HabitCreate, principal: Principal = Depends(ge
 
 @router.put("/habits/{id}", response_model=HabitRead)
 def update_habit(id: int, data: HabitUpdate, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    """Renommer, changer les jours, mettre en pause / reprendre."""
+    """Renommer, changer les jours ou l'objectif, le rappel, mettre en pause / reprendre."""
     habit = _own_habit(db, id, principal)
     if data.nom is not None:
         habit.nom = data.nom
@@ -62,6 +63,11 @@ def update_habit(id: int, data: HabitUpdate, principal: Principal = Depends(get_
         habit.jours = _days_text(data.jours)
     if data.active is not None:
         habit.active = data.active
+    if "objectif_semaine" in data.model_fields_set:
+        habit.objectif_semaine = data.objectif_semaine
+    if "rappel_heure" in data.model_fields_set and data.rappel_heure != habit.rappel_heure:
+        habit.rappel_heure = data.rappel_heure
+        habit.rappel_envoye_le = None   # nouvelle heure : le rappel peut repartir aujourd'hui
     db.commit()
     db.refresh(habit)
     return habit

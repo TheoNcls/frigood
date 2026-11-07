@@ -1,12 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Circle, Sprout } from "lucide-react";
+import { Sprout } from "lucide-react";
 import { api } from "../api/client";
 import { useHabitLogs, useHabits } from "../api/queries";
 import type { Habit, HabitLog } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { todayISO } from "../lib/dates";
-import { habitLabel, isDue } from "../lib/habits";
+import { doneDates, habitLabel, isDue, isGoal, weekCount, weekStart } from "../lib/habits";
 import { useToast } from "./Toast";
 
 /** Cocher une habitude (aujourd'hui ou un jour oublié) et annuler : partagé par l'accueil et l'onglet Habitudes. */
@@ -45,19 +45,22 @@ export function useHabitLogActions() {
   return { mark, undo };
 }
 
-/** Accueil : les habitudes du jour, un bouton chacune, qui disparaît une fois cochée. */
+/** Accueil : les habitudes du jour, une case cliquable chacune, qui disparaît une fois cochée. */
 export default function HabitsToday() {
   const today = todayISO();
   const habits = useHabits();
-  const logs = useHabitLogs(today, today);
+  // Depuis lundi : pour les objectifs « X fois par semaine »
+  const logs = useHabitLogs(weekStart(today), today);
   const { mark } = useHabitLogActions();
 
-  const done = new Set((logs.data ?? []).filter((l) => l.date === today).map((l) => l.habit_id));
-  const due = habits.list.filter((h) => isDue(h, today));
-  const todo = due.filter((h) => !done.has(h.id));
-  const doneList = habits.list.filter((h) => done.has(h.id));
-  if (!due.length && !doneList.length) return null;
-  const count = due.filter((h) => done.has(h.id)).length;
+  const rows = habits.list.map((h) => {
+    const done = doneDates(logs.data, h.id);
+    return { h, done, doneToday: done.has(today), due: isDue(h, today, done) };
+  });
+  const todo = rows.filter((r) => r.due && !r.doneToday);
+  const doneList = rows.filter((r) => r.doneToday).map((r) => r.h);
+  const counted = rows.filter((r) => r.due);
+  if (!counted.length && !doneList.length) return null;
 
   return (
     <section className="card">
@@ -65,21 +68,25 @@ export default function HabitsToday() {
         <div className="flex items-center gap-2">
           <Sprout className="h-5 w-5 text-emerald-600" />
           <h2 className="card-title mb-0">Habitudes</h2>
-          {due.length > 0 && <span className="text-xs font-medium text-slate-500">{count}/{due.length}</span>}
+          {counted.length > 0 && (
+            <span className="text-xs font-medium text-slate-500">{counted.filter((r) => r.doneToday).length}/{counted.length}</span>
+          )}
         </div>
         <Link to="/habitudes" className="text-sm font-medium text-brand-700">Tout voir →</Link>
       </div>
       {todo.length > 0 ? (
         <div className="flex flex-col gap-2">
-          {todo.map((h) => (
+          {todo.map(({ h, done }) => (
             <button
               key={h.id}
               type="button"
-              className="flex w-full items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-slate-800 transition hover:bg-emerald-50 active:scale-[0.98]"
+              className="flex w-full items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-slate-800 transition hover:bg-emerald-50 active:scale-[0.98]"
               onClick={() => mark.mutate({ habit: h, date: today })}
             >
-              <Circle className="h-4 w-4 shrink-0 text-emerald-500" />
               <span className="min-w-0 truncate">{habitLabel(h)}</span>
+              {isGoal(h) && (
+                <span className="shrink-0 text-xs font-normal text-slate-400">{weekCount(done, today)}/{h.objectif_semaine} sem.</span>
+              )}
             </button>
           ))}
         </div>

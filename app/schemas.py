@@ -801,13 +801,38 @@ def _habit_emoji(v):
     return (v or "").strip() or None
 
 
+def _habit_goal(v):
+    """Objectif par semaine : 1 à 7 fois, ou vide (jours précis)."""
+    if v is not None and not 1 <= v <= 7:
+        raise ValueError("Objectif : de 1 à 7 fois par semaine")
+    return v
+
+
+def _habit_time(v):
+    """Heure du rappel « HH:MM », ou vide (pas de rappel)."""
+    v = (v or "").strip()
+    if not v:
+        return None
+    try:
+        hh, mm = (int(x) for x in v.split(":"))
+    except ValueError:
+        raise ValueError("Heure du rappel au format HH:MM")
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        raise ValueError("Heure du rappel au format HH:MM")
+    return f"{hh:02d}:{mm:02d}"
+
+
 class HabitCreate(BaseModel):
     nom: str = Field(min_length=1, max_length=80)
     emoji: str | None = Field(default=None, max_length=16)
     jours: list[int] = Field(default_factory=lambda: list(range(7)))
+    objectif_semaine: int | None = None   # « 3 fois par semaine » : les jours ne comptent plus
+    rappel_heure: str | None = None
 
     _nom = field_validator("nom")(_habit_name)
     _emoji = field_validator("emoji")(_habit_emoji)
+    _goal = field_validator("objectif_semaine")(_habit_goal)
+    _time = field_validator("rappel_heure")(_habit_time)
 
     @field_validator("jours")
     @classmethod
@@ -823,9 +848,13 @@ class HabitUpdate(BaseModel):
     emoji: str | None = Field(default=None, max_length=16)   # null : enlever l'emoji
     jours: list[int] | None = None
     active: bool | None = None
+    objectif_semaine: int | None = None   # null : revenir aux jours précis
+    rappel_heure: str | None = None       # null : plus de rappel
 
     _nom = field_validator("nom")(_habit_name)
     _emoji = field_validator("emoji")(_habit_emoji)
+    _goal = field_validator("objectif_semaine")(_habit_goal)
+    _time = field_validator("rappel_heure")(_habit_time)
 
     @field_validator("jours")
     @classmethod
@@ -842,6 +871,8 @@ class HabitRead(BaseModel):
     emoji: str | None = None
     jours: list[int]
     active: bool = True
+    objectif_semaine: int | None = None
+    rappel_heure: str | None = None
     created_at: datetime_type | None = None
     updated_at: datetime_type | None = None
 

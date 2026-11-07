@@ -570,6 +570,10 @@ class Habit(Base):
     nom = Column(String(80), nullable=False)
     emoji = Column(String(16), nullable=True)
     jours = Column(String(7), nullable=False, default="0123456")   # jours prévus : 0 = lundi … 6 = dimanche
+    # Objectif « X fois par semaine » (n'importe quels jours) à la place des jours précis ; vide = jours précis
+    objectif_semaine = Column(Integer, nullable=True)
+    rappel_heure = Column(String(5), nullable=True)      # notification « HH:MM » les jours où elle est à faire
+    rappel_envoye_le = Column(Date, nullable=True)       # un rappel par jour au plus
     # En pause : gardée (avec son historique) mais plus proposée chaque jour
     active = Column(Boolean, nullable=False, default=True, server_default=true())
 

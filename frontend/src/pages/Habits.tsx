@@ -1,18 +1,22 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil, Plus, Undo2 } from "lucide-react";
+import { Bell, Check, Pencil, Plus, Undo2 } from "lucide-react";
 import { api } from "../api/client";
 import { useHabitLogs, useHabits } from "../api/queries";
 import type { Habit, HabitLog } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { useHabitLogActions } from "../components/HabitsToday";
+import Modal from "../components/Modal";
 import { useToast } from "../components/Toast";
-import { Card, ConfirmButton, Empty, PageHeader, Spinner } from "../components/ui";
+import { Card, ConfirmButton, Empty, PageHeader, ProgressBar, Segmented, Spinner } from "../components/ui";
 import { addDays, parseISODate, todayISO } from "../lib/dates";
-import { DAY_LABELS, habitLabel, habitStats, isDue } from "../lib/habits";
+import { DAY_LABELS, doneDates, habitLabel, habitStats, isDue, isGoal } from "../lib/habits";
+import { currentSubscription } from "../lib/push";
 
 const HISTORY_DAYS = 14;
-const STATS_DAYS = 60;   // série : jusqu'à 60 jours en arrière
+const GOAL_HISTORY_DAYS = 7;   // objectif par semaine : les oublis ne se rattrapent que sur 7 jours
+const STATS_DAYS = 60;         // séries : jusqu'à 60 jours en arrière
+const DEFAULT_REMINDER = "19:00";
 
 // Pour démarrer vite : nom et emoji pré-remplis (modifiables)
 const SUGGESTIONS = [
@@ -49,68 +53,155 @@ function DaysPicker({ value, onChange, disabled = false }: { value: number[]; on
   );
 }
 
+/** Objectif « X fois par semaine » : 1 à 7. */
+function GoalPicker({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="grid grid-cols-7 gap-1" role="group" aria-label="Fois par semaine">
+      {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+        <button
+          key={n}
+          type="button"
+          aria-pressed={n === value}
+          onClick={() => onChange(n)}
+          className={`rounded-lg py-1.5 text-xs font-semibold transition ${
+            n === value ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+          }`}
+        >
+          {n}×
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function useInvalidateHabits() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: ["habits"] });
 }
 
-function NewHabit() {
+/** Les notifications sont-elles activées sur cet appareil ? (pour prévenir que le rappel n'arrivera pas) */
+function usePushActive(): boolean | null {
+  const [active, setActive] = useState<boolean | null>(null);
+  useEffect(() => {
+    currentSubscription().then((s) => setActive(!!s)).catch(() => setActive(false));
+  }, []);
+  return active;
+}
+
+/** Création ou modification d'une habitude (fenêtre) : jours précis ou objectif par semaine, et rappel. */
+function HabitFormModal({ habit, onClose }: { habit?: Habit; onClose: () => void }) {
   const user = useCurrentUser();
   const toast = useToast();
   const invalidate = useInvalidateHabits();
-  const [nom, setNom] = useState("");
-  const [emoji, setEmoji] = useState("");
-  const [jours, setJours] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
-  const add = useMutation({
-    mutationFn: () => api<Habit>(`/users/${user.id}/habits/`, { method: "POST", body: { nom: nom.trim(), emoji: emoji.trim() || null, jours } }),
+  const pushActive = usePushActive();
+  const [nom, setNom] = useState(habit?.nom ?? "");
+  const [emoji, setEmoji] = useState(habit?.emoji ?? "");
+  const [mode, setMode] = useState<"jours" | "objectif">(habit && isGoal(habit) ? "objectif" : "jours");
+  const [jours, setJours] = useState<number[]>(habit?.jours ?? [0, 1, 2, 3, 4, 5, 6]);
+  const [goal, setGoal] = useState(habit?.objectif_semaine ?? 3);
+  const [reminder, setReminder] = useState(!!habit?.rappel_heure);
+  const [heure, setHeure] = useState(habit?.rappel_heure ?? DEFAULT_REMINDER);
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body = {
+        nom: nom.trim(), emoji: emoji.trim() || null, jours,
+        objectif_semaine: mode === "objectif" ? goal : null,
+        rappel_heure: reminder && heure ? heure : null,
+      };
+      return habit
+        ? api<Habit>(`/habits/${habit.id}`, { method: "PUT", body })
+        : api<Habit>(`/users/${user.id}/habits/`, { method: "POST", body });
+    },
     onSuccess: (h) => {
       invalidate();
-      toast(`${habitLabel(h)} ajoutée`);
-      setNom(""); setEmoji(""); setJours([0, 1, 2, 3, 4, 5, 6]);
+      toast(habit ? `${habitLabel(h)} enregistrée` : `${habitLabel(h)} ajoutée`);
+      onClose();
     },
     onError: (e) => toast(e.message, "error"),
   });
-  const submit = (e: FormEvent) => { e.preventDefault(); if (nom.trim()) add.mutate(); };
+  const submit = (e: FormEvent) => { e.preventDefault(); if (nom.trim()) save.mutate(); };
 
   return (
-    <Card title="Nouvelle habitude">
-      <form onSubmit={submit} className="space-y-3">
-        <div className="flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((s) => (
-            <button key={s.nom} type="button" className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-200"
-              onClick={() => { setNom(s.nom); setEmoji(s.emoji); }}>
-              {s.emoji} {s.nom}
-            </button>
-          ))}
-        </div>
+    <Modal title={habit ? "Modifier l'habitude" : "Nouvelle habitude"} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        {!habit && (
+          <div className="flex flex-wrap gap-1.5">
+            {SUGGESTIONS.map((s) => (
+              <button key={s.nom} type="button" className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-200"
+                onClick={() => { setNom(s.nom); setEmoji(s.emoji); }}>
+                {s.emoji} {s.nom}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
           <input className="input w-14 text-center" value={emoji} maxLength={8} onChange={(e) => setEmoji(e.target.value)}
             placeholder="🙂" aria-label="Emoji (facultatif)" />
           <input className="input min-w-0 flex-1" value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)}
             placeholder="Piano, méditation, lecture…" aria-label="Nom de l'habitude" />
         </div>
-        <DaysPicker value={jours} onChange={setJours} />
-        <button type="submit" className="btn-primary w-full" disabled={!nom.trim() || add.isPending}>
-          <Plus className="h-4 w-4" /> Ajouter l'habitude
+
+        <div className="space-y-2">
+          <Segmented
+            full
+            value={mode}
+            onChange={setMode}
+            options={[{ value: "jours", label: "Jours précis" }, { value: "objectif", label: "Objectif par semaine" }]}
+          />
+          {mode === "jours" ? (
+            <DaysPicker value={jours} onChange={setJours} />
+          ) : (
+            <>
+              <GoalPicker value={goal} onChange={setGoal} />
+              <p className="text-xs text-slate-500">
+                {goal} fois par semaine, les jours que tu veux : proposée chaque jour sur l'accueil jusqu'à ce que l'objectif soit atteint.
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="space-y-2 rounded-xl bg-slate-50 px-3 py-2.5">
+          <label className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium text-slate-800">
+            <span className="inline-flex items-center gap-1.5"><Bell className="h-4 w-4 text-slate-500" /> Rappel par notification</span>
+            <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={reminder} onChange={(e) => setReminder(e.target.checked)}
+              aria-label="Rappel par notification" />
+          </label>
+          {reminder && (
+            <>
+              <input type="time" className="input w-32" value={heure} onChange={(e) => setHeure(e.target.value)} aria-label="Heure du rappel" />
+              <p className="text-xs text-slate-500">
+                Les jours où elle est à faire, si elle n'est pas encore cochée.
+                {pushActive === false && <span className="text-amber-700"> Notifications pas activées sur cet appareil : active-les dans le Profil.</span>}
+              </p>
+            </>
+          )}
+        </div>
+
+        <button type="submit" className="btn-primary w-full" disabled={!nom.trim() || (reminder && !heure) || save.isPending}>
+          {habit ? <><Check className="h-4 w-4" /> Enregistrer</> : <><Plus className="h-4 w-4" /> Ajouter l'habitude</>}
         </button>
       </form>
-    </Card>
+    </Modal>
   );
 }
 
-function HabitRow({ habit, stats }: { habit: Habit; stats: { faites: number; prevues: number; serie: number } }) {
+function HabitRow({ habit, done, today, oldest, onEdit }: {
+  habit: Habit;
+  done: Set<string>;
+  today: string;
+  oldest: string;
+  onEdit: () => void;
+}) {
   const toast = useToast();
   const invalidate = useInvalidateHabits();
-  const [editing, setEditing] = useState(false);
-  const [nom, setNom] = useState(habit.nom);
-  const [emoji, setEmoji] = useState(habit.emoji ?? "");
+  const stats = habitStats(habit, done, today, oldest);
+  const goal = isGoal(habit);
   const update = useMutation({
-    mutationFn: (body: Partial<Pick<Habit, "nom" | "emoji" | "jours" | "active">>) =>
-      api<Habit>(`/habits/${habit.id}`, { method: "PUT", body }),
+    mutationFn: (body: Partial<Pick<Habit, "jours" | "active">>) => api<Habit>(`/habits/${habit.id}`, { method: "PUT", body }),
     onSuccess: (h, body) => {
       invalidate();
       if (body.active !== undefined) toast(h.active ? `${habitLabel(h)} reprise` : `${habitLabel(h)} en pause`);
-      setEditing(false);
     },
     onError: (e) => toast(e.message, "error"),
   });
@@ -123,19 +214,14 @@ function HabitRow({ habit, stats }: { habit: Habit; stats: { faites: number; pre
   return (
     <li className={`space-y-2 py-3 ${habit.active ? "" : "opacity-60"}`}>
       <div className="flex items-start justify-between gap-3">
-        {editing ? (
-          <form className="flex min-w-0 flex-1 gap-2" onSubmit={(e) => { e.preventDefault(); if (nom.trim()) update.mutate({ nom: nom.trim(), emoji: emoji.trim() || null }); }}>
-            <input className="input w-14 text-center" value={emoji} maxLength={8} onChange={(e) => setEmoji(e.target.value)} aria-label="Emoji" />
-            <input className="input min-w-0 flex-1" value={nom} maxLength={80} autoFocus onChange={(e) => setNom(e.target.value)} aria-label="Nom" />
-            <button type="submit" className="btn-primary px-3" aria-label="Enregistrer" disabled={!nom.trim() || update.isPending}><Check className="h-4 w-4" /></button>
-          </form>
-        ) : (
-          <button type="button" className="group flex min-w-0 items-center gap-1.5 text-left" onClick={() => { setNom(habit.nom); setEmoji(habit.emoji ?? ""); setEditing(true); }}>
-            <span className="truncate font-medium text-slate-900">{habitLabel(habit)}</span>
-            {!habit.active && <span className="badge bg-slate-200 text-slate-600">en pause</span>}
-            <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-slate-500" />
-          </button>
-        )}
+        <button type="button" className="group flex min-w-0 flex-wrap items-center gap-1.5 text-left" onClick={onEdit} aria-label={`Modifier ${habit.nom}`}>
+          <span className="truncate font-medium text-slate-900">{habitLabel(habit)}</span>
+          {habit.rappel_heure && (
+            <span className="badge inline-flex items-center gap-0.5 bg-slate-100 text-slate-600"><Bell className="h-3 w-3" /> {habit.rappel_heure}</span>
+          )}
+          {!habit.active && <span className="badge bg-slate-200 text-slate-600">en pause</span>}
+          <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-slate-500" />
+        </button>
         <label className="relative mt-0.5 inline-flex shrink-0 cursor-pointer">
           <input
             type="checkbox"
@@ -150,13 +236,27 @@ function HabitRow({ habit, stats }: { habit: Habit; stats: { faites: number; pre
           <span className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
         </label>
       </div>
-      <DaysPicker value={habit.jours} onChange={(jours) => update.mutate({ jours })} disabled={update.isPending} />
+      {goal ? (
+        <div className="space-y-1">
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-slate-600">Objectif : {habit.objectif_semaine} fois par semaine</span>
+            <span className={`font-semibold ${stats.faites >= stats.prevues ? "text-emerald-700" : "text-slate-800"}`}>
+              {stats.faites >= stats.prevues ? "✓ " : ""}{stats.faites}/{stats.prevues}
+            </span>
+          </div>
+          <ProgressBar value={stats.faites} max={stats.prevues} />
+        </div>
+      ) : (
+        <DaysPicker value={habit.jours} onChange={(jours) => update.mutate({ jours })} disabled={update.isPending} />
+      )}
       <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
         <span>
-          {stats.prevues || stats.faites
-            ? <>Cette semaine : <b className="text-slate-700">{stats.faites}/{stats.prevues}</b></>
-            : "Rien de prévu d'ici dimanche"}
-          {stats.serie > 1 && <> · série de <b className="text-slate-700">{stats.serie}</b> 🔥</>}
+          {goal ? (stats.faites >= stats.prevues ? "Objectif de la semaine atteint" : `Encore ${stats.prevues - stats.faites} cette semaine`)
+            : stats.prevues || stats.faites ? <>Cette semaine : <b className="text-slate-700">{stats.faites}/{stats.prevues}</b></>
+              : "Rien de prévu d'ici dimanche"}
+          {stats.serie > 1 && (goal
+            ? <> · <b className="text-slate-700">{stats.serie}</b> semaines d'affilée 🔥</>
+            : <> · série de <b className="text-slate-700">{stats.serie}</b> 🔥</>)}
         </span>
         <ConfirmButton compact label="Supprimer l'habitude et son historique" confirmLabel="Supprimer" disabled={remove.isPending}
           onConfirm={() => remove.mutate()} />
@@ -169,15 +269,16 @@ const dayTitle = (iso: string, today: string) =>
   iso === today ? "Aujourd'hui" : iso === addDays(today, -1) ? "Hier"
     : parseISODate(iso).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
-/** Les 14 derniers jours : ce qui a été fait (annulable) et ce qui était prévu (à cocher si oublié). */
+/** Les 14 derniers jours : ce qui a été fait (annulable) et ce qui était à faire (à cocher si oublié). */
 function History({ habits, logs, today }: { habits: Habit[]; logs: HabitLog[]; today: string }) {
   const { mark, undo } = useHabitLogActions();
   const byId = new Map(habits.map((h) => [h.id, h]));
+  const doneBy = new Map(habits.map((h) => [h.id, doneDates(logs, h.id)]));
   const days = Array.from({ length: HISTORY_DAYS }, (_, i) => addDays(today, -i));
-  const rows = days.map((d) => {
+  const rows = days.map((d, i) => {
     const done = logs.filter((l) => l.date === d && byId.has(l.habit_id));
     const doneIds = new Set(done.map((l) => l.habit_id));
-    const missed = habits.filter((h) => isDue(h, d) && !doneIds.has(h.id));
+    const missed = habits.filter((h) => !doneIds.has(h.id) && (!isGoal(h) || i < GOAL_HISTORY_DAYS) && isDue(h, d, doneBy.get(h.id)!));
     return { d, done, missed };
   }).filter((r) => r.done.length || r.missed.length);
 
@@ -215,34 +316,32 @@ export default function Habits() {
   const oldest = addDays(today, -(STATS_DAYS - 1));
   const habits = useHabits();
   const logs = useHabitLogs(oldest, today);
+  const [editing, setEditing] = useState<Habit | "new" | null>(null);
 
-  const doneBy = useMemo(() => {
-    const m = new Map<number, Set<string>>();
-    for (const l of logs.data ?? []) {
-      if (!m.has(l.habit_id)) m.set(l.habit_id, new Set());
-      m.get(l.habit_id)!.add(l.date);
-    }
-    return m;
-  }, [logs.data]);
+  const doneBy = useMemo(() => new Map(habits.list.map((h) => [h.id, doneDates(logs.data, h.id)])), [habits.list, logs.data]);
   // Actives d'abord, celles en pause plus bas
   const list = [...habits.list].sort((a, b) => Number(b.active) - Number(a.active) || a.id - b.id);
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Habitudes" subtitle="Tes petites routines : choisis leurs jours, et coche-les chaque jour depuis l'accueil." />
-      <NewHabit />
+      {editing && <HabitFormModal habit={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      <PageHeader
+        title="Habitudes"
+        subtitle="Tes petites routines : coche-les chaque jour depuis l'accueil."
+        action={<button type="button" className="btn-primary" onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Nouvelle habitude</button>}
+      />
       <Card title="Mes habitudes">
         {habits.isLoading ? <Spinner /> : !list.length ? (
-          <Empty>Aucune habitude pour l'instant : ajoute la première ci-dessus.</Empty>
+          <Empty>Aucune habitude pour l'instant : « Nouvelle habitude » pour commencer.</Empty>
         ) : (
           <ul className="divide-y divide-slate-100">
             {list.map((h) => (
-              <HabitRow key={h.id} habit={h} stats={habitStats(h, doneBy.get(h.id) ?? new Set(), today, oldest)} />
+              <HabitRow key={h.id} habit={h} done={doneBy.get(h.id) ?? new Set()} today={today} oldest={oldest} onEdit={() => setEditing(h)} />
             ))}
           </ul>
         )}
         {list.some((h) => !h.active) && (
-          <p className="mt-2 text-xs text-slate-500">En pause : l'habitude et son historique sont gardés, mais elle n'est plus proposée chaque jour.</p>
+          <p className="mt-2 text-xs text-slate-500">En pause : l'habitude et son historique sont gardés, mais elle n'est plus proposée ni rappelée.</p>
         )}
       </Card>
       <Card title={`Historique (${HISTORY_DAYS} derniers jours)`}>

@@ -1,4 +1,4 @@
-"""Notifications push (Web Push / VAPID) et rappels des tâches importantes."""
+"""Notifications push (Web Push / VAPID), rappels des tâches importantes et des habitudes."""
 import json
 import logging
 import os
@@ -7,10 +7,11 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Activity, PushSubscription, Task, TaskCompletion, TaskReminder
+from app.models import Activity, Habit, HabitLog, PushSubscription, Task, TaskCompletion, TaskReminder, User
 
 log = logging.getLogger("frigood.push")
 
@@ -169,6 +170,63 @@ def run_reminders(db: Session, now: datetime | None = None) -> int:
     return sent
 
 
+# --- Rappels des habitudes ---
+
+HABIT_LATE = timedelta(hours=2)   # serveur arrêté à l'heure du rappel : plus la peine après 2 h
+
+
+def habit_week_count(db: Session, habit: Habit, d: date) -> int:
+    """Fois faite dans la semaine (lundi → dimanche) de d."""
+    monday = d - timedelta(days=d.weekday())
+    return db.query(HabitLog).filter(HabitLog.habit_id == habit.id, HabitLog.date >= monday,
+                                     HabitLog.date <= monday + timedelta(days=6)).count()
+
+
+def habit_due(db: Session, habit: Habit, d: date) -> bool:
+    """À faire ce jour-là : jour prévu, ou objectif de la semaine pas encore atteint ; et pas déjà cochée."""
+    if not habit.active or (habit.created_at and d < local_date(habit.created_at)):
+        return False
+    if db.query(HabitLog).filter_by(habit_id=habit.id, date=d).first():
+        return False
+    if habit.objectif_semaine:
+        return habit_week_count(db, habit, d) < habit.objectif_semaine
+    return str(d.weekday()) in (habit.jours or "")
+
+
+def habit_payload(db: Session, habit: Habit, d: date) -> dict:
+    name = f"{habit.emoji} {habit.nom}" if habit.emoji else habit.nom
+    if habit.objectif_semaine:
+        body = f"Cette semaine : {habit_week_count(db, habit, d)}/{habit.objectif_semaine}. Coche-la sur l'accueil une fois faite."
+    else:
+        body = "C'est le moment ! Coche-la sur l'accueil une fois faite."
+    return {"title": f"🌱 {name}", "body": body, "url": "/", "tag": f"habit-{habit.id}-{d.isoformat()}"}
+
+
+def run_habit_reminders(db: Session, now: datetime | None = None) -> int:
+    """Rappel à l'heure choisie (au plus un par jour), seulement si l'habitude est à faire et pas encore cochée."""
+    if not enabled():
+        return 0
+    now = now or now_local()
+    today = now.date()
+    sent = 0
+    habits = (db.query(Habit).join(User, User.id == Habit.user_id)
+              .filter(Habit.rappel_heure.isnot(None), Habit.active.is_(True), User.habitudes_active.is_(True),
+                      or_(Habit.rappel_envoye_le.is_(None), Habit.rappel_envoye_le != today)).all())
+    for h in habits:
+        hh, mm = (int(x) for x in h.rappel_heure.split(":"))
+        at = datetime.combine(today, datetime.min.time()).replace(hour=hh, minute=mm)
+        if not at <= now < at + HABIT_LATE or not habit_due(db, h, today):
+            continue
+        # Réservé avant l'envoi : même lancé deux fois en parallèle, le rappel ne part qu'une fois
+        reserved = (db.query(Habit)
+                    .filter(Habit.id == h.id, or_(Habit.rappel_envoye_le.is_(None), Habit.rappel_envoye_le != today))
+                    .update({Habit.rappel_envoye_le: today}, synchronize_session=False))
+        db.commit()
+        if reserved:
+            sent += send_to_user(db, h.user_id, habit_payload(db, h, today))
+    return sent
+
+
 def start_scheduler():
     """Vérifie les rappels toutes les REMINDERS_INTERVAL secondes, dans un fil d'arrière-plan de l'API."""
     if not enabled() or os.getenv("REMINDERS", "on") == "off":
@@ -180,7 +238,7 @@ def start_scheduler():
         while True:
             try:
                 with SessionLocal() as db:
-                    n = run_reminders(db)
+                    n = run_reminders(db) + run_habit_reminders(db)
                     if n:
                         log.info("%d rappel(s) envoyé(s)", n)
             except Exception:
