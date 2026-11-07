@@ -91,13 +91,13 @@ body::before {
 .fc .fc-task-done .fc-list-event-title {
   text-decoration: line-through;
 }
-/* Tâche pas faite : rose */
+/* Tâche pas faite : rouge (bien distinct de l'orange du sport) */
 .fc .fc-daygrid-event.fc-task-missed {
-  background-color: #f43f5e !important;
-  border-color: #f43f5e !important;
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
 }
 .fc .fc-list-event.fc-task-missed .fc-list-event-dot {
-  border-color: #f43f5e !important;
+  border-color: #dc2626 !important;
 }
 @media (max-width: 640px) {
   .fc .fc-toolbar {

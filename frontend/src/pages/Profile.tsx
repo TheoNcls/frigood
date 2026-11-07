@@ -571,11 +571,11 @@ function HabitsSetting() {
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4">
       <span>
-        <span className="block text-sm font-medium text-slate-800">Habitudes</span>
+        <span className="block text-sm font-medium text-slate-800">Onglet Habitudes</span>
         <span className="block text-xs text-slate-500">
           {user.habitudes_active
-            ? "Onglet Habitudes (piano, méditation, lecture…) et habitudes du jour à cocher sur l'accueil."
-            : "Masqué : pas d'onglet Habitudes ni de carte sur l'accueil. Tes habitudes et leur historique sont conservés."}
+            ? "Pour ajouter et régler tes habitudes (piano, méditation, lecture…). Une fois réglées, tu peux le masquer : elles restent sur l'accueil, avec leurs rappels."
+            : "Masqué : tes habitudes restent sur l'accueil, avec leurs rappels. Réaffiche l'onglet pour en ajouter ou les modifier."}
           {" "}Réglage de ton compte.
         </span>
       </span>

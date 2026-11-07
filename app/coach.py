@@ -337,11 +337,9 @@ HABIT_DAYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
 
 
 def _habits(db: Session, user: User, today: date) -> list[dict] | None:
-    """Habitudes actives et leur régularité sur 14 jours (seulement si l'onglet Habitudes est activé)."""
+    """Habitudes actives et leur régularité sur 14 jours (même onglet Habitudes masqué : elles restent suivies)."""
     from app.push_service import local_date
 
-    if not user.habitudes_active:
-        return None
     habits = db.query(Habit).filter(Habit.user_id == user.id, Habit.active.is_(True)).order_by(Habit.id).all()
     if not habits:
         return None

@@ -47,6 +47,7 @@ export function useHabitLogActions() {
 
 /** Accueil : les habitudes du jour, une case cliquable chacune, qui disparaît une fois cochée. */
 export default function HabitsToday() {
+  const user = useCurrentUser();
   const today = todayISO();
   const habits = useHabits();
   // Depuis lundi : pour les objectifs « X fois par semaine »
@@ -72,7 +73,7 @@ export default function HabitsToday() {
             <span className="text-xs font-medium text-slate-500">{counted.filter((r) => r.doneToday).length}/{counted.length}</span>
           )}
         </div>
-        <Link to="/habitudes" className="text-sm font-medium text-brand-700">Tout voir →</Link>
+        {user.habitudes_active && <Link to="/habitudes" className="text-sm font-medium text-brand-700">Tout voir →</Link>}
       </div>
       {todo.length > 0 ? (
         <div className="flex flex-col gap-2">

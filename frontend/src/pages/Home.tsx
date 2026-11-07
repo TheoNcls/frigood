@@ -29,10 +29,11 @@ export default function Home() {
   const jalon = milestone.data ?? null;
   const fridge = useFridge();
   // Habitudes du jour (si l'onglet est activé) ; tâches du jour : même requête que la carte « Aujourd'hui »
-  const habits = useHabits(user.habitudes_active);
-  const habitLogs = useHabitLogs(weekStart(today), today, user.habitudes_active);   // depuis lundi (objectifs par semaine)
-  const showHabits = user.habitudes_active
-    && (habits.list.some((h) => isDue(h, today, doneDates(habitLogs.data, h.id))) || (habitLogs.data ?? []).some((l) => l.date === today));
+  // Habitudes du jour : affichées même onglet Habitudes masqué (la préférence ne masque que l'onglet de réglage)
+  const habits = useHabits();
+  const habitLogs = useHabitLogs(weekStart(today), today);   // depuis lundi (objectifs par semaine)
+  const showHabits = habits.list.some((h) => isDue(h, today, doneDates(habitLogs.data, h.id)))
+    || (habitLogs.data ?? []).some((l) => l.date === today);
   const hasTasks = (useTasks(today, today).data ?? []).length > 0;
   // Clic sur une notification de rappel : /?jour=AAAA-MM-JJ ouvre le résumé de ce jour
   const [params, setParams] = useSearchParams();

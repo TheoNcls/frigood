@@ -11,7 +11,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Activity, Habit, HabitLog, PushSubscription, Task, TaskCompletion, TaskReminder, User
+from app.models import Activity, Habit, HabitLog, PushSubscription, Task, TaskCompletion, TaskReminder
 
 log = logging.getLogger("frigood.push")
 
@@ -209,8 +209,9 @@ def run_habit_reminders(db: Session, now: datetime | None = None) -> int:
     now = now or now_local()
     today = now.date()
     sent = 0
-    habits = (db.query(Habit).join(User, User.id == Habit.user_id)
-              .filter(Habit.rappel_heure.isnot(None), Habit.active.is_(True), User.habitudes_active.is_(True),
+    # Même onglet Habitudes masqué : il ne sert qu'à les régler, elles restent suivies
+    habits = (db.query(Habit)
+              .filter(Habit.rappel_heure.isnot(None), Habit.active.is_(True),
                       or_(Habit.rappel_envoye_le.is_(None), Habit.rappel_envoye_le != today)).all())
     for h in habits:
         hh, mm = (int(x) for x in h.rappel_heure.split(":"))

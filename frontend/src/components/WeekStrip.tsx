@@ -107,7 +107,7 @@ export default function WeekStrip() {
                       <span key={`d${k}`} className="h-1.5 w-1.5 rounded-full bg-violet-300 ring-1 ring-white/60" />
                     ))}
                     {Array.from({ length: Math.min(info?.tasksMissed ?? 0, 2) }, (_, k) => (
-                      <span key={`x${k}`} className="h-1.5 w-1.5 rounded-full bg-rose-400 ring-1 ring-white/60" />
+                      <span key={`x${k}`} className="h-1.5 w-1.5 rounded-full bg-red-600 ring-1 ring-white/60" />
                     ))}
                   </span>
                   {nutrition && info?.kcal ? (
@@ -127,7 +127,7 @@ export default function WeekStrip() {
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-600" /> Tâche</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Importante</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-300" /> Faite</span>
-        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Pas faite</span>
+        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Pas faite</span>
         <span>{nutrition ? "· kcal mangées " : ""}· clic sur un jour pour son résumé et ses tâches</span>
       </div>
     </Card>
