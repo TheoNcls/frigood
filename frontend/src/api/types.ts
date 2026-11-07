@@ -19,6 +19,8 @@ export interface User {
   nutrition_active: boolean;
   /** Onglet Habitudes et sa carte sur l'accueil */
   habitudes_active: boolean;
+  /** Onglet Créateur de recettes */
+  createur_recette_active: boolean;
   /** Repas et Frigo : seulement ses ingrédients, ceux déjà mangés ou au frigo (le scan reste possible) */
   ingredients_perso_seulement: boolean;
   /** Nutriments suivis sur l'accueil, avec la valeur visée */
@@ -473,4 +475,39 @@ export interface HabitLog {
   habit_id: number;
   date: string;
   done_at: string | null;
+}
+
+/** Valeurs proposées par l'IA pour un ingrédient pas encore au catalogue (pour 100 g ou 100 ml) */
+export interface CreatorNutrition {
+  categorie: string | null;
+  unite: "g" | "ml";
+  calories: number | null;
+  proteines: number | null;
+  glucides: number | null;
+  lipides: number | null;
+  quantite_defaut: number | null;
+  duree_conservation: number;
+  regime: string | null;
+}
+
+/** Ingrédient d'une recette en création : du catalogue (ingredient_id) ou nouveau (nom, unité, valeurs de l'IA) */
+export interface CreatorIngredient {
+  ingredient_id: number | null;
+  nom: string;
+  quantite: number | null;
+  type_mesure: TypeMesure;
+  unite?: "g" | "ml";
+  par_defaut: boolean;
+  nutrition?: CreatorNutrition | null;
+}
+
+/** Proposition de l'IA (Claude ou une autre IA) pour remplir le créateur de recettes */
+export interface RecipeProposal {
+  nom: string;
+  types: string[];
+  portions: number | null;
+  temps_preparation: number | null;
+  description: string;
+  ingredients: CreatorIngredient[];
+  conseils: string;
 }

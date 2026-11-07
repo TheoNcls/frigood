@@ -693,8 +693,8 @@ def _norm(s: str) -> str:
     return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode().lower().strip()
 
 
-def parse_external(text: str, sports: list[str], week: tuple[date, date]) -> tuple[dict, int]:
-    """Lit la réponse collée d'une autre IA : (bilan nettoyé, nombre de séances écartées)."""
+def extract_json(text: str, what: str = "le bilan") -> dict:
+    """L'objet JSON d'une réponse collée d'une autre IA (avec ou sans bloc ```json, texte autour ignoré)."""
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text or "", re.I)
     body = fence.group(1) if fence else (text or "")
     start, end = body.find("{"), body.rfind("}")
@@ -705,7 +705,13 @@ def parse_external(text: str, sports: list[str], week: tuple[date, date]) -> tup
     except ValueError:
         raise CoachError("La réponse n'est pas un JSON valide : recopie bien tout le bloc donné par l'IA")
     if not isinstance(data, dict):
-        raise CoachError("La réponse doit être un objet JSON (le bilan)")
+        raise CoachError(f"La réponse doit être un objet JSON ({what})")
+    return data
+
+
+def parse_external(text: str, sports: list[str], week: tuple[date, date]) -> tuple[dict, int]:
+    """Lit la réponse collée d'une autre IA : (bilan nettoyé, nombre de séances écartées)."""
+    data = extract_json(text)
     # Noms de sport à peu près justes (« course a pied ») : ramenés à ceux de l'appli
     known = {_norm(s): s for s in sports}
     proposed = [a for a in data.get("activites") or [] if isinstance(a, dict)]
@@ -718,53 +724,60 @@ def parse_external(text: str, sports: list[str], week: tuple[date, date]) -> tup
     return result, len(proposed) - len(result["activites"])
 
 
-def ask_claude(context: dict, sports: list[str], week: tuple[date, date],
-               exercises: list[str] | None = None) -> tuple[dict, dict]:
-    """Renvoie (bilan structuré, infos d'usage). Lève CoachError avec un message lisible."""
+def claude_json(system: str, prompt: str, schema: dict, effort: str = "high", who: str = "Le coach") -> tuple[dict, dict]:
+    """Appel à Claude dont la réponse suit un schéma JSON : (données, infos d'usage).
+    Partagé par le coach et le créateur de recettes. Lève CoachError avec un message lisible."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise CoachError("ANTHROPIC_API_KEY non configurée sur le serveur")
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
-    sports = sorted(set(sports)) or ["Course à pied"]
     try:
         # Streaming : la réponse peut prendre un moment (évite les délais d'attente HTTP)
         with client.beta.messages.stream(
             model=MODEL,
-            max_tokens=32000,   # la réflexion compte dans la limite, en plus du bilan
-            system=SYSTEM_PROMPT,
+            max_tokens=32000,   # la réflexion compte dans la limite, en plus de la réponse
+            system=system,
             thinking={"type": "adaptive"},
-            output_config={"effort": "high", "format": {"type": "json_schema", "schema": response_schema(sports, exercises)}},
+            output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
             # Repli automatique sur un autre modèle si celui-ci décline la demande
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
-            messages=[{"role": "user", "content": user_message(context, sports, week)}],
+            messages=[{"role": "user", "content": prompt}],
         ) as stream:
             message = stream.get_final_message()
     except anthropic.AuthenticationError:
         raise CoachError("Clé API Anthropic refusée")
     except anthropic.RateLimitError:
-        raise CoachError("Trop de demandes au coach pour le moment, réessaie dans une minute")
+        raise CoachError("Trop de demandes à Claude pour le moment, réessaie dans une minute")
     except anthropic.BadRequestError as e:
-        log.warning("Coach : requête refusée (%s)", e)
-        raise CoachError("Le coach n'a pas pu traiter la demande")
+        log.warning("%s : requête refusée (%s)", who, e)
+        raise CoachError(f"{who} n'a pas pu traiter la demande")
     except anthropic.APIStatusError as e:
-        log.warning("Coach : erreur API %s (%s)", e.status_code, getattr(e, "request_id", None))
+        log.warning("%s : erreur API %s (%s)", who, e.status_code, getattr(e, "request_id", None))
         raise CoachError("Le service Claude est indisponible, réessaie plus tard")
     except anthropic.APIConnectionError:
         raise CoachError("Impossible de joindre le service Claude")
 
     if message.stop_reason == "refusal":
-        raise CoachError("Le coach a décliné cette demande")
+        raise CoachError(f"{who} a décliné cette demande")
     if message.stop_reason == "max_tokens":
-        raise CoachError("Le bilan était trop long et a été coupé, réessaie")
+        raise CoachError("La réponse était trop longue et a été coupée, réessaie")
     text = next((b.text for b in message.content if b.type == "text"), "")
     try:
         data = json.loads(text)
     except ValueError:
-        raise CoachError("Réponse du coach illisible, réessaie")
+        raise CoachError("Réponse illisible, réessaie")
     usage = {"model": message.model, "input_tokens": message.usage.input_tokens, "output_tokens": message.usage.output_tokens}
+    return data, usage
+
+
+def ask_claude(context: dict, sports: list[str], week: tuple[date, date],
+               exercises: list[str] | None = None) -> tuple[dict, dict]:
+    """Renvoie (bilan structuré, infos d'usage). Lève CoachError avec un message lisible."""
+    sports = sorted(set(sports)) or ["Course à pied"]
+    data, usage = claude_json(SYSTEM_PROMPT, user_message(context, sports, week), response_schema(sports, exercises))
     return clean_result(data, set(sports), week), usage
 
 

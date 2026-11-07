@@ -315,6 +315,7 @@ class UserUpdate(BaseModel):
     regime_alimentaire: str | None = None
     nutrition_active: bool | None = None
     habitudes_active: bool | None = None
+    createur_recette_active: bool | None = None
     ingredients_perso_seulement: bool | None = None
     # Envoyé à null pour revenir à « pas renseigné » (tous les exercices)
     materiel: list[str] | None = None
@@ -398,6 +399,7 @@ class UserRead(BaseModel):
     regime_alimentaire: str = "vegetarien"
     nutrition_active: bool = True
     habitudes_active: bool = False
+    createur_recette_active: bool = False
     ingredients_perso_seulement: bool = False
     nutriments_suivis: list[NutrimentSuivi] = []
     materiel: list[str] | None = None
@@ -892,3 +894,44 @@ class HabitLogRead(BaseModel):
     done_at: datetime_type | None = None
 
     model_config = {"from_attributes": True}
+
+
+# --- Créateur de recettes ---
+
+class CreatorIngredient(BaseModel):
+    """Ingrédient du brouillon : du catalogue (ingredient_id) ou nouveau (nom, unité, valeurs proposées par l'IA)."""
+    ingredient_id: int | None = None
+    nom: str | None = Field(default=None, max_length=120)
+    quantite: float | None = None
+    type_mesure: str = "poids"   # poids (g / ml) ou unite
+    unite: str | None = None     # nouveau : g ou ml
+    par_defaut: bool = True      # faux : ingrédient au choix (option)
+    nutrition: dict | None = None
+
+    @field_validator("type_mesure")
+    @classmethod
+    def _mesure(cls, v):
+        return "unite" if v == "unite" else "poids"
+
+
+class CreatorDraft(BaseModel):
+    """Brouillon : tout est facultatif."""
+    nom: str | None = Field(default=None, max_length=120)
+    types: list[str] = Field(default_factory=list, max_length=10)
+    description: str | None = Field(default=None, max_length=8000)
+    portions: int | None = Field(default=None, ge=1, le=50)
+    temps_preparation: int | None = Field(default=None, ge=0, le=1440)
+    ingredients: list[CreatorIngredient] = Field(default_factory=list, max_length=60)
+    consignes: str | None = Field(default=None, max_length=2000)
+    utiliser_frigo: bool = False
+
+
+class CreatorSave(BaseModel):
+    nom: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=8000)
+    categorie: str | None = Field(default=None, max_length=120)
+    portions: int = Field(default=1, ge=1, le=50)
+    temps_preparation: int | None = Field(default=None, ge=0, le=1440)
+    ingredients: list[CreatorIngredient] = Field(default_factory=list, max_length=60)
+
+    _nom = field_validator("nom")(_habit_name)

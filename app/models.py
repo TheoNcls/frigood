@@ -147,6 +147,8 @@ class User(Base):
     nutrition_active = Column(Boolean, nullable=False, default=True, server_default=true())
     # Onglet Habitudes (et sa carte sur l'accueil) : à activer dans les préférences
     habitudes_active = Column(Boolean, nullable=False, default=False, server_default=false())
+    # Onglet Créateur de recettes (aide à la création, avec ou sans IA) : à activer dans les préférences
+    createur_recette_active = Column(Boolean, nullable=False, default=False, server_default=false())
     # Régime alimentaire (transmis au coach) : omnivore, flexitarien, pescetarien, vegetarien, vegan
     regime_alimentaire = Column(String(20), nullable=False, default="vegetarien", server_default="vegetarien")
     # Nutriments suivis sur l'accueil (JSON) : [{nutriment_id, cible, sens: "min" à atteindre | "max" à ne pas dépasser}]

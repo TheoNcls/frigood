@@ -448,6 +448,8 @@ function PreferencesCard() {
           <div className="my-4 border-t border-slate-100" />
           <PersoIngredientsSetting />
           <div className="my-4 border-t border-slate-100" />
+          <CreatorSetting />
+          <div className="my-4 border-t border-slate-100" />
         </>
       )}
       <MaterielSetting />
@@ -549,6 +551,41 @@ function NutritionSetting() {
           aria-label="Afficher la nutrition et le frigo"
           className="peer sr-only"
           checked={user.nutrition_active}
+          disabled={save.isPending}
+          onChange={(e) => save.mutate(e.target.checked)}
+        />
+        <span className="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-100" />
+        <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+      </span>
+    </label>
+  );
+}
+
+function CreatorSetting() {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const save = useMutation({
+    mutationFn: (createur_recette_active: boolean) => api<User>(`/users/${user.id}`, { method: "PUT", body: { createur_recette_active } }),
+    onSuccess: (u) => { setUser(u); toast(u.createur_recette_active ? "Onglet Créateur de recettes affiché" : "Onglet Créateur de recettes masqué"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-4">
+      <span>
+        <span className="block text-sm font-medium text-slate-800">Onglet Créateur de recettes</span>
+        <span className="block text-xs text-slate-500">
+          Pour imaginer une recette : tu donnes ce que tu as en tête (tout est facultatif), l'IA complète, puis la recette
+          rejoint le catalogue.{" "}Réglage de ton compte.
+        </span>
+      </span>
+      <span className="relative mt-0.5 inline-flex shrink-0">
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Afficher l'onglet Créateur de recettes"
+          className="peer sr-only"
+          checked={user.createur_recette_active}
           disabled={save.isPending}
           onChange={(e) => save.mutate(e.target.checked)}
         />
