@@ -140,11 +140,15 @@ function toInput(s: IngredientSuggestion): IngredientInput {
  * Ajout par une IA au choix : l'appli donne le texte à coller dans l'IA, on colle sa réponse (ou on charge son fichier).
  * Un seul aliment : le formulaire est pré-rempli ; plusieurs : aperçu puis création en une fois.
  */
-export default function AiImport({ onSingle, onDone }: { onSingle: (s: IngredientSuggestion) => void; onDone: () => void }) {
+export default function AiImport({ onSingle, onDone, initialNames }: {
+  onSingle: (s: IngredientSuggestion) => void;
+  onDone: () => void;
+  initialNames?: string;
+}) {
   const nutriments = useNutriments();
   const invalidate = useInvalidateCatalog();
   const toast = useToast();
-  const [names, setNames] = useState("");
+  const [names, setNames] = useState(initialNames ?? "");
   const [answer, setAnswer] = useState("");
   const [showPrompt, setShowPrompt] = useState(false);
   const [items, setItems] = useState<IngredientSuggestion[] | null>(null);

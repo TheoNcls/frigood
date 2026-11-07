@@ -1,9 +1,6 @@
 """Créateur de recettes : brouillon complété par Claude (comptes avec le coach IA) ou par une autre IA (copier-coller),
-puis création de la recette et de ses nouveaux ingrédients d'un coup."""
-import json
-
+puis création de la recette. Ses nouveaux ingrédients sont d'abord créés (et vérifiés) avec la fiche du catalogue."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import recipe_creator
@@ -11,7 +8,7 @@ from app.auth import Principal, check_user_access, get_principal
 from app.catalog_access import check_name_free, is_visible
 from app.coach import CoachError
 from app.database import get_db
-from app.models import Ingredient, IngredientSource, Recipe, RecipeIngredient, User
+from app.models import Ingredient, Recipe, RecipeIngredient, User
 from app.routers.coach import COACH_NON_AUTORISE
 from app.schemas import CoachManualIn, CreatorDraft, CreatorSave, RecipeRead
 
@@ -63,42 +60,17 @@ def parse_other_ai(user_id: int, data: CoachManualIn, principal: Principal = Dep
         raise HTTPException(status_code=400, detail=str(e))
 
 
-def _new_ingredient(db: Session, it, principal: Principal, known: dict[str, Ingredient]) -> Ingredient:
-    """Ingrédient pas encore au catalogue : repris s'il existe déjà sous ce nom (« Oeuf » = « Œuf »),
-    sinon créé (avec les valeurs de l'IA)."""
-    nom = (it.nom or "").strip()
-    if not nom:
-        raise HTTPException(status_code=400, detail="Un nouvel ingrédient n'a pas de nom")
-    if (same := known.get(recipe_creator.norm(nom))):
-        return same
-    existing = db.query(Ingredient).filter(func.lower(Ingredient.nom) == nom.lower()).first()
-    if existing:
-        if is_visible(existing, principal):
-            return existing
-        raise HTTPException(status_code=400, detail=f"Un ingrédient « {existing.nom} » existe déjà (ajouté par quelqu'un d'autre, "
-                                                    "à valider) : choisis un nom plus précis")
-    n = it.nutrition or {}
-    ingredient = Ingredient(
-        nom=nom[:120], unite="ml" if (it.unite or n.get("unite")) == "ml" else "g",
-        categorie=n.get("categorie"), calories=n.get("calories"), proteines=n.get("proteines"),
-        glucides=n.get("glucides"), lipides=n.get("lipides"), quantite_defaut=n.get("quantite_defaut"),
-        duree_conservation=n.get("duree_conservation") or 7, regime=n.get("regime"),
-        created_by=principal.user_id or 0, valide=principal.is_admin,
-    )
-    db.add(ingredient)
-    db.flush()
-    known[recipe_creator.norm(nom)] = ingredient
-    if n.get("calories") is not None:
-        db.add(IngredientSource(ingredient_id=ingredient.id, source_type="ia",
-                                raw_data=json.dumps({"source": "createur_recette", "valeurs": n}, ensure_ascii=False)))
-    return ingredient
-
-
 @router.post("/users/{user_id}/recipe_creator/save", response_model=RecipeRead)
 def save_recipe(user_id: int, data: CreatorSave, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    """Crée la recette et ses nouveaux ingrédients d'un coup (tout ou rien), comme un ajout au catalogue."""
+    """Crée la recette (tout ou rien). Ses ingrédients doivent déjà être au catalogue : un nouvel ingrédient se crée
+    avec la fiche habituelle (Claude, autre IA, code-barre ou à la main), pour vérifier ses valeurs."""
     _user(db, user_id, principal)
     check_name_free(db, Recipe, data.nom, principal, "Une recette")
+    # Même nom qu'un ingrédient du catalogue (« Oeuf » = « Œuf ») : c'est lui ; sinon il reste à créer
+    known = {recipe_creator.norm(i.nom): i for i in recipe_creator.catalog_for(db, principal)}
+    missing = [it.nom or "?" for it in data.ingredients if not it.ingredient_id and recipe_creator.norm(it.nom or "") not in known]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Crée d'abord dans le catalogue : {', '.join(missing)}")
     try:
         recipe = Recipe(nom=data.nom, description=(data.description or "").strip() or None,
                         categorie=(data.categorie or "").strip() or None, portions=data.portions,
@@ -106,7 +78,6 @@ def save_recipe(user_id: int, data: CreatorSave, principal: Principal = Depends(
         db.add(recipe)
         db.flush()
         used = set()
-        known = {recipe_creator.norm(i.nom): i for i in recipe_creator.catalog_for(db, principal)}
         for it in data.ingredients:
             label = it.nom or f"ingrédient {it.ingredient_id}"
             if not it.quantite or it.quantite <= 0:
@@ -116,7 +87,7 @@ def save_recipe(user_id: int, data: CreatorSave, principal: Principal = Depends(
                 if not ingredient or not is_visible(ingredient, principal):
                     raise HTTPException(status_code=404, detail=f"Ingrédient introuvable : « {label} »")
             else:
-                ingredient = _new_ingredient(db, it, principal, known)
+                ingredient = known[recipe_creator.norm(it.nom or "")]
             if ingredient.id in used:
                 continue   # deux fois le même : on garde le premier
             used.add(ingredient.id)

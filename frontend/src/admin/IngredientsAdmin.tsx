@@ -121,9 +121,43 @@ export default function IngredientsAdmin({ mode = "admin" }: { mode?: CatalogMod
 
 type Mode = "claude" | "ia" | "barcode" | "manual";
 
-function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) => void; allowClaude: boolean }) {
+/**
+ * Ajout d'un ingrédient au catalogue, dans une fenêtre : par Claude, une autre IA, le code-barre ou à la main.
+ * Créateur de recettes : nom pré-rempli, valeurs proposées par l'IA de la recette à vérifier (mode manuel).
+ */
+export function NewIngredientModal({ allowClaude, initialName, initialValues, onClose, onCreated, onExisting }: {
+  allowClaude: boolean;
+  initialName?: string;
+  initialValues?: IngredientSuggestion;
+  onClose: () => void;
+  onCreated: (ingredient: Ingredient) => void;
+  /** Code-barre d'un produit déjà au catalogue : c'est lui qu'on prend */
+  onExisting: (id: number) => void;
+}) {
+  return (
+    <Modal title={initialName ? `Créer « ${initialName} »` : "Nouvel ingrédient"} onClose={onClose} wide>
+      <AddIngredient
+        allowClaude={allowClaude}
+        initialName={initialName}
+        initialValues={initialValues}
+        initialMode={initialValues ? "manual" : allowClaude ? "claude" : "ia"}
+        onCreated={onCreated}
+        onDone={(id) => { if (id) onExisting(id); onClose(); }}
+      />
+    </Modal>
+  );
+}
+
+function AddIngredient({ onDone, allowClaude, initialName, initialValues, initialMode, onCreated }: {
+  onDone: (createdId?: number) => void;
+  allowClaude: boolean;
+  initialName?: string;
+  initialValues?: IngredientSuggestion;
+  initialMode?: Mode;
+  onCreated?: (ingredient: Ingredient) => void;
+}) {
   // La recherche par Claude (payante) reste réservée à l'administration
-  const [mode, setMode] = useState<Mode>(allowClaude ? "claude" : "barcode");
+  const [mode, setMode] = useState<Mode>(initialMode ?? (allowClaude ? "claude" : "barcode"));
   const [suggestion, setSuggestion] = useState<IngredientSuggestion | null>(null);
   const nutriments = useNutriments();
   const invalidate = useInvalidateCatalog();
@@ -137,6 +171,7 @@ function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) =
     onSuccess: ({ ingredient, added }) => {
       invalidate();
       toast(`« ${ingredient.nom} » créé${added ? ` avec ${added} nutriment(s)` : ""} !`);
+      onCreated?.(ingredient);
       onDone();
     },
     onError: (e) => { invalidate(); toast(e.message, "error"); },
@@ -161,10 +196,10 @@ function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) =
         ]}
       />
 
-      {!suggestion && mode === "claude" && <ClaudeLookup onFound={setSuggestion} />}
+      {!suggestion && mode === "claude" && <ClaudeLookup initialName={initialName} onFound={setSuggestion} />}
       {!suggestion && mode === "barcode" && <BarcodeLookup onFound={setSuggestion} onExisting={(id) => onDone(id)} />}
       {/* Reste monté pendant la vérification : en annulant, on retrouve la réponse collée */}
-      {mode === "ia" && <div className={suggestion ? "hidden" : ""}><AiImport onSingle={setSuggestion} onDone={() => onDone()} /></div>}
+      {mode === "ia" && <div className={suggestion ? "hidden" : ""}><AiImport initialNames={initialName} onSingle={setSuggestion} onDone={() => onDone()} /></div>}
 
       {(suggestion || mode === "manual") && (
         <>
@@ -173,9 +208,14 @@ function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) =
               ✅ Données trouvées{suggestion.code_barre ? ` pour le code ${suggestion.code_barre}` : ""} : vérifie et corrige si besoin avant de créer.
             </p>
           )}
+          {!suggestion && initialValues && (
+            <p className="rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-800">
+              Valeurs proposées par l'IA de la recette : vérifie-les (étiquette, CIQUAL…) et corrige si besoin avant de créer.
+            </p>
+          )}
           <IngredientForm
             key={suggestion?.raw_data ?? mode}
-            initial={suggestion ?? {}}
+            initial={suggestion ?? initialValues ?? (initialName ? { nom: initialName } : {})}
             submitLabel="Créer l'ingrédient"
             pending={save.isPending}
             onSubmit={(values, nuts) => save.mutate({ values, nuts })}
@@ -187,8 +227,8 @@ function AddIngredient({ onDone, allowClaude }: { onDone: (createdId?: number) =
   );
 }
 
-function ClaudeLookup({ onFound }: { onFound: (s: IngredientSuggestion) => void }) {
-  const [nom, setNom] = useState("");
+function ClaudeLookup({ onFound, initialName }: { onFound: (s: IngredientSuggestion) => void; initialName?: string }) {
+  const [nom, setNom] = useState(initialName ?? "");
   const lookup = useMutation({
     mutationFn: (n: string) => api<IngredientSuggestion>("/ingredients/from_claude", { query: { nom: n } }),
     onSuccess: onFound,

@@ -4,9 +4,10 @@ import { Link } from "react-router-dom";
 import { Check, ClipboardPaste, FileUp, Lock, Plus, RotateCcw, Sparkles, X } from "lucide-react";
 import { api } from "../api/client";
 import { useIngredients } from "../api/queries";
-import type { CreatorIngredient, Ingredient, Recipe, RecipeProposal, TypeMesure } from "../api/types";
+import type { CreatorIngredient, Ingredient, IngredientSuggestion, Recipe, RecipeProposal, Regime, TypeMesure } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { parseNum, useInvalidateCatalog } from "../admin/catalog";
+import { NewIngredientModal } from "../admin/IngredientsAdmin";
 import { CoachText } from "../components/Coach";
 import CopyPromptButton from "../components/CopyPrompt";
 import FoodPicker from "../components/FoodPicker";
@@ -74,6 +75,16 @@ function toPayload(d: Draft) {
   };
 }
 
+/** Valeurs proposées par l'IA de la recette : pré-remplissent la fiche de l'ingrédient, à vérifier avant de le créer. */
+function toSuggestion(row: Row): IngredientSuggestion | undefined {
+  const n = row.nutrition;
+  if (!n) return undefined;
+  return {
+    nom: row.nom, unite: n.unite, categorie: n.categorie, calories: n.calories, proteines: n.proteines, glucides: n.glucides,
+    lipides: n.lipides, quantite_defaut: n.quantite_defaut, duree_conservation: n.duree_conservation, regime: n.regime as Regime | null,
+  };
+}
+
 /** Poids (g / ml) d'une ligne, si on peut le savoir */
 function grams(row: Row, ing: Ingredient | undefined): number | null {
   const q = parseNum(row.q);
@@ -92,9 +103,30 @@ export default function RecipeCreator() {
   const [conseils, setConseils] = useState("");
   const [importing, setImporting] = useState(false);
   const [created, setCreated] = useState<Recipe | null>(null);
+  // Ingrédient « à créer » dont la fiche est ouverte
+  const [creating, setCreating] = useState<Row | null>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const updateRow = (key: string, patch: Partial<Row>) =>
     setDraft((d) => ({ ...d, ingredients: d.ingredients.map((r) => (r.key === key ? { ...r, ...patch } : r)) }));
+
+  const link = (key: string, id: number, nom?: string) =>
+    updateRow(key, { ingredient_id: id, nom: nom ?? ingredients.byId.get(id)?.nom ?? "", nutrition: null, unite: undefined });
+
+  // Un ingrédient « à créer » qui existe désormais au catalogue (même nom, sans tenir compte des accents) : on le rattache
+  useEffect(() => {
+    if (!ingredients.list.length) return;
+    const byName = new Map(ingredients.list.map((i) => [norm(i.nom), i]));
+    setDraft((d) => {
+      let changed = false;
+      const rows = d.ingredients.map((r) => {
+        const hit = r.ingredient_id ? undefined : byName.get(norm(r.nom));
+        if (!hit) return r;
+        changed = true;
+        return { ...r, ingredient_id: hit.id, nom: hit.nom, nutrition: null, unite: undefined };
+      });
+      return changed ? { ...d, ingredients: rows } : d;
+    });
+  }, [ingredients.list, setDraft]);
 
   /** La proposition de l'IA remplit le formulaire (on garde les consignes et l'option frigo). */
   function apply(p: RecipeProposal, who: string) {
@@ -160,10 +192,22 @@ export default function RecipeCreator() {
   }, [draft.ingredients, draft.portions, ingredients.byId]);
 
   const busy = claude.isPending || save.isPending;
+  // La recette ne s'ajoute qu'une fois ses nouveaux ingrédients créés (et vérifiés) dans le catalogue
+  const toCreate = draft.ingredients.filter((r) => !r.ingredient_id);
   const catalogLink = user.is_admin ? "/admin/recettes" : "/catalogue";
 
   return (
     <div className="space-y-4">
+      {creating && (
+        <NewIngredientModal
+          allowClaude={user.is_admin}
+          initialName={creating.nom}
+          initialValues={toSuggestion(creating)}
+          onClose={() => setCreating(null)}
+          onCreated={(ing) => link(creating.key, ing.id, ing.nom)}
+          onExisting={(id) => link(creating.key, id)}
+        />
+      )}
       {importing && <ImportModal onClose={() => setImporting(false)} onApply={(p) => { apply(p, "de l'autre IA"); setImporting(false); }} />}
       <PageHeader
         title="Créateur de recettes"
@@ -216,8 +260,14 @@ export default function RecipeCreator() {
       </Card>
 
       <Card title="Ingrédients">
-        <IngredientRows draft={draft} ingredients={ingredients.byId} onChange={updateRow}
+        <IngredientRows draft={draft} ingredients={ingredients.byId} onChange={updateRow} onCreate={setCreating}
           onRemove={(key) => set("ingredients", draft.ingredients.filter((r) => r.key !== key))} />
+        {toCreate.length > 0 && (
+          <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Touche un ingrédient <b>« à créer »</b> pour l'ajouter au catalogue (Claude, autre IA, code-barre ou à la main) :
+            la recette ne pourra être ajoutée qu'ensuite.
+          </p>
+        )}
         <AddIngredients ingredients={ingredients.list} onAdd={(row) => set("ingredients", [...draft.ingredients, row])} />
         {draft.ingredients.length > 0 && (
           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -247,8 +297,8 @@ export default function RecipeCreator() {
       <Card>
         <div className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-2">
-            <button type="button" className="btn-primary" disabled={busy || !draft.nom.trim()} onClick={() => save.mutate()}
-              title={draft.nom.trim() ? undefined : "Donne d'abord un nom à la recette"}>
+            <button type="button" className="btn-primary" disabled={busy || !draft.nom.trim() || toCreate.length > 0} onClick={() => save.mutate()}
+              title={!draft.nom.trim() ? "Donne d'abord un nom à la recette" : toCreate.length ? "Crée d'abord les nouveaux ingrédients" : undefined}>
               <Plus className="h-4 w-4" /> {save.isPending ? "Ajout…" : "Ajouter la recette"}
             </button>
             <button type="button" className="btn-secondary border-violet-200 text-violet-700" disabled={busy || !user.coach_access} onClick={() => claude.mutate()}>
@@ -256,6 +306,11 @@ export default function RecipeCreator() {
               {claude.isPending ? "Claude cuisine ta recette…" : "Compléter avec Claude"}
             </button>
           </div>
+          {toCreate.length > 0 && (
+            <p className="text-xs text-amber-800">
+              À créer d'abord dans le catalogue : {toCreate.map((r) => r.nom).join(", ")}.
+            </p>
+          )}
           {claude.isPending && <Spinner label="Compte jusqu'à une minute…" />}
           <div className="flex flex-wrap items-center gap-2 border-t border-dashed border-slate-200 pt-3">
             <p className="w-full text-xs text-slate-500">
@@ -280,11 +335,12 @@ export default function RecipeCreator() {
   );
 }
 
-function IngredientRows({ draft, ingredients, onChange, onRemove }: {
+function IngredientRows({ draft, ingredients, onChange, onRemove, onCreate }: {
   draft: Draft;
   ingredients: Map<number, Ingredient>;
   onChange: (key: string, patch: Partial<Row>) => void;
   onRemove: (key: string) => void;
+  onCreate: (row: Row) => void;
 }) {
   if (!draft.ingredients.length) {
     return <p className="mb-3 text-sm text-slate-500">Aucun ingrédient pour l'instant : ajoute ceux que tu veux, ou laisse l'IA les choisir.</p>;
@@ -293,18 +349,23 @@ function IngredientRows({ draft, ingredients, onChange, onRemove }: {
     <ul className="mb-4 divide-y divide-slate-100">
       {draft.ingredients.map((r) => {
         const ing = r.ingredient_id ? ingredients.get(r.ingredient_id) : undefined;
-        const canUnit = !ing || !!ing.quantite_defaut;
+        const canUnit = !ing || !!ing.quantite_defaut || r.type_mesure === "unite";
         const unitLabel = r.type_mesure === "unite" ? "unité(s)" : ing?.unite ?? r.unite ?? "g";
         // Téléphone : le nom et ses badges sur une ligne, quantité / unité / option dessous
         return (
           <li key={r.key} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 py-2 text-sm">
             <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
-              <span className={`font-medium ${r.par_defaut ? "text-slate-900" : "text-slate-500"}`}>{ing?.nom ?? r.nom}</span>
-              {!r.ingredient_id && (
-                <span className={`badge ml-1.5 align-middle ${r.nutrition ? "bg-violet-100 text-violet-700" : "bg-amber-100 text-amber-800"}`}
-                  title={r.nutrition ? "Sera ajouté au catalogue avec les valeurs nutritionnelles proposées par l'IA" : "Sera ajouté au catalogue sans valeurs nutritionnelles (à compléter)"}>
-                  nouveau{r.nutrition ? " · valeurs IA" : ""}
-                </span>
+              {r.ingredient_id ? (
+                <span className={`font-medium ${r.par_defaut ? "text-slate-900" : "text-slate-500"}`}>{ing?.nom ?? r.nom}</span>
+              ) : (
+                // Pas encore au catalogue : on ouvre sa fiche pour le créer (et vérifier ses valeurs)
+                <button type="button" className="group text-left" onClick={() => onCreate(r)} aria-label={`Créer ${r.nom}`}
+                  title="Créer l'ingrédient dans le catalogue">
+                  <span className="font-medium text-slate-900 underline decoration-dotted underline-offset-2 group-hover:text-brand-700">{r.nom}</span>
+                  <span className={`badge ml-1.5 align-middle ${r.nutrition ? "bg-violet-100 text-violet-700" : "bg-amber-100 text-amber-800"}`}>
+                    à créer{r.nutrition ? " · valeurs IA" : ""}
+                  </span>
+                </button>
               )}
               {!r.par_defaut && <span className="badge ml-1.5 bg-slate-100 align-middle text-slate-500">option</span>}
             </div>

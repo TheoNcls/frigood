@@ -1,7 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, getToken, setToken, setUnauthorizedHandler } from "../api/client";
+import { ApiError, api, getToken, setToken, setUnauthorizedHandler } from "../api/client";
 import type { AuthResponse, User } from "../api/types";
+
+// Au démarrage, serveur injoignable : 4 nouveaux essais espacés de 2 s avant d'abandonner
+const RETRIES = 4;
+const RETRY_MS = 2000;
 
 export interface RegisterData {
   nom: string;
@@ -51,9 +55,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!getToken()) return;
-    refreshUser()
-      .catch(() => logout())
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    // Session refusée (401) : déconnexion. Serveur injoignable (coupure réseau, page rechargée pendant la requête) :
+    // on garde la session et on réessaie, au lieu de déconnecter pour rien
+    const attempt = (n: number) => {
+      refreshUser()
+        .then(() => { if (!cancelled) setLoading(false); })
+        .catch((e) => {
+          if (cancelled) return;
+          if ((e instanceof ApiError && e.status === 401) || n >= RETRIES) {
+            logout();
+            setLoading(false);
+          } else {
+            setTimeout(() => attempt(n + 1), RETRY_MS);
+          }
+        });
+    };
+    attempt(0);
+    return () => { cancelled = true; };
   }, [refreshUser, logout]);
 
   const login = useCallback(async (email: string, password: string) => {
