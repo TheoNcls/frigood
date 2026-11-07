@@ -14,6 +14,7 @@ const Agenda = lazy(() => import("./pages/Agenda"));
 const History = lazy(() => import("./pages/History"));
 const Admin = lazy(() => import("./admin"));
 const Catalog = lazy(() => import("./pages/Catalog"));
+const Habits = lazy(() => import("./pages/Habits"));
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="agenda" element={<Suspense fallback={<Spinner />}><Agenda /></Suspense>} />
         <Route path="sport" element={<Navigate to="/agenda" replace />} />
         <Route path="historique" element={<Suspense fallback={<Spinner />}><History /></Suspense>} />
+        <Route path="habitudes" element={user.habitudes_active ? <Suspense fallback={<Spinner />}><Habits /></Suspense> : <Navigate to="/" replace />} />
         <Route path="profil" element={<Profile />} />
         <Route path="catalogue" element={user.nutrition_active ? <Suspense fallback={<Spinner />}><Catalog /></Suspense> : <Navigate to="/" replace />} />
         {user.is_admin && <Route path="admin/*" element={<Suspense fallback={<Spinner />}><Admin /></Suspense>} />}

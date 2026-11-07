@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { BookOpen, CalendarDays, CalendarRange, Home, LogOut, Refrigerator, ShieldCheck, User, UtensilsCrossed } from "lucide-react";
+import { BookOpen, CalendarDays, CalendarRange, Home, LogOut, Refrigerator, ShieldCheck, Sprout, User, UtensilsCrossed } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useGarminSyncOnOpen } from "./Garmin";
 
@@ -11,6 +11,7 @@ const BASE_NAV = [
   { to: "/historique", label: "Historique", icon: CalendarDays },
   { to: "/profil", label: "Profil", icon: User },
 ];
+const HABITS_NAV = { to: "/habitudes", label: "Habitudes", icon: Sprout, end: false };
 const ADMIN_NAV = { to: "/admin", label: "Admin", icon: ShieldCheck, end: false };
 // Sans droits d'administration : le catalogue (ses ingrédients et recettes, et ceux validés)
 const CATALOG_NAV = { to: "/catalogue", label: "Catalogue", icon: BookOpen, end: false };
@@ -19,7 +20,11 @@ export default function Layout() {
   const { user, logout } = useAuth();
   useGarminSyncOnOpen();
   // Sans la partie Nutrition : pas d'onglets Repas ni Frigo
-  const base = user?.nutrition_active === false ? BASE_NAV.filter((n) => n.to !== "/repas" && n.to !== "/frigo") : BASE_NAV;
+  const withoutNutrition = user?.nutrition_active === false ? BASE_NAV.filter((n) => n.to !== "/repas" && n.to !== "/frigo") : BASE_NAV;
+  // Onglet Habitudes (préférence) : juste après l'Agenda
+  const base = user?.habitudes_active
+    ? withoutNutrition.flatMap((n) => (n.to === "/agenda" ? [n, HABITS_NAV] : [n]))
+    : withoutNutrition;
   const NAV = user?.is_admin ? [...base, ADMIN_NAV] : user?.nutrition_active === false ? base : [...base, CATALOG_NAV];
 
   return (

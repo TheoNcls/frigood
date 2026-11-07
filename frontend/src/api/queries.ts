@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 import { useAuth } from "../auth/AuthContext";
 import type {
-  Activity, ActivityType, BodyComposition, DailyStat, FitnessMetric, FridgeHistory, FridgeItem, Ingredient, MealLog, Nutriment, Recipe,
-  PlanMilestone, TaskOccurrence,
+  Activity, ActivityType, BodyComposition, DailyStat, FitnessMetric, FridgeHistory, FridgeItem, Habit, HabitLog, Ingredient, MealLog,
+  Nutriment, Recipe, PlanMilestone, TaskOccurrence,
 } from "./types";
 
 const CATALOG_STALE = 2 * 60 * 1000;
@@ -146,5 +146,25 @@ export function useFitness(date_from: string, date_to: string) {
   return useQuery({
     queryKey: ["fitness", uid, date_from, date_to],
     queryFn: () => api<FitnessMetric[]>(`/users/${uid}/fitness/`, { query: { date_from, date_to } }),
+  });
+}
+
+export function useHabits(enabled = true) {
+  const uid = useUserId();
+  const query = useQuery({
+    queryKey: ["habits", uid],
+    queryFn: () => api<Habit[]>(`/users/${uid}/habits/`),
+    enabled,
+  });
+  return { ...query, list: query.data ?? (EMPTY as Habit[]) };
+}
+
+/** Habitudes faites entre deux dates (incluses) */
+export function useHabitLogs(date_from: string, date_to: string, enabled = true) {
+  const uid = useUserId();
+  return useQuery({
+    queryKey: ["habit_logs", uid, date_from, date_to],
+    queryFn: () => api<HabitLog[]>(`/users/${uid}/habit_logs/`, { query: { date_from, date_to } }),
+    enabled,
   });
 }

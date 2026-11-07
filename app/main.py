@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app import push_service
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import ingredients, recipes, nutriments, users, meal_logs, activity_types, activities, fridge, tasks, push, body, coach, admin
+from app.routers import ingredients, recipes, nutriments, users, meal_logs, activity_types, activities, fridge, tasks, push, body, coach, admin, habits
 
 logging.basicConfig(level=logging.INFO)
 
@@ -46,6 +46,7 @@ app.include_router(push.router)
 app.include_router(body.router)
 app.include_router(coach.router)
 app.include_router(admin.router)
+app.include_router(habits.router)
 
 @app.get("/")
 def root():

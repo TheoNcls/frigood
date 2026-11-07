@@ -145,6 +145,8 @@ class User(Base):
     ingredients_perso_seulement = Column(Boolean, nullable=False, default=False, server_default=false())
     # Partie Nutrition affichée dans l'appli (masquée sinon : les données restent)
     nutrition_active = Column(Boolean, nullable=False, default=True, server_default=true())
+    # Onglet Habitudes (et sa carte sur l'accueil) : à activer dans les préférences
+    habitudes_active = Column(Boolean, nullable=False, default=False, server_default=false())
     # Régime alimentaire (transmis au coach) : omnivore, flexitarien, pescetarien, vegetarien, vegan
     regime_alimentaire = Column(String(20), nullable=False, default="vegetarien", server_default="vegetarien")
     # Nutriments suivis sur l'accueil (JSON) : [{nutriment_id, cible, sens: "min" à atteindre | "max" à ne pas dépasser}]
@@ -187,6 +189,7 @@ class User(Base):
     fitness_metrics = relationship("FitnessMetric", cascade="all, delete-orphan")
     garmin_ignored = relationship("GarminIgnoredActivity", cascade="all, delete-orphan")
     coach_reports = relationship("CoachReport", cascade="all, delete-orphan")
+    habits = relationship("Habit", cascade="all, delete-orphan")
 
     @property
     def zones_fc(self) -> dict | None:
@@ -554,3 +557,33 @@ class CoachReport(Base):
     activites_ajoutees_at = Column(DateTime, nullable=True)
     # Lundi de la semaine préparée (un bilan par semaine préparée ; le week-end : la semaine suivante possible)
     semaine_cible = Column(Date, nullable=True)
+
+
+class Habit(Base):
+    """Habitude (piano, méditation, lecture…) et les jours de la semaine où elle a lieu."""
+    __tablename__ = "habits"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)   # dernière modification
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    nom = Column(String(80), nullable=False)
+    emoji = Column(String(16), nullable=True)
+    jours = Column(String(7), nullable=False, default="0123456")   # jours prévus : 0 = lundi … 6 = dimanche
+    # En pause : gardée (avec son historique) mais plus proposée chaque jour
+    active = Column(Boolean, nullable=False, default=True, server_default=true())
+
+    logs = relationship("HabitLog", cascade="all, delete-orphan", back_populates="habit")
+
+
+class HabitLog(Base):
+    """Habitude faite tel jour (supprimer la ligne = annuler)."""
+    __tablename__ = "habit_logs"
+    __table_args__ = (UniqueConstraint("habit_id", "date", name="uq_habit_log_day"),)
+
+    id = Column(Integer, primary_key=True)
+    habit_id = Column(Integer, ForeignKey("habits.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    done_at = Column(DateTime, default=datetime.utcnow)
+
+    habit = relationship("Habit", back_populates="logs")

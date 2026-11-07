@@ -440,6 +440,8 @@ function PreferencesCard() {
     <Card title="Préférences">
       <NutritionSetting />
       <div className="my-4 border-t border-slate-100" />
+      <HabitsSetting />
+      <div className="my-4 border-t border-slate-100" />
       {user.nutrition_active && (
         <>
           <RegimeSetting />
@@ -547,6 +549,43 @@ function NutritionSetting() {
           aria-label="Afficher la nutrition et le frigo"
           className="peer sr-only"
           checked={user.nutrition_active}
+          disabled={save.isPending}
+          onChange={(e) => save.mutate(e.target.checked)}
+        />
+        <span className="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-100" />
+        <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+      </span>
+    </label>
+  );
+}
+
+function HabitsSetting() {
+  const user = useCurrentUser();
+  const { setUser } = useAuth();
+  const toast = useToast();
+  const save = useMutation({
+    mutationFn: (habitudes_active: boolean) => api<User>(`/users/${user.id}`, { method: "PUT", body: { habitudes_active } }),
+    onSuccess: (u) => { setUser(u); toast(u.habitudes_active ? "Onglet Habitudes affiché" : "Onglet Habitudes masqué"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-4">
+      <span>
+        <span className="block text-sm font-medium text-slate-800">Habitudes</span>
+        <span className="block text-xs text-slate-500">
+          {user.habitudes_active
+            ? "Onglet Habitudes (piano, méditation, lecture…) et habitudes du jour à cocher sur l'accueil."
+            : "Masqué : pas d'onglet Habitudes ni de carte sur l'accueil. Tes habitudes et leur historique sont conservés."}
+          {" "}Réglage de ton compte.
+        </span>
+      </span>
+      <span className="relative mt-0.5 inline-flex shrink-0">
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Afficher l'onglet Habitudes"
+          className="peer sr-only"
+          checked={user.habitudes_active}
           disabled={save.isPending}
           onChange={(e) => save.mutate(e.target.checked)}
         />

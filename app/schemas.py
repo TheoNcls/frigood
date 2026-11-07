@@ -314,6 +314,7 @@ class UserUpdate(BaseModel):
     plan_objectifs: str | None = None
     regime_alimentaire: str | None = None
     nutrition_active: bool | None = None
+    habitudes_active: bool | None = None
     ingredients_perso_seulement: bool | None = None
     # Envoyé à null pour revenir à « pas renseigné » (tous les exercices)
     materiel: list[str] | None = None
@@ -396,6 +397,7 @@ class UserRead(BaseModel):
     plan_genere_at: datetime_type | None = None
     regime_alimentaire: str = "vegetarien"
     nutrition_active: bool = True
+    habitudes_active: bool = False
     ingredients_perso_seulement: bool = False
     nutriments_suivis: list[NutrimentSuivi] = []
     materiel: list[str] | None = None
@@ -772,3 +774,90 @@ class AdminUserUpdate(BaseModel):
     plan_regenerable: bool | None = None
     # true : un bilan du coach (Claude) de plus, même si celui de la semaine est déjà fait
     bilan_supplementaire: bool | None = None
+
+
+# --- Habitudes ---
+
+def _habit_days(v):
+    """Jours prévus : liste (ou texte « 024 ») de 0 = lundi à 6 = dimanche, triés, sans doublon."""
+    if v is None:
+        return v
+    if isinstance(v, str):
+        v = [c for c in v if c.isdigit()]
+    days = sorted({int(d) for d in v if 0 <= int(d) <= 6})
+    return days
+
+
+def _habit_name(v):
+    if v is None:
+        return v
+    v = v.strip()
+    if not v:
+        raise ValueError("Donne un nom à l'habitude")
+    return v
+
+
+def _habit_emoji(v):
+    return (v or "").strip() or None
+
+
+class HabitCreate(BaseModel):
+    nom: str = Field(min_length=1, max_length=80)
+    emoji: str | None = Field(default=None, max_length=16)
+    jours: list[int] = Field(default_factory=lambda: list(range(7)))
+
+    _nom = field_validator("nom")(_habit_name)
+    _emoji = field_validator("emoji")(_habit_emoji)
+
+    @field_validator("jours")
+    @classmethod
+    def _jours(cls, v):
+        days = _habit_days(v)
+        if not days:
+            raise ValueError("Choisis au moins un jour")
+        return days
+
+
+class HabitUpdate(BaseModel):
+    nom: str | None = Field(default=None, max_length=80)
+    emoji: str | None = Field(default=None, max_length=16)   # null : enlever l'emoji
+    jours: list[int] | None = None
+    active: bool | None = None
+
+    _nom = field_validator("nom")(_habit_name)
+    _emoji = field_validator("emoji")(_habit_emoji)
+
+    @field_validator("jours")
+    @classmethod
+    def _jours(cls, v):
+        days = _habit_days(v)
+        if days is not None and not days:
+            raise ValueError("Choisis au moins un jour")
+        return days
+
+
+class HabitRead(BaseModel):
+    id: int
+    nom: str
+    emoji: str | None = None
+    jours: list[int]
+    active: bool = True
+    created_at: datetime_type | None = None
+    updated_at: datetime_type | None = None
+
+    _jours = field_validator("jours", mode="before")(_habit_days)
+    model_config = {"from_attributes": True}
+
+
+class HabitLogCreate(BaseModel):
+    habit_id: int
+    date: date_type
+
+
+class HabitLogRead(BaseModel):
+    id: int
+    habit_id: int
+    date: date_type
+    done_at: datetime_type | None = None
+
+    model_config = {"from_attributes": True}

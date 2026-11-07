@@ -4,7 +4,11 @@ import DaySummary from "../components/DaySummary";
 import WeekStrip from "../components/WeekStrip";
 import { AlertTriangle, Footprints, Target } from "lucide-react";
 import { useCurrentUser } from "../auth/AuthContext";
-import { useDailyStat, useFridge, useIngredients, useMealLogs, usePlanMilestone, useRecipes } from "../api/queries";
+import {
+  useDailyStat, useFridge, useHabitLogs, useHabits, useIngredients, useMealLogs, usePlanMilestone, useRecipes, useTasks,
+} from "../api/queries";
+import HabitsToday from "../components/HabitsToday";
+import { isDue } from "../lib/habits";
 import type { PlanMilestone } from "../api/types";
 import { CoachText } from "../components/Coach";
 import DayNutritionTiles from "../components/DayNutrition";
@@ -24,6 +28,12 @@ export default function Home() {
   const milestone = usePlanMilestone();
   const jalon = milestone.data ?? null;
   const fridge = useFridge();
+  // Habitudes du jour (si l'onglet est activé) ; tâches du jour : même requête que la carte « Aujourd'hui »
+  const habits = useHabits(user.habitudes_active);
+  const habitLogs = useHabitLogs(today, today, user.habitudes_active);
+  const showHabits = user.habitudes_active
+    && (habits.list.some((h) => isDue(h, today)) || (habitLogs.data ?? []).some((l) => l.date === today));
+  const hasTasks = (useTasks(today, today).data ?? []).length > 0;
   // Clic sur une notification de rappel : /?jour=AAAA-MM-JJ ouvre le résumé de ce jour
   const [params, setParams] = useSearchParams();
   const openedDay = /^\d{4}-\d{2}-\d{2}$/.test(params.get("jour") ?? "") ? params.get("jour") : null;
@@ -56,7 +66,18 @@ export default function Home() {
         </Link>
       )}
 
-      <TodayTasks />
+      {/* Habitudes : carte étroite et haute, à côté des tâches du jour sur grand écran */}
+      {showHabits && hasTasks ? (
+        <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_16rem]">
+          <TodayTasks />
+          <HabitsToday />
+        </div>
+      ) : (
+        <>
+          <TodayTasks />
+          {showHabits && <HabitsToday />}
+        </>
+      )}
       <OverdueTasks />
       <UpcomingImportant />
 

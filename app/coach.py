@@ -14,8 +14,8 @@ from app.fridge_service import to_base_qty
 from app.garmin_workouts import EQUIPMENT, _estimate_s, clean_exercises, clean_seance, exercises_for
 from app.garmin_service import activity_details
 from app.models import (
-    Activity, BodyComposition, CoachReport, DailyStat, FitnessMetric, FridgeItem, Ingredient, MealLog, Recipe, Task, TaskCompletion,
-    User,
+    Activity, BodyComposition, CoachReport, DailyStat, FitnessMetric, FridgeItem, Habit, HabitLog, Ingredient, MealLog, Recipe, Task,
+    TaskCompletion, User,
 )
 
 log = logging.getLogger("frigood.coach")
@@ -41,7 +41,8 @@ Tu écris en français, tu tutoies la personne, sur un ton bienveillant, direct 
 On te donne en JSON ses objectifs et contraintes (texte libre qu'elle a écrit), ses objectifs nutritionnels,
 son régime alimentaire, ses repas des derniers jours (totaux journaliers calculés par l'app), ses activités,
 ses données Garmin (sommeil, pas, stress, body battery, HRV, disposition à l'entraînement, VO2max, prédictions),
-ses pesées, ses tâches passées et à venir, et le contenu de son frigo.
+ses pesées, ses tâches passées et à venir, le contenu de son frigo et, si elle en suit, ses habitudes
+(piano, méditation, lecture…) avec leur régularité sur 14 jours.
 Pour les activités : allure, allure ajustée à la pente (GAP), FC et zones, effet d'entraînement, cadence et dynamique
 de course, effort perçu et ressenti notés sur la montre, endurance (stamina), meilleurs temps dans la sortie et,
 pour les plus récentes, les tours (segments). « seances_programme_vs_realise » met côte à côte les séances prévues
@@ -100,6 +101,8 @@ Règles :
 - En trail ou sur parcours vallonné, juge l'effort avec l'allure ajustée (GAP) et la FC plutôt qu'avec l'allure brute.
 - Un effort perçu élevé ou un ressenti faible pour une FC habituelle, plusieurs fois de suite, est un signe de fatigue.
 - Dynamique de course (cadence, contact au sol, oscillation) : regarde les tendances, sans conclure sur une seule sortie.
+- Habitudes : parles-en brièvement quand c'est utile (régularité, lien avec le sommeil, le stress ou la récupération),
+  sans en faire le sujet principal du bilan.
 - Markdown simple : listes à puces courtes, gras pour l'essentiel, pas de titres (les sections sont déjà titrées).
 - Si « bilan_precedent » est présent : sers-t'en pour suivre l'évolution (ce qui s'est amélioré ou dégradé depuis),
   dis ce que sont devenues les séances que tu avais proposées (faites, pas faites, non ajoutées) et adapte la semaine
@@ -330,6 +333,37 @@ def programme_vs_realise(db: Session, user: User, today: date) -> dict:
     return {"seances": seances, "activites_hors_programme": hors_programme}
 
 
+HABIT_DAYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
+
+
+def _habits(db: Session, user: User, today: date) -> list[dict] | None:
+    """Habitudes actives et leur régularité sur 14 jours (seulement si l'onglet Habitudes est activé)."""
+    from app.push_service import local_date
+
+    if not user.habitudes_active:
+        return None
+    habits = db.query(Habit).filter(Habit.user_id == user.id, Habit.active.is_(True)).order_by(Habit.id).all()
+    if not habits:
+        return None
+    start = today - timedelta(days=PAST_DAYS - 1)
+    done = defaultdict(set)
+    for hid, d in (db.query(HabitLog.habit_id, HabitLog.date).join(Habit)
+                   .filter(Habit.user_id == user.id, HabitLog.date >= start, HabitLog.date <= today)):
+        done[hid].add(d)
+    out = []
+    for h in habits:
+        days = {int(c) for c in h.jours or "" if c.isdigit()}
+        first = max(start, local_date(h.created_at)) if h.created_at else start
+        planned = [first + timedelta(days=i) for i in range((today - first).days + 1)]
+        # Aujourd'hui ne compte que si c'est déjà fait : la journée n'est pas finie
+        planned = [d for d in planned if d.weekday() in days and (d < today or d in done[h.id])]
+        faites = sum(1 for d in planned if d in done[h.id])
+        out.append({"habitude": f"{h.emoji} {h.nom}" if h.emoji else h.nom, "jours": [HABIT_DAYS[d] for d in sorted(days)],
+                    "faites": faites, "prevues": len(planned),
+                    "faites_en_plus": len(done[h.id]) - faites})   # jours non prévus où elle l'a faite quand même
+    return out
+
+
 def build_context(db: Session, user: User, today: date, fetch_laps: bool = False) -> dict:
     """Données envoyées au coach. fetch_laps : récupère sur Garmin les tours manquants de quelques séances
     prévues (seulement pour un vrai bilan, jamais pour l'aperçu)."""
@@ -491,6 +525,7 @@ def build_context(db: Session, user: User, today: date, fetch_laps: bool = False
         f"seances_programme_vs_realise_{PAST_DAYS}_jours": programme_vs_realise(db, user, today),
         f"taches_et_seances_a_venir_{NEXT_DAYS}_jours": a_venir,
         "frigo": frigo,
+        f"habitudes_{PAST_DAYS}_jours": _habits(db, user, today),
         "bilan_precedent": previous_report(db, user, today),
     })
 

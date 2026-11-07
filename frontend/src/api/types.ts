@@ -17,6 +17,8 @@ export interface User {
   regime_alimentaire: RegimeAlimentaire;
   /** Partie Nutrition affichée (masquée sinon : repas, objectifs, calories ; les données restent) */
   nutrition_active: boolean;
+  /** Onglet Habitudes et sa carte sur l'accueil */
+  habitudes_active: boolean;
   /** Repas et Frigo : seulement ses ingrédients, ceux déjà mangés ou au frigo (le scan reste possible) */
   ingredients_perso_seulement: boolean;
   /** Nutriments suivis sur l'accueil, avec la valeur visée */
@@ -447,4 +449,24 @@ export interface PlanMilestone {
   sports_auto: string | null;
   semaine: { km: number; d_plus_m: number; seances: number; depuis: string };
   plus_longue_sortie: { km: number; d_plus_m: number; date: string | null };
+}
+
+/** Habitude (piano, méditation, lecture…) : jours prévus, de 0 = lundi à 6 = dimanche */
+export interface Habit {
+  id: number;
+  nom: string;
+  emoji: string | null;
+  jours: number[];
+  /** En pause : gardée avec son historique, mais plus proposée chaque jour */
+  active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** Habitude faite tel jour */
+export interface HabitLog {
+  id: number;
+  habit_id: number;
+  date: string;
+  done_at: string | null;
 }
