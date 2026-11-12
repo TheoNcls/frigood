@@ -937,13 +937,7 @@ class CreatorSave(BaseModel):
     _nom = field_validator("nom")(_habit_name)
 
 
-# --- Habitudes journalières (rappels à heures fixes) ---
-
-def _routine_days(v):
-    days = _habit_days(v)
-    if days is not None and not days:
-        raise ValueError("Choisis au moins un jour")
-    return days
+# --- Habitudes journalières (rappels à heures fixes, activées pour la journée) ---
 
 
 class RoutineReminderIn(BaseModel):
@@ -969,22 +963,21 @@ class RoutineReminderIn(BaseModel):
 
 class RoutineCreate(BaseModel):
     nom: str = Field(min_length=1, max_length=80)
-    jours: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])
-    active: bool = True
     rappels: list[RoutineReminderIn] = Field(default_factory=list, max_length=48)
 
     _nom = field_validator("nom")(_habit_name)
-    _jours = field_validator("jours")(_routine_days)
 
 
 class RoutineUpdate(BaseModel):
     nom: str | None = Field(default=None, max_length=80)
-    jours: list[int] | None = None
-    active: bool | None = None
     rappels: list[RoutineReminderIn] | None = Field(default=None, max_length=48)
 
     _nom = field_validator("nom")(_habit_name)
-    _jours = field_validator("jours")(_routine_days)
+
+
+class RoutineToday(BaseModel):
+    """Activer (ou arrêter) les rappels pour aujourd'hui."""
+    active: bool
 
 
 class RoutineReminderRead(BaseModel):
@@ -998,10 +991,8 @@ class RoutineReminderRead(BaseModel):
 class RoutineRead(BaseModel):
     id: int
     nom: str
-    jours: list[int]
-    active: bool = True
     rappels: list[RoutineReminderRead] = []
+    active_le: date_type | None = None   # activée ce jour-là (aujourd'hui = rappels en route)
     created_at: datetime_type | None = None
 
-    _jours = field_validator("jours", mode="before")(_habit_days)
     model_config = {"from_attributes": True}

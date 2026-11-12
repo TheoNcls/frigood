@@ -1,25 +1,23 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BellRing, Check, Pencil, Plus, Repeat, X } from "lucide-react";
+import { Bell, BellRing, Check, Pencil, Plus, Repeat, X } from "lucide-react";
 import { api } from "../api/client";
 import { useRoutines } from "../api/queries";
 import type { DailyRoutine } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { todayISO } from "../lib/dates";
-import { DAY_LABELS, weekday } from "../lib/habits";
-import { DaysPicker, ToggleSwitch, usePushActive } from "./HabitInputs";
+import { usePushActive } from "./HabitInputs";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
 import { ConfirmButton, Empty, Spinner } from "./ui";
 
 const MAX_REMINDERS = 48;
 const STEPS = [15, 20, 30, 45, 60, 90, 120];
-const WEEKDAYS = [0, 1, 2, 3, 4];
-const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
 
 const toMin = (h: string) => { const [a, b] = h.split(":").map(Number); return a * 60 + b; };
 const toHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const readNow = () => { const d = new Date(); return toHHMM(d.getHours() * 60 + d.getMinutes()); };
 
 /** Des rappels réguliers : de « from » à « to » (inclus), toutes les « step » minutes. */
 function series(from: string, to: string, step: number, message: string): [string, string][] {
@@ -29,28 +27,22 @@ function series(from: string, to: string, step: number, message: string): [strin
 }
 
 // Pour démarrer vite : tout est modifiable ensuite
-const TEMPLATES: { nom: string; jours: number[]; rappels: [string, string][] }[] = [
-  { nom: "💻 Télétravail", jours: WEEKDAYS, rappels: [
+const TEMPLATES: { nom: string; rappels: [string, string][] }[] = [
+  { nom: "💻 Télétravail", rappels: [
     ["10:00", "Il faut te lever 🧍"], ["10:30", "Ça fait 30 min !"], ["13:00", "Il faut te lever !"], ["14:00", "Ça fait 1 h, tu peux te rasseoir !"],
   ] },
-  { nom: "💧 Boire de l'eau", jours: EVERY_DAY, rappels: series("10:00", "18:00", 120, "Un grand verre d'eau 💧") },
-  { nom: "👀 Pause écran", jours: WEEKDAYS, rappels: series("09:00", "17:00", 60, "Regarde au loin 20 secondes 👀") },
+  { nom: "💧 Boire de l'eau", rappels: series("10:00", "18:00", 120, "Un grand verre d'eau 💧") },
+  { nom: "👀 Pause écran", rappels: series("09:00", "17:00", 60, "Regarde au loin 20 secondes 👀") },
 ];
 
-export function daysText(jours: number[]): string {
-  const k = jours.join("");
-  if (k === "0123456") return "Tous les jours";
-  if (k === "01234") return "Du lundi au vendredi";
-  if (k === "56") return "Le week-end";
-  return jours.map((d) => DAY_LABELS[d]).join(", ");
-}
+/** Activée pour aujourd'hui : ses rappels partent à leur heure jusqu'à minuit. */
+export const isOnToday = (routine: DailyRoutine) => routine.active_le === todayISO();
 
-/** Heure locale « HH:MM », rafraîchie chaque minute (prochain rappel à jour). */
+/** Heure locale « HH:MM », rafraîchie régulièrement (prochain rappel à jour). */
 function useNowHHMM(): string {
-  const read = () => { const d = new Date(); return toHHMM(d.getHours() * 60 + d.getMinutes()); };
-  const [now, setNow] = useState(read);
+  const [now, setNow] = useState(readNow);
   useEffect(() => {
-    const t = setInterval(() => setNow(read()), 30_000);
+    const t = setInterval(() => setNow(readNow()), 30_000);
     return () => clearInterval(t);
   }, []);
   return now;
@@ -61,9 +53,35 @@ function useInvalidateRoutines() {
   return () => queryClient.invalidateQueries({ queryKey: ["routines"] });
 }
 
+/** Activer les rappels pour aujourd'hui, ou les arrêter : partagé par l'accueil et l'onglet Habitudes. */
+export function useRoutineToday() {
+  const user = useCurrentUser();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const key = ["routines", user.id];
+  return useMutation({
+    mutationFn: ({ routine, active }: { routine: DailyRoutine; active: boolean }) =>
+      api<DailyRoutine>(`/routines/${routine.id}/today`, { method: "PUT", body: { active } }),
+    // Le bouton change tout de suite, sans attendre le serveur
+    onMutate: ({ routine, active }) => {
+      queryClient.setQueryData<DailyRoutine[]>(key, (old) =>
+        old?.map((r) => (r.id === routine.id ? { ...r, active_le: active ? todayISO() : null } : r)));
+    },
+    onSuccess: (r, { active }) => {
+      if (!active) return toast(`${r.nom} : rappels arrêtés pour aujourd'hui`);
+      const upcoming = r.rappels.filter((x) => x.heure > readNow());
+      toast(upcoming.length
+        ? `${r.nom} : ${upcoming.length} rappel${upcoming.length > 1 ? "s" : ""} aujourd'hui, prochain à ${upcoming[0].heure}`
+        : `${r.nom} : plus aucun rappel aujourd'hui (le dernier était à ${r.rappels[r.rappels.length - 1]?.heure ?? "—"})`);
+    },
+    onError: (e) => toast(e.message, "error"),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+}
+
 type Row = { key: number; heure: string; message: string };
 
-/** Création ou modification d'une habitude journalière : nom, jours, et ses rappels (heure + message). */
+/** Création ou modification d'une habitude journalière : son nom et ses rappels (heure + message). */
 export function RoutineFormModal({ routine, onClose }: { routine?: DailyRoutine; onClose: () => void }) {
   const user = useCurrentUser();
   const toast = useToast();
@@ -74,7 +92,6 @@ export function RoutineFormModal({ routine, onClose }: { routine?: DailyRoutine;
   const byTime = (list: Row[]) => [...list].sort((a, b) => (a.heure || "99").localeCompare(b.heure || "99"));
 
   const [nom, setNom] = useState(routine?.nom ?? "");
-  const [jours, setJours] = useState<number[]>(routine?.jours ?? WEEKDAYS);
   const [rows, setRows] = useState<Row[]>(() => toRows((routine?.rappels ?? []).map((r) => [r.heure, r.message])));
   const [gen, setGen] = useState<{ open: boolean; from: string; to: string; step: number; message: string }>(
     { open: false, from: "09:00", to: "17:00", step: 60, message: "" });
@@ -96,24 +113,19 @@ export function RoutineFormModal({ routine, onClose }: { routine?: DailyRoutine;
     setGen({ ...gen, open: false, message: "" });
     toast(`${added.length} rappel${added.length > 1 ? "s" : ""} ajouté${added.length > 1 ? "s" : ""}`);
   };
-  const applyTemplate = (t: (typeof TEMPLATES)[number]) => {
-    setNom(t.nom);
-    setJours(t.jours);
-    setRows(toRows(t.rappels));
-  };
 
   const filled = rows.every((r) => r.heure && r.message.trim());
   const canSave = !!nom.trim() && rows.length > 0 && filled;
   const save = useMutation({
     mutationFn: () => {
-      const body = { nom: nom.trim(), jours, rappels: byTime(rows).map((r) => ({ heure: r.heure, message: r.message.trim() })) };
+      const body = { nom: nom.trim(), rappels: byTime(rows).map((r) => ({ heure: r.heure, message: r.message.trim() })) };
       return routine
         ? api<DailyRoutine>(`/routines/${routine.id}`, { method: "PUT", body })
         : api<DailyRoutine>(`/users/${user.id}/routines/`, { method: "POST", body });
     },
     onSuccess: (r) => {
       invalidate();
-      toast(routine ? `${r.nom} enregistrée` : `${r.nom} ajoutée`);
+      toast(routine ? `${r.nom} enregistrée` : `${r.nom} ajoutée : active-la pour la journée quand tu en as besoin`);
       onClose();
     },
     onError: (e) => toast(e.message, "error"),
@@ -127,17 +139,17 @@ export function RoutineFormModal({ routine, onClose }: { routine?: DailyRoutine;
           <div className="flex flex-wrap gap-1.5">
             {TEMPLATES.map((t) => (
               <button key={t.nom} type="button" className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-200"
-                onClick={() => applyTemplate(t)}>
+                onClick={() => { setNom(t.nom); setRows(toRows(t.rappels)); }}>
                 {t.nom}
               </button>
             ))}
           </div>
         )}
-        <input className="input w-full" value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)}
-          placeholder="Télétravail, journée au bureau…" aria-label="Nom de l'habitude journalière" />
-        <p className="-mt-2 text-xs text-slate-500">C'est le titre des notifications (un emoji au début, c'est permis).</p>
-
-        <DaysPicker value={jours} onChange={setJours} />
+        <div className="space-y-1">
+          <input className="input w-full" value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)}
+            placeholder="Télétravail, journée au bureau…" aria-label="Nom de l'habitude journalière" />
+          <p className="text-xs text-slate-500">C'est le titre des notifications (un emoji au début, c'est permis).</p>
+        </div>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
@@ -194,7 +206,8 @@ export function RoutineFormModal({ routine, onClose }: { routine?: DailyRoutine;
         </div>
 
         <p className="text-xs text-slate-500">
-          Les notifications arrivent sur tous tes appareils où elles sont activées, les jours choisis.
+          Rien ne part tant que tu ne l'actives pas pour la journée (ici ou sur l'accueil) ; les notifications arrivent alors sur tous
+          tes appareils où elles sont activées, jusqu'à minuit.
           {pushActive === false && <span className="text-amber-700"> Pas activées sur cet appareil : active-les dans le Profil.</span>}
         </p>
 
@@ -206,17 +219,22 @@ export function RoutineFormModal({ routine, onClose }: { routine?: DailyRoutine;
   );
 }
 
-function RoutineCard({ routine, now, today, onEdit }: { routine: DailyRoutine; now: string; today: number; onEdit: () => void }) {
+/** Statut du jour : « Prochain rappel à 13:00 », « Fini pour aujourd'hui »… */
+function statusText(routine: DailyRoutine, now: string): string {
+  if (!isOnToday(routine)) return "Pas activée aujourd'hui";
+  const next = routine.rappels.find((r) => r.heure > now);
+  return next ? `Prochain rappel à ${next.heure}` : "Fini pour aujourd'hui ✓";
+}
+
+function RoutineCard({ routine, now, onEdit }: { routine: DailyRoutine; now: string; onEdit: () => void }) {
   const toast = useToast();
   const invalidate = useInvalidateRoutines();
-  const isToday = routine.active && routine.jours.includes(today);
-  const next = isToday ? routine.rappels.find((r) => r.heure > now) : undefined;
+  const today = useRoutineToday();
+  const on = isOnToday(routine);
+  const next = on ? routine.rappels.find((r) => r.heure > now) : undefined;
+  const first = routine.rappels[0]?.heure;
+  const last = routine.rappels[routine.rappels.length - 1]?.heure;
 
-  const toggle = useMutation({
-    mutationFn: (active: boolean) => api<DailyRoutine>(`/routines/${routine.id}`, { method: "PUT", body: { active } }),
-    onSuccess: (r) => { invalidate(); toast(r.active ? `${r.nom} : rappels repris` : `${r.nom} en pause`); },
-    onError: (e) => toast(e.message, "error"),
-  });
   const test = useMutation({
     mutationFn: () => api<{ envoyes: number }>(`/routines/${routine.id}/test`, { method: "POST" }),
     onSuccess: ({ envoyes }) => envoyes
@@ -230,31 +248,35 @@ function RoutineCard({ routine, now, today, onEdit }: { routine: DailyRoutine; n
     onError: (e) => toast(e.message, "error"),
   });
 
-  const status = !routine.active ? "En pause : aucun rappel"
-    : !routine.jours.includes(today) ? "Pas de rappel aujourd'hui"
-      : next ? `Prochain rappel à ${next.heure}` : "Fini pour aujourd'hui ✓";
-
   return (
-    <li className={`card space-y-3 ${routine.active ? "" : "opacity-60"}`}>
-      <div className="flex items-start justify-between gap-3">
-        <button type="button" className="group min-w-0 text-left" onClick={onEdit} aria-label={`Modifier ${routine.nom}`}>
-          <span className="flex items-center gap-1.5">
-            <span className="truncate font-semibold text-slate-900">{routine.nom}</span>
-            {!routine.active && <span className="badge bg-slate-200 text-slate-600">en pause</span>}
-            <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-slate-500" />
-          </span>
-          <span className="text-xs text-slate-500">{daysText(routine.jours)} · {routine.rappels.length} rappel{routine.rappels.length > 1 ? "s" : ""}</span>
-        </button>
-        <ToggleSwitch label={`${routine.nom} active`} checked={routine.active} disabled={toggle.isPending} onChange={(v) => toggle.mutate(v)} />
-      </div>
+    <li className={`card space-y-3 ${on ? "ring-1 ring-brand-200" : ""}`}>
+      <button type="button" className="group block min-w-0 text-left" onClick={onEdit} aria-label={`Modifier ${routine.nom}`}>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate font-semibold text-slate-900">{routine.nom}</span>
+          <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-slate-500" />
+        </span>
+        <span className="text-xs text-slate-500">
+          {routine.rappels.length} rappel{routine.rappels.length > 1 ? "s" : ""}{first && first !== last ? ` · de ${first} à ${last}` : first ? ` · à ${first}` : ""}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        aria-pressed={on}
+        disabled={today.isPending}
+        onClick={() => today.mutate({ routine, active: !on })}
+        className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98] ${
+          on ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700" : "border border-brand-300 bg-white text-brand-700 hover:bg-brand-50"}`}
+      >
+        {on ? <><Check className="h-4 w-4" /> Activée aujourd'hui</> : <><Bell className="h-4 w-4" /> Activer pour aujourd'hui</>}
+      </button>
 
       <ol className="space-y-1" aria-label={`Rappels de ${routine.nom}`}>
         {routine.rappels.map((r) => {
           const isNext = r.id === next?.id;
-          const past = isToday && r.heure <= now;
+          const past = on && r.heure <= now;
           return (
-            <li key={r.id} className={`flex items-baseline gap-2.5 rounded-lg px-2 py-1 text-sm ${
-              isNext ? "bg-brand-50 ring-1 ring-brand-200" : ""}`}>
+            <li key={r.id} className={`flex items-baseline gap-2.5 rounded-lg px-2 py-1 text-sm ${isNext ? "bg-brand-50 ring-1 ring-brand-200" : ""}`}>
               <span className={`w-11 shrink-0 font-semibold tabular-nums ${past ? "text-slate-400" : "text-slate-800"}`}>{r.heure}</span>
               <span className={`min-w-0 flex-1 ${past ? "text-slate-400" : "text-slate-700"}`}>{r.message}</span>
               {isNext && <span className="badge shrink-0 bg-brand-600 text-white">prochain</span>}
@@ -264,7 +286,7 @@ function RoutineCard({ routine, now, today, onEdit }: { routine: DailyRoutine; n
       </ol>
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <span>{status}</span>
+        <span>{statusText(routine, now)}{on && " · s'arrête à minuit"}</span>
         <span className="flex items-center gap-1">
           <button type="button" className="btn-secondary px-2.5 py-1 text-xs" disabled={test.isPending} onClick={() => test.mutate()}>
             <BellRing className="h-3.5 w-3.5" /> Tester
@@ -277,14 +299,42 @@ function RoutineCard({ routine, now, today, onEdit }: { routine: DailyRoutine; n
   );
 }
 
-/** Onglet « Journalières » : les habitudes journalières et leurs rappels à heures fixes. */
+/** Accueil : un bouton par habitude journalière pour activer (ou arrêter) ses rappels du jour. */
+export function RoutinesToday({ routines }: { routines: DailyRoutine[] }) {
+  const today = useRoutineToday();
+  const now = useNowHHMM();
+  return (
+    <div className="space-y-1.5">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rappels du jour</div>
+      {routines.map((r) => {
+        const on = isOnToday(r);
+        return (
+          <button
+            key={r.id}
+            type="button"
+            aria-pressed={on}
+            aria-label={on ? `Arrêter ${r.nom} pour aujourd'hui` : `Activer ${r.nom} pour aujourd'hui`}
+            onClick={() => today.mutate({ routine: r, active: !on })}
+            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition active:scale-[0.98] ${
+              on ? "bg-brand-600 text-white shadow-sm" : "border border-dashed border-slate-300 bg-white text-slate-700 hover:border-brand-400 hover:bg-brand-50"}`}
+          >
+            {on ? <Check className="h-4 w-4 shrink-0" /> : <Bell className="h-4 w-4 shrink-0 text-slate-400" />}
+            <span className="min-w-0 flex-1 truncate font-medium">{r.nom}</span>
+            <span className={`shrink-0 text-xs ${on ? "text-white/80" : "text-slate-400"}`}>
+              {on ? (r.rappels.find((x) => x.heure > now)?.heure ?? "fini") : "activer"}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Onglet « Journalières » : les habitudes journalières, à activer pour la journée. */
 export default function DailyRoutines({ onEdit }: { onEdit: (routine: DailyRoutine | "new") => void }) {
   const routines = useRoutines();
   const pushActive = usePushActive();
   const now = useNowHHMM();
-  const today = weekday(todayISO());
-  // Actives d'abord, celles en pause plus bas
-  const list = [...routines.list].sort((a, b) => Number(b.active) - Number(a.active) || a.id - b.id);
 
   return (
     <div className="space-y-3">
@@ -293,10 +343,11 @@ export default function DailyRoutines({ onEdit }: { onEdit: (routine: DailyRouti
           Les notifications ne sont pas activées sur cet appareil : <Link to="/profil" className="font-medium underline">active-les dans le Profil</Link> pour y recevoir ces rappels.
         </p>
       )}
-      {routines.isLoading ? <Spinner /> : !list.length ? (
+      {routines.isLoading ? <Spinner /> : !routines.list.length ? (
         <div className="card">
           <Empty>
-            Des rappels à heures fixes, certains jours. Par exemple en télétravail : 10 h « Il faut te lever », 10 h 30 « Ça fait 30 min ! »…
+            Une série de rappels à heures fixes, que tu actives pour la journée d'un clic (ici ou sur l'accueil). Par exemple en télétravail :
+            10 h « Il faut te lever », 10 h 30 « Ça fait 30 min ! »…
           </Empty>
           <button type="button" className="btn-primary mx-auto mt-2 flex" onClick={() => onEdit("new")}>
             <Plus className="h-4 w-4" /> Nouvelle habitude journalière
@@ -304,7 +355,7 @@ export default function DailyRoutines({ onEdit }: { onEdit: (routine: DailyRouti
         </div>
       ) : (
         <ul className="space-y-3">
-          {list.map((r) => <RoutineCard key={r.id} routine={r} now={now} today={today} onEdit={() => onEdit(r)} />)}
+          {routines.list.map((r) => <RoutineCard key={r.id} routine={r} now={now} onEdit={() => onEdit(r)} />)}
         </ul>
       )}
     </div>

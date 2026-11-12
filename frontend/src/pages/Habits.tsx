@@ -287,7 +287,7 @@ export default function Habits() {
       <PageHeader
         title="Habitudes"
         subtitle={tab === "habitudes" ? "Tes petites routines : coche-les chaque jour depuis l'accueil."
-          : "Des rappels à heures fixes par notification, les jours choisis."}
+          : "Des séries de rappels à heures fixes, à activer pour la journée d'un clic."}
         action={tab === "habitudes"
           ? <button type="button" className="btn-primary" onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Nouvelle habitude</button>
           : <button type="button" className="btn-primary" onClick={() => setEditingRoutine("new")}><Plus className="h-4 w-4" /> Nouvelle journalière</button>}

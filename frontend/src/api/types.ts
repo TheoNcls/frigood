@@ -476,16 +476,15 @@ export interface RoutineReminder {
   message: string;
 }
 
-/** Habitude journalière : des rappels à heures fixes, certains jours (ex. télétravail) */
+/** Habitude journalière : une série de rappels à heures fixes, activée pour la journée d'un clic (ex. télétravail) */
 export interface DailyRoutine {
   id: number;
   /** Titre des notifications */
   nom: string;
-  jours: number[];
-  /** En pause : plus aucun rappel */
-  active: boolean;
   /** Triés par heure */
   rappels: RoutineReminder[];
+  /** Jour où elle a été activée : aujourd'hui = ses rappels partent jusqu'à minuit */
+  active_le: string | null;
   created_at: string | null;
 }
 

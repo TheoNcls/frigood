@@ -2,11 +2,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Sprout } from "lucide-react";
 import { api } from "../api/client";
-import { useHabitLogs, useHabits } from "../api/queries";
+import { useHabitLogs, useHabits, useRoutines } from "../api/queries";
 import type { Habit, HabitLog } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
 import { todayISO } from "../lib/dates";
 import { doneDates, habitLabel, isDue, isGoal, weekCount, weekStart } from "../lib/habits";
+import { RoutinesToday } from "./DailyRoutines";
 import { useToast } from "./Toast";
 
 /** Cocher une habitude (aujourd'hui ou un jour oublié) et annuler : partagé par l'accueil et l'onglet Habitudes. */
@@ -45,7 +46,8 @@ export function useHabitLogActions() {
   return { mark, undo };
 }
 
-/** Accueil : les habitudes du jour, une case cliquable chacune, qui disparaît une fois cochée. */
+/** Accueil : les habitudes du jour, une case cliquable chacune, qui disparaît une fois cochée ;
+ * puis les habitudes journalières, à activer pour la journée. */
 export default function HabitsToday() {
   const user = useCurrentUser();
   const today = todayISO();
@@ -53,6 +55,7 @@ export default function HabitsToday() {
   // Depuis lundi : pour les objectifs « X fois par semaine »
   const logs = useHabitLogs(weekStart(today), today);
   const { mark } = useHabitLogActions();
+  const routines = useRoutines();
 
   const rows = habits.list.map((h) => {
     const done = doneDates(logs.data, h.id);
@@ -61,7 +64,8 @@ export default function HabitsToday() {
   const todo = rows.filter((r) => r.due && !r.doneToday);
   const doneList = rows.filter((r) => r.doneToday).map((r) => r.h);
   const counted = rows.filter((r) => r.due);
-  if (!counted.length && !doneList.length) return null;
+  const hasHabits = counted.length > 0 || doneList.length > 0;
+  if (!hasHabits && !routines.list.length) return null;
 
   return (
     <section className="card">
@@ -75,7 +79,7 @@ export default function HabitsToday() {
         </div>
         {user.habitudes_active && <Link to="/habitudes" className="text-sm font-medium text-brand-700">Tout voir →</Link>}
       </div>
-      {todo.length > 0 ? (
+      {!hasHabits ? null : todo.length > 0 ? (
         <div className="flex flex-col gap-2">
           {todo.map(({ h, done }) => (
             <button
@@ -96,6 +100,11 @@ export default function HabitsToday() {
       )}
       {doneList.length > 0 && todo.length > 0 && (
         <p className="mt-2 text-xs text-slate-500">Fait : {doneList.map(habitLabel).join(" · ")}</p>
+      )}
+      {routines.list.length > 0 && (
+        <div className={hasHabits ? "mt-3 border-t border-slate-100 pt-3" : ""}>
+          <RoutinesToday routines={routines.list} />
+        </div>
       )}
     </section>
   );

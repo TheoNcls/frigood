@@ -11,7 +11,8 @@ from app import push_service
 from app.models import DailyRoutine, Habit, HabitLog, RoutineReminder, User
 from app.push_service import now_local
 from app.schemas import (
-    HabitCreate, HabitLogCreate, HabitLogRead, HabitRead, HabitUpdate, RoutineCreate, RoutineRead, RoutineReminderIn, RoutineUpdate,
+    HabitCreate, HabitLogCreate, HabitLogRead, HabitRead, HabitUpdate, RoutineCreate, RoutineRead, RoutineReminderIn, RoutineToday,
+    RoutineUpdate,
 )
 
 router = APIRouter(tags=["habits"], dependencies=[Depends(get_principal)])
@@ -132,7 +133,7 @@ def undo(id: int, principal: Principal = Depends(get_principal), db: Session = D
     return {"message": "Annulé"}
 
 
-# ── Habitudes journalières : rappels à heures fixes ───────────────────────────
+# ── Habitudes journalières : rappels à heures fixes, activés pour la journée ──
 
 def _own_routine(db: Session, id: int, principal: Principal) -> DailyRoutine:
     routine = db.get(DailyRoutine, id)
@@ -155,7 +156,7 @@ def _set_reminders(routine: DailyRoutine, rappels: list[RoutineReminderIn]):
 @router.get("/users/{user_id}/routines/", response_model=list[RoutineRead])
 def list_routines(user_id: int, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     check_user_access(principal, user_id)
-    return db.query(DailyRoutine).filter_by(user_id=user_id).order_by(DailyRoutine.active.desc(), DailyRoutine.id).all()
+    return db.query(DailyRoutine).filter_by(user_id=user_id).order_by(DailyRoutine.id).all()
 
 
 @router.post("/users/{user_id}/routines/", response_model=RoutineRead)
@@ -165,7 +166,7 @@ def add_routine(user_id: int, data: RoutineCreate, principal: Principal = Depend
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if db.query(DailyRoutine).filter_by(user_id=user_id).count() >= MAX_ROUTINES:
         raise HTTPException(status_code=400, detail=f"{MAX_ROUTINES} habitudes journalières au maximum")
-    routine = DailyRoutine(user_id=user_id, nom=data.nom, jours=_days_text(data.jours), active=data.active)
+    routine = DailyRoutine(user_id=user_id, nom=data.nom)
     _set_reminders(routine, data.rappels)
     db.add(routine)
     db.commit()
@@ -178,18 +179,26 @@ def update_routine(id: int, data: RoutineUpdate, principal: Principal = Depends(
     routine = _own_routine(db, id, principal)
     if data.nom is not None:
         routine.nom = data.nom
-    if data.jours is not None:
-        routine.jours = _days_text(data.jours)
-    if data.active is not None:
-        if data.active and not routine.active:
-            # Remise en route : les rappels déjà passés aujourd'hui ne partent pas en retard
-            now = now_local()
-            for r in routine.rappels:
-                if r.heure <= now.strftime("%H:%M"):
-                    r.envoye_le = now.date()
-        routine.active = data.active
     if data.rappels is not None:
         _set_reminders(routine, data.rappels)
+    db.commit()
+    db.refresh(routine)
+    return routine
+
+
+@router.put("/routines/{id}/today", response_model=RoutineRead)
+def routine_today(id: int, data: RoutineToday, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Active les rappels pour aujourd'hui (jusqu'à minuit), ou les arrête."""
+    routine = _own_routine(db, id, principal)
+    now = now_local()
+    if data.active:
+        if routine.active_le != now.date():
+            routine.active_le = now.date()
+            # Seulement ceux à venir : ceux déjà passés ne partent pas en retard
+            for r in routine.rappels:
+                r.envoye_le = now.date() if r.heure <= now.strftime("%H:%M") else None
+    else:
+        routine.active_le = None
     db.commit()
     db.refresh(routine)
     return routine

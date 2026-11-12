@@ -597,7 +597,8 @@ class HabitLog(Base):
 
 
 class DailyRoutine(Base):
-    """Habitude journalière : des rappels à heures fixes certains jours (ex. télétravail : se lever toutes les heures)."""
+    """Habitude journalière : une série de rappels à heures fixes, activée pour la journée d'un clic
+    (ex. télétravail : se lever toutes les heures). S'arrête d'elle-même à minuit."""
     __tablename__ = "daily_routines"
 
     id = Column(Integer, primary_key=True)
@@ -605,8 +606,7 @@ class DailyRoutine(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)   # dernière modification
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     nom = Column(String(80), nullable=False)
-    jours = Column(String(7), nullable=False, default="01234")   # 0 = lundi … 6 = dimanche
-    active = Column(Boolean, nullable=False, default=True, server_default=true())
+    active_le = Column(Date, nullable=True)   # jour où les rappels sont activés (vide ou autre jour : éteinte)
 
     rappels = relationship("RoutineReminder", cascade="all, delete-orphan", back_populates="routine",
                            order_by="RoutineReminder.heure")

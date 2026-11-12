@@ -237,7 +237,7 @@ ROUTINE_LATE = timedelta(minutes=30)   # serveur arrêté à l'heure du rappel :
 
 
 def run_routine_reminders(db: Session, now: datetime | None = None) -> int:
-    """Chaque rappel des habitudes journalières actives, à son heure, les jours choisis (une fois par jour)."""
+    """Chaque rappel des habitudes journalières activées aujourd'hui, à son heure (une fois)."""
     if not enabled():
         return 0
     now = now or now_local()
@@ -245,13 +245,11 @@ def run_routine_reminders(db: Session, now: datetime | None = None) -> int:
     since = now - ROUTINE_LATE
     earliest = since.strftime("%H:%M") if since.date() == today else "00:00"
     rows = (db.query(RoutineReminder, DailyRoutine).join(DailyRoutine, DailyRoutine.id == RoutineReminder.routine_id)
-            .filter(DailyRoutine.active.is_(True), RoutineReminder.heure <= now.strftime("%H:%M"), RoutineReminder.heure >= earliest,
+            .filter(DailyRoutine.active_le == today, RoutineReminder.heure <= now.strftime("%H:%M"), RoutineReminder.heure >= earliest,
                     or_(RoutineReminder.envoye_le.is_(None), RoutineReminder.envoye_le != today))
             .order_by(RoutineReminder.heure).all())
     sent = 0
     for reminder, routine in rows:
-        if str(today.weekday()) not in (routine.jours or ""):
-            continue
         # Réservé avant l'envoi : même lancé deux fois en parallèle, le rappel ne part qu'une fois
         reserved = (db.query(RoutineReminder)
                     .filter(RoutineReminder.id == reminder.id,
