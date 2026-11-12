@@ -192,6 +192,7 @@ class User(Base):
     garmin_ignored = relationship("GarminIgnoredActivity", cascade="all, delete-orphan")
     coach_reports = relationship("CoachReport", cascade="all, delete-orphan")
     habits = relationship("Habit", cascade="all, delete-orphan")
+    routines = relationship("DailyRoutine", cascade="all, delete-orphan")
 
     @property
     def zones_fc(self) -> dict | None:
@@ -593,3 +594,32 @@ class HabitLog(Base):
     done_at = Column(DateTime, default=datetime.utcnow)
 
     habit = relationship("Habit", back_populates="logs")
+
+
+class DailyRoutine(Base):
+    """Habitude journalière : des rappels à heures fixes certains jours (ex. télétravail : se lever toutes les heures)."""
+    __tablename__ = "daily_routines"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)   # création de la ligne
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)   # dernière modification
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    nom = Column(String(80), nullable=False)
+    jours = Column(String(7), nullable=False, default="01234")   # 0 = lundi … 6 = dimanche
+    active = Column(Boolean, nullable=False, default=True, server_default=true())
+
+    rappels = relationship("RoutineReminder", cascade="all, delete-orphan", back_populates="routine",
+                           order_by="RoutineReminder.heure")
+
+
+class RoutineReminder(Base):
+    """Un rappel d'une habitude journalière : notification « message » à « heure »."""
+    __tablename__ = "routine_reminders"
+
+    id = Column(Integer, primary_key=True)
+    routine_id = Column(Integer, ForeignKey("daily_routines.id", ondelete="CASCADE"), nullable=False, index=True)
+    heure = Column(String(5), nullable=False)        # « HH:MM »
+    message = Column(String(200), nullable=False)
+    envoye_le = Column(Date, nullable=True)          # une fois par jour au plus
+
+    routine = relationship("DailyRoutine", back_populates="rappels")

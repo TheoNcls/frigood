@@ -11,12 +11,15 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Activity, Habit, HabitLog, PushSubscription, Task, TaskCompletion, TaskReminder
+from app.models import (
+    Activity, DailyRoutine, Habit, HabitLog, PushSubscription, RoutineReminder, Task, TaskCompletion, TaskReminder,
+)
 
 log = logging.getLogger("frigood.push")
 
 TZ = ZoneInfo(os.getenv("TZ_APP", "Europe/Paris"))
-INTERVAL_S = int(os.getenv("REMINDERS_INTERVAL", "300"))
+# Toutes les minutes : les rappels des habitudes journalières tombent à la minute près
+INTERVAL_S = int(os.getenv("REMINDERS_INTERVAL", "60"))
 
 # Rappels selon la récurrence : une tâche quotidienne ne prévient que le jour même
 KINDS: dict[str | None, tuple[str, ...]] = {
@@ -228,6 +231,39 @@ def run_habit_reminders(db: Session, now: datetime | None = None) -> int:
     return sent
 
 
+# --- Rappels des habitudes journalières (heures fixes) ---
+
+ROUTINE_LATE = timedelta(minutes=30)   # serveur arrêté à l'heure du rappel : plus la peine après 30 min
+
+
+def run_routine_reminders(db: Session, now: datetime | None = None) -> int:
+    """Chaque rappel des habitudes journalières actives, à son heure, les jours choisis (une fois par jour)."""
+    if not enabled():
+        return 0
+    now = now or now_local()
+    today = now.date()
+    since = now - ROUTINE_LATE
+    earliest = since.strftime("%H:%M") if since.date() == today else "00:00"
+    rows = (db.query(RoutineReminder, DailyRoutine).join(DailyRoutine, DailyRoutine.id == RoutineReminder.routine_id)
+            .filter(DailyRoutine.active.is_(True), RoutineReminder.heure <= now.strftime("%H:%M"), RoutineReminder.heure >= earliest,
+                    or_(RoutineReminder.envoye_le.is_(None), RoutineReminder.envoye_le != today))
+            .order_by(RoutineReminder.heure).all())
+    sent = 0
+    for reminder, routine in rows:
+        if str(today.weekday()) not in (routine.jours or ""):
+            continue
+        # Réservé avant l'envoi : même lancé deux fois en parallèle, le rappel ne part qu'une fois
+        reserved = (db.query(RoutineReminder)
+                    .filter(RoutineReminder.id == reminder.id,
+                            or_(RoutineReminder.envoye_le.is_(None), RoutineReminder.envoye_le != today))
+                    .update({RoutineReminder.envoye_le: today}, synchronize_session=False))
+        db.commit()
+        if reserved:
+            sent += send_to_user(db, routine.user_id, {
+                "title": routine.nom, "body": reminder.message, "url": "/", "tag": f"routine-{reminder.id}-{today.isoformat()}"})
+    return sent
+
+
 def start_scheduler():
     """Vérifie les rappels toutes les REMINDERS_INTERVAL secondes, dans un fil d'arrière-plan de l'API."""
     if not enabled() or os.getenv("REMINDERS", "on") == "off":
@@ -239,7 +275,7 @@ def start_scheduler():
         while True:
             try:
                 with SessionLocal() as db:
-                    n = run_reminders(db) + run_habit_reminders(db)
+                    n = run_reminders(db) + run_habit_reminders(db) + run_routine_reminders(db)
                     if n:
                         log.info("%d rappel(s) envoyé(s)", n)
             except Exception:

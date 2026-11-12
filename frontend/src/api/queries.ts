@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 import { useAuth } from "../auth/AuthContext";
 import type {
-  Activity, ActivityType, BodyComposition, DailyStat, FitnessMetric, FridgeHistory, FridgeItem, Habit, HabitLog, Ingredient, MealLog,
+  Activity, ActivityType, BodyComposition, DailyRoutine, DailyStat, FitnessMetric, FridgeHistory, FridgeItem, Habit, HabitLog, Ingredient, MealLog,
   Nutriment, Recipe, PlanMilestone, TaskOccurrence,
 } from "./types";
 
@@ -157,6 +157,16 @@ export function useHabits(enabled = true) {
     enabled,
   });
   return { ...query, list: query.data ?? (EMPTY as Habit[]) };
+}
+
+/** Habitudes journalières (rappels à heures fixes) */
+export function useRoutines() {
+  const uid = useUserId();
+  const query = useQuery({
+    queryKey: ["routines", uid],
+    queryFn: () => api<DailyRoutine[]>(`/users/${uid}/routines/`),
+  });
+  return { ...query, list: query.data ?? (EMPTY as DailyRoutine[]) };
 }
 
 /** Habitudes faites entre deux dates (incluses) */

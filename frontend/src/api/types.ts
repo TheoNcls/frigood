@@ -469,6 +469,26 @@ export interface Habit {
   updated_at: string | null;
 }
 
+/** Rappel d'une habitude journalière : notification « message » à « heure » (HH:MM) */
+export interface RoutineReminder {
+  id: number;
+  heure: string;
+  message: string;
+}
+
+/** Habitude journalière : des rappels à heures fixes, certains jours (ex. télétravail) */
+export interface DailyRoutine {
+  id: number;
+  /** Titre des notifications */
+  nom: string;
+  jours: number[];
+  /** En pause : plus aucun rappel */
+  active: boolean;
+  /** Triés par heure */
+  rappels: RoutineReminder[];
+  created_at: string | null;
+}
+
 /** Habitude faite tel jour */
 export interface HabitLog {
   id: number;

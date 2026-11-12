@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, Check, Pencil, Plus, Undo2 } from "lucide-react";
 import { api } from "../api/client";
 import { useHabitLogs, useHabits } from "../api/queries";
-import type { Habit, HabitLog } from "../api/types";
+import type { DailyRoutine, Habit, HabitLog } from "../api/types";
 import { useCurrentUser } from "../auth/AuthContext";
+import DailyRoutines, { RoutineFormModal } from "../components/DailyRoutines";
+import { DaysPicker, ToggleSwitch, usePushActive } from "../components/HabitInputs";
 import { useHabitLogActions } from "../components/HabitsToday";
 import Modal from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { Card, ConfirmButton, Empty, PageHeader, ProgressBar, Segmented, Spinner } from "../components/ui";
 import { addDays, parseISODate, todayISO } from "../lib/dates";
-import { DAY_LABELS, doneDates, habitLabel, habitStats, isDue, isGoal } from "../lib/habits";
-import { currentSubscription } from "../lib/push";
+import { doneDates, habitLabel, habitStats, isDue, isGoal } from "../lib/habits";
 
 const HISTORY_DAYS = 14;
 const GOAL_HISTORY_DAYS = 7;   // objectif par semaine : les oublis ne se rattrapent que sur 7 jours
@@ -23,35 +25,6 @@ const SUGGESTIONS = [
   { emoji: "🧘", nom: "Méditation" }, { emoji: "📚", nom: "Lecture" }, { emoji: "🎹", nom: "Piano" },
   { emoji: "🤸", nom: "Étirements" }, { emoji: "💧", nom: "Boire 2 L d'eau" }, { emoji: "✍️", nom: "Journal" },
 ];
-
-/** Les 7 jours en ligne : surligné = l'habitude a lieu ce jour-là. */
-function DaysPicker({ value, onChange, disabled = false }: { value: number[]; onChange: (days: number[]) => void; disabled?: boolean }) {
-  const toast = useToast();
-  return (
-    <div className="grid grid-cols-7 gap-1" role="group" aria-label="Jours de l'habitude">
-      {DAY_LABELS.map((label, d) => {
-        const on = value.includes(d);
-        return (
-          <button
-            key={d}
-            type="button"
-            aria-pressed={on}
-            disabled={disabled}
-            onClick={() => {
-              if (on && value.length === 1) return toast("Garde au moins un jour", "error");
-              onChange(on ? value.filter((x) => x !== d) : [...value, d].sort());
-            }}
-            className={`rounded-lg py-1.5 text-xs font-semibold transition disabled:opacity-60 ${
-              on ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 /** Objectif « X fois par semaine » : 1 à 7. */
 function GoalPicker({ value, onChange }: { value: number; onChange: (n: number) => void }) {
@@ -77,15 +50,6 @@ function GoalPicker({ value, onChange }: { value: number; onChange: (n: number) 
 function useInvalidateHabits() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: ["habits"] });
-}
-
-/** Les notifications sont-elles activées sur cet appareil ? (pour prévenir que le rappel n'arrivera pas) */
-function usePushActive(): boolean | null {
-  const [active, setActive] = useState<boolean | null>(null);
-  useEffect(() => {
-    currentSubscription().then((s) => setActive(!!s)).catch(() => setActive(false));
-  }, []);
-  return active;
 }
 
 /** Création ou modification d'une habitude (fenêtre) : jours précis ou objectif par semaine, et rappel. */
@@ -222,19 +186,8 @@ function HabitRow({ habit, done, today, oldest, onEdit }: {
           {!habit.active && <span className="badge bg-slate-200 text-slate-600">en pause</span>}
           <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-slate-500" />
         </button>
-        <label className="relative mt-0.5 inline-flex shrink-0 cursor-pointer">
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label={`${habit.nom} active`}
-            className="peer sr-only"
-            checked={habit.active}
-            disabled={update.isPending}
-            onChange={(e) => update.mutate({ active: e.target.checked })}
-          />
-          <span className="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-100" />
-          <span className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
-        </label>
+        <ToggleSwitch label={`${habit.nom} active`} checked={habit.active} disabled={update.isPending}
+          onChange={(active) => update.mutate({ active })} />
       </div>
       {goal ? (
         <div className="space-y-1">
@@ -317,6 +270,11 @@ export default function Habits() {
   const habits = useHabits();
   const logs = useHabitLogs(oldest, today);
   const [editing, setEditing] = useState<Habit | "new" | null>(null);
+  const [editingRoutine, setEditingRoutine] = useState<DailyRoutine | "new" | null>(null);
+  // Onglet dans l'adresse : le lien d'une notification ou un rechargement y ramène
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("onglet") === "journalieres" ? "journalieres" : "habitudes";
+  const setTab = (t: "habitudes" | "journalieres") => setParams(t === "journalieres" ? { onglet: t } : {}, { replace: true });
 
   const doneBy = useMemo(() => new Map(habits.list.map((h) => [h.id, doneDates(logs.data, h.id)])), [habits.list, logs.data]);
   // Actives d'abord, celles en pause plus bas
@@ -325,11 +283,22 @@ export default function Habits() {
   return (
     <div className="space-y-4">
       {editing && <HabitFormModal habit={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {editingRoutine && <RoutineFormModal routine={editingRoutine === "new" ? undefined : editingRoutine} onClose={() => setEditingRoutine(null)} />}
       <PageHeader
         title="Habitudes"
-        subtitle="Tes petites routines : coche-les chaque jour depuis l'accueil."
-        action={<button type="button" className="btn-primary" onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Nouvelle habitude</button>}
+        subtitle={tab === "habitudes" ? "Tes petites routines : coche-les chaque jour depuis l'accueil."
+          : "Des rappels à heures fixes par notification, les jours choisis."}
+        action={tab === "habitudes"
+          ? <button type="button" className="btn-primary" onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Nouvelle habitude</button>
+          : <button type="button" className="btn-primary" onClick={() => setEditingRoutine("new")}><Plus className="h-4 w-4" /> Nouvelle journalière</button>}
       />
+      <Segmented
+        full
+        value={tab}
+        onChange={setTab}
+        options={[{ value: "habitudes", label: "Habitudes" }, { value: "journalieres", label: "Journalières" }]}
+      />
+      {tab === "journalieres" ? <DailyRoutines onEdit={setEditingRoutine} /> : <>
       <Card title="Mes habitudes">
         {habits.isLoading ? <Spinner /> : !list.length ? (
           <Empty>Aucune habitude pour l'instant : « Nouvelle habitude » pour commencer.</Empty>
@@ -347,6 +316,7 @@ export default function Habits() {
       <Card title={`Historique (${HISTORY_DAYS} derniers jours)`}>
         {logs.isLoading ? <Spinner /> : <History habits={habits.list} logs={logs.data ?? []} today={today} />}
       </Card>
+      </>}
     </div>
   );
 }
