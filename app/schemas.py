@@ -580,7 +580,10 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    pass
+    # Séance détaillée (créateur de séances) : envoyées seulement pour la changer ; absentes, elle est gardée.
+    # Course : étapes ; renforcement : exercices ; les deux vides : plus de séance détaillée
+    etapes: list | None = Field(default=None, max_length=40)
+    exercices: list | None = Field(default=None, max_length=30)
 
 
 class TaskRead(TaskBase):
@@ -996,3 +999,26 @@ class RoutineRead(BaseModel):
     created_at: datetime_type | None = None
 
     model_config = {"from_attributes": True}
+
+
+# --- Créateur de séances ---
+
+class WorkoutDraft(BaseModel):
+    """Ce que la personne veut (texte libre) et l'état du formulaire de tâche : sport, date, séance déjà prévue."""
+    demande: str = Field(min_length=1, max_length=3000)
+    activity_type_id: int | None = None
+    date: date_type | None = None
+    heure: str | None = Field(default=None, max_length=5)
+    titre: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=4000)
+    task_id: int | None = None          # tâche modifiée : pas comptée dans les séances « autour »
+    etapes: list | None = Field(default=None, max_length=40)
+    exercices: list | None = Field(default=None, max_length=30)
+
+    @field_validator("demande")
+    @classmethod
+    def _demande(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("Décris la séance que tu veux")
+        return v

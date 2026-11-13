@@ -375,6 +375,23 @@ export interface TaskInput {
   important: boolean;
   /** Tâche sportive : validée par une activité de ce type le jour prévu */
   activity_type_id: number | null;
+  /** Séance détaillée : envoyée seulement pour la changer (les deux vides : plus de séance) */
+  etapes?: SeanceStep[];
+  exercices?: StrengthExercise[];
+}
+
+/** Séance proposée par le créateur de séances (Claude ou une autre IA), pour remplir le formulaire de tâche */
+export interface WorkoutProposal {
+  titre: string;
+  activity_type_id: number | null;
+  sport: string | null;
+  duree_min: number | null;
+  /** Objectif et consignes : vont dans les notes */
+  details: string;
+  etapes: SeanceStep[];
+  exercices: StrengthExercise[];
+  /** Ce que l'IA a ajouté, adapté ou remplacé (Markdown simple, pas enregistré) */
+  remarques: string;
 }
 
 /** Une tâche à une date donnée (les tâches récurrentes ont une occurrence par jour concerné). */

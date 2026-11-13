@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import Principal, check_user_access, get_principal
 from app.database import get_db
 from app.garmin_service import GarminSessionExpired, login_with_tokens, save_tokens
-from app.garmin_workouts import can_send, remove_task, send_task
+from app.garmin_workouts import can_send, clean_exercises, clean_seance, remove_task, send_task
 from app.models import Activity, ActivityType, Task, TaskCompletion, User
 from app.push_service import now_local
 from app.schemas import TaskCreate, TaskDone, TaskOccurrence, TaskRead
@@ -85,6 +85,18 @@ def _statut(c: TaskCompletion | None) -> dict:
     return {"statut": c.statut, "fait": c.statut == "fait", "done_at": c.done_at}
 
 
+SEANCE_FIELDS = {"etapes", "exercices"}
+
+
+def _seance_json(data: TaskCreate) -> str | None:
+    """Séance détaillée envoyée par le formulaire : exercices (renforcement) ou étapes (course), nettoyés."""
+    exercices = clean_exercises(data.exercices)
+    if exercices:
+        return json.dumps({"exercices": exercices}, ensure_ascii=False)
+    etapes = clean_seance(data.etapes)
+    return json.dumps(etapes, ensure_ascii=False) if etapes else None
+
+
 def _check_type(db: Session, data: TaskCreate):
     if data.activity_type_id is not None and not db.get(ActivityType, data.activity_type_id):
         raise HTTPException(status_code=400, detail="Type d'activité inconnu")
@@ -148,7 +160,9 @@ def create_task(user_id: int, data: TaskCreate, principal: Principal = Depends(g
     if not db.get(User, user_id):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     _check_type(db, data)
-    task = Task(user_id=user_id, **data.model_dump())
+    task = Task(user_id=user_id, **data.model_dump(exclude=SEANCE_FIELDS))
+    if SEANCE_FIELDS & data.model_fields_set:
+        task.seance = _seance_json(data)
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -159,8 +173,11 @@ def create_task(user_id: int, data: TaskCreate, principal: Principal = Depends(g
 def update_task(id: int, data: TaskCreate, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     task = _own_task(db, id, principal)
     _check_type(db, data)
-    for key, value in data.model_dump().items():
+    for key, value in data.model_dump(exclude=SEANCE_FIELDS).items():
         setattr(task, key, value)
+    # Séance changée seulement si le formulaire l'envoie (le report d'une tâche, par exemple, la garde)
+    if SEANCE_FIELDS & data.model_fields_set:
+        task.seance = _seance_json(data)
     # Les coches qui ne correspondent plus à une occurrence (date ou récurrence changée) sont retirées
     valid_end = max((c.date for c in task.completions), default=task.date)
     kept = set(occurrences(task, task.date, valid_end))

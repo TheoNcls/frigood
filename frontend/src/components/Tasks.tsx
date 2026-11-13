@@ -2,12 +2,13 @@ import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Activity as ActivityIcon, AlarmClock, ArrowRight, Check, ListTodo, Plus, Repeat, Sparkles, Star, X } from "lucide-react";
 import { api } from "../api/client";
-import type { Recurrence, TaskInput, TaskOccurrence, TaskStatut } from "../api/types";
+import type { Recurrence, TaskInput, TaskOccurrence, TaskStatut, WorkoutProposal } from "../api/types";
 import { useActivityTypes, useTasks } from "../api/queries";
 import { useCurrentUser } from "../auth/AuthContext";
 import { addDays, daysBetween, formatFull, formatLong, formatShort, parseISODate, todayISO } from "../lib/dates";
 import AddEntryModal from "./AddEntry";
 import { ExercisesList, GarminSendButton, SeanceSteps } from "./Seance";
+import WorkoutAIPanel, { hasSeance, type SeanceDraft } from "./WorkoutCreator";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
 import { ConfirmButton, Field, Segmented } from "./ui";
@@ -148,6 +149,29 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
   });
   const types = useActivityTypes();
   const set = (key: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [key]: e.target.value });
+  // Séance détaillée (étapes ou exercices) : modifiable avec « Séance IA », enregistrée avec la tâche
+  const [seance, setSeance] = useState<SeanceDraft>({ etapes: task?.seance ?? [], exercices: task?.exercices ?? [] });
+  const [seanceDirty, setSeanceDirty] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  // Titre vide ou donné par l'IA : la proposition suivante peut le remplacer (pas un titre tapé à la main)
+  const titleAuto = useRef(!task?.titre);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const sport = types.list.find((t) => String(t.id) === f.activity_type_id);
+
+  const applyProposal = (p: WorkoutProposal) => {
+    const titre = titleAuto.current || !f.titre.trim() ? p.titre : f.titre;
+    titleAuto.current = titre === p.titre;
+    setF({
+      ...f,
+      titre,
+      activity_type_id: p.activity_type_id ? String(p.activity_type_id) : f.activity_type_id,
+      notes: [p.duree_min ? `${p.duree_min} min` : "", p.details].filter(Boolean).join(" · "),
+    });
+    setSeance({ etapes: p.etapes, exercices: p.exercices });
+    setSeanceDirty(true);
+    // La séance proposée est sous le panneau : on la montre
+    setTimeout(() => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
+  };
 
   const body = (): TaskInput => ({
     titre: f.titre.trim(),
@@ -158,13 +182,20 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
     notes: f.notes.trim() || null,
     important: f.important,
     activity_type_id: f.activity_type_id ? Number(f.activity_type_id) : null,
+    ...(seanceDirty ? { etapes: seance.etapes, exercices: seance.exercices } : {}),
   });
 
   const save = useMutation({
     mutationFn: () => editing
       ? api(`/tasks/${task.task_id}`, { method: "PUT", body: body() })
       : api(`/users/${user.id}/tasks/`, { method: "POST", body: body() }),
-    onSuccess: () => { invalidate(); toast(editing ? "Tâche modifiée" : "Tâche ajoutée"); onClose(); },
+    onSuccess: () => {
+      invalidate();
+      toast(editing
+        ? (seanceDirty && task.garmin_envoye ? "Tâche modifiée : renvoie la séance sur ta montre pour la mettre à jour" : "Tâche modifiée")
+        : hasSeance(seance) ? "Séance ajoutée : ouvre-la dans l'agenda pour l'envoyer sur ta montre" : "Tâche ajoutée");
+      onClose();
+    },
     onError: (e) => toast(e.message, "error"),
   });
 
@@ -192,7 +223,7 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
               </span>
             ) : null}
           </div>
-          {((task.seance && task.seance.length > 0) || (task.exercices && task.exercices.length > 0)) && (
+          {!seanceDirty && ((task.seance && task.seance.length > 0) || (task.exercices && task.exercices.length > 0)) && (
             <div className="space-y-2 rounded-lg bg-white/80 p-2">
               <div className="text-xs font-semibold text-slate-600">Séance</div>
               {task.seance && task.seance.length > 0 && <SeanceSteps steps={task.seance} />}
@@ -221,7 +252,8 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
         }}
       >
         <Field label="Titre">
-          <input className="input" required autoFocus={!editing} value={f.titre} onChange={set("titre")} placeholder="ex. Faire les courses, Préparer le dahl…" />
+          <input className="input" required autoFocus={!editing} value={f.titre}
+            onChange={(e) => { titleAuto.current = false; set("titre")(e); }} placeholder="ex. Faire les courses, Préparer le dahl…" />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={f.recurrence ? "À partir du" : "Date"}>
@@ -255,17 +287,44 @@ export function TaskFormBody({ date, task, onClose }: { date?: string; task?: Ta
             <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" /> Importante
           </span>
         </label>
-        <Field
-          label="Sport associé (facultatif)"
-          hint={f.activity_type_id
-            ? "Validée toute seule dès qu'une activité de ce type est enregistrée ce jour-là (Garmin ou à la main)."
-            : "Pour une séance prévue (ex. Course tempo 20 min) : choisis le sport, la tâche se validera avec l'activité."}
-        >
-          <select className="input" value={f.activity_type_id} onChange={set("activity_type_id")}>
-            <option value="">Aucun</option>
-            {types.list.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
-          </select>
-        </Field>
+        {/* Pas de <Field> ici : le bouton « Séance IA » ne doit pas faire partie de l'étiquette du sport */}
+        <div>
+          <label htmlFor="task-sport" className="label">Sport associé (facultatif)</label>
+          <div className="flex gap-2">
+            <select id="task-sport" className="input min-w-0 flex-1" value={f.activity_type_id} onChange={set("activity_type_id")}>
+              <option value="">Aucun</option>
+              {types.list.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
+            </select>
+            <button type="button" aria-expanded={aiOpen} onClick={() => setAiOpen(!aiOpen)}
+              className={`btn-secondary shrink-0 border-violet-200 ${aiOpen ? "bg-violet-100 text-violet-800" : "text-violet-700"}`}>
+              <Sparkles className="h-4 w-4" /> Séance IA
+            </button>
+          </div>
+          <span className="mt-1 block text-xs text-slate-500">
+            {f.activity_type_id
+              ? "Validée toute seule dès qu'une activité de ce type est enregistrée ce jour-là (Garmin ou à la main)."
+              : "Pour une séance prévue : choisis le sport (la tâche se validera avec l'activité), et « Séance IA » pour la détailler."}
+          </span>
+        </div>
+        {aiOpen && (
+          <WorkoutAIPanel
+            form={{ ...f, task_id: task?.task_id }}
+            seance={seance}
+            sport={sport}
+            onApply={applyProposal}
+            onClear={() => { setSeance({ etapes: [], exercices: [] }); setSeanceDirty(true); }}
+          />
+        )}
+        {seanceDirty && (
+          <div ref={previewRef} className="space-y-2 rounded-xl border border-slate-200 bg-white p-2.5">
+            <div className="text-xs font-semibold text-slate-600">
+              {hasSeance(seance) ? "Séance proposée" : "Séance détaillée retirée"}
+              <span className="font-normal text-slate-400"> · {editing ? "enregistre pour la garder" : "ajoutée avec la tâche"}</span>
+            </div>
+            {seance.etapes.length > 0 && <SeanceSteps steps={seance.etapes} />}
+            {seance.exercices.length > 0 && <ExercisesList exercises={seance.exercices} />}
+          </div>
+        )}
         <Field label="Notes (facultatif)">
           <AutoTextarea value={f.notes} onChange={(v) => setF({ ...f, notes: v })} />
         </Field>
