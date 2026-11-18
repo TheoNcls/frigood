@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
 import { api } from "../api/client";
@@ -25,7 +26,9 @@ const ScanFoodModal = lazy(() => import("../components/ScanFoodModal"));
 
 export default function Fridge() {
   const fridge = useFridge();
-  const [tab, setTab] = useState<Tab>("contenu");
+  // « Ajouter » en premier : l'onglet s'ouvre dessus (sauf lien vers le contenu, ex. « À consommer vite » sur l'accueil)
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(params.get("onglet") === "contenu" ? "contenu" : "ajouter");
   const count = fridge.data?.length ?? 0;
 
   return (
@@ -35,8 +38,8 @@ export default function Fridge() {
         value={tab}
         onChange={setTab}
         options={[
-          { value: "contenu", label: `Contenu (${count})` },
           { value: "ajouter", label: "Ajouter" },
+          { value: "contenu", label: `Contenu (${count})` },
           { value: "historique", label: "Historique" },
         ]}
       />
